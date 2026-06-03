@@ -1,5 +1,3 @@
-"use server";
-
 import { db } from "@/db";
 import { consents } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
