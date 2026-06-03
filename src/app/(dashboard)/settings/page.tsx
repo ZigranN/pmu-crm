@@ -77,7 +77,7 @@ export default function SettingsPage() {
           <div className="flex justify-between items-center">
             <span className="text-muted-foreground">Текущая роль</span>
             <Badge variant="outline" className="text-taupe border-taupe">
-              {(session?.user as any).role}
+              {session?.user && (session.user as any).role}
             </Badge>
           </div>
         </CardContent>
