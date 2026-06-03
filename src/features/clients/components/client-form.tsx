@@ -292,7 +292,7 @@ export function ClientForm({ initialData }: ClientFormProps) {
               <FormItem>
                 <FormLabel>Заметки</FormLabel>
                 <FormControl>
-                  <Textarea placeholder="Важная информация о клиенте..." {...field} />
+                  <Textarea placeholder="Важная информация о клиенте..." {...field} value={field.value ?? ""} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

@@ -146,7 +146,7 @@ export function MasterForm({ initialData, availableServices }: MasterFormProps) 
               <FormItem>
                 <FormLabel>О мастере</FormLabel>
                 <FormControl>
-                  <Textarea placeholder="Краткая биография или специализация..." {...field} />
+                  <Textarea placeholder="Краткая биография или специализация..." {...field} value={field.value ?? ""} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

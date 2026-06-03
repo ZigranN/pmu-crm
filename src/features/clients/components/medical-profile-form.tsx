@@ -108,7 +108,7 @@ export function MedicalProfileForm({ clientId, initialData, readonly = false }: 
                   <FormItem>
                     <FormLabel>Противопоказания</FormLabel>
                     <FormControl>
-                      <Textarea {...field} disabled={readonly} placeholder="Перечислите противопоказания" />
+                      <Textarea {...field} disabled={readonly} placeholder="Перечислите противопоказания" value={field.value ?? ""} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -144,7 +144,7 @@ export function MedicalProfileForm({ clientId, initialData, readonly = false }: 
                   <FormItem>
                     <FormLabel>Принимаемые препараты</FormLabel>
                     <FormControl>
-                      <Textarea {...field} disabled={readonly} placeholder="Перечислите принимаемые лекарства" />
+                      <Textarea {...field} disabled={readonly} placeholder="Перечислите принимаемые лекарства" value={field.value ?? ""} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -275,7 +275,7 @@ export function MedicalProfileForm({ clientId, initialData, readonly = false }: 
                   <FormItem>
                     <FormLabel>Детали прошлого ПМ</FormLabel>
                     <FormControl>
-                      <Textarea {...field} disabled={readonly} placeholder="Где, когда, какой техникой?" />
+                      <Textarea {...field} disabled={readonly} placeholder="Где, когда, какой техникой?" value={field.value ?? ""} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -352,7 +352,7 @@ export function MedicalProfileForm({ clientId, initialData, readonly = false }: 
               render={({ field }) => (
                 <FormItem>
                   <FormControl>
-                    <Textarea {...field} disabled={readonly} placeholder="Любая дополнительная медицинская информация" />
+                    <Textarea {...field} disabled={readonly} placeholder="Любая дополнительная медицинская информация" value={field.value ?? ""} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

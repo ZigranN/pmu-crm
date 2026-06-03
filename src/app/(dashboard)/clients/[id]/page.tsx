@@ -14,6 +14,8 @@ import { MedicalProfileForm } from "@/features/clients/components/medical-profil
 import { Timeline, TimelineItem } from "@/components/shared/timeline";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { db } from "@/db";
+import { clientMedicalProfiles, activityEvents } from "@/db/schema";
+import { eq, desc } from "drizzle-orm";
 
 interface ClientDetailPageProps {
   params: {
@@ -31,6 +33,18 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
 
   const client = await getClientById(id, studioId);
   if (!client) notFound();
+
+  // Fetch medical profile separately
+  const medicalProfile = await db.query.clientMedicalProfiles.findFirst({
+    where: eq(clientMedicalProfiles.clientId, id),
+  });
+
+  // Fetch activity events separately
+  const events = await db.query.activityEvents.findMany({
+    where: eq(activityEvents.clientId, id),
+    orderBy: [desc(activityEvents.createdAt)],
+    limit: 20,
+  });
 
   const canEditMedical = await hasPermission(db, session.user.id, studioId, PERMISSIONS.MEDICAL_PROFILE_UPDATE);
 
@@ -134,9 +148,9 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
         </TabsContent>
 
         <TabsContent value="medical" className="mt-6">
-          <MedicalProfileForm 
-            clientId={client.id} 
-            initialData={client.medicalProfile} 
+          <MedicalProfileForm
+            clientId={client.id}
+            initialData={medicalProfile}
             readonly={!canEditMedical}
           />
         </TabsContent>
@@ -147,15 +161,15 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
               <CardTitle>История активности</CardTitle>
             </CardHeader>
             <CardContent>
-              {client.activityEvents && client.activityEvents.length > 0 ? (
+              {events && events.length > 0 ? (
                 <Timeline>
-                  {client.activityEvents.map((event, index) => (
+                  {events.map((event, index) => (
                     <TimelineItem
                       key={event.id}
                       title={event.title}
                       description={event.description || ""}
                       date={new Date(event.createdAt)}
-                      isLast={index === client.activityEvents.length - 1}
+                      isLast={index === events.length - 1}
                     />
                   ))}
                 </Timeline>

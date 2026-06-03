@@ -119,7 +119,7 @@ export function ServiceForm({ initialData }: ServiceFormProps) {
               <FormItem>
                 <FormLabel>Описание</FormLabel>
                 <FormControl>
-                  <Textarea placeholder="Краткое описание услуги..." {...field} />
+                  <Textarea placeholder="Краткое описание услуги..." {...field} value={field.value ?? ""} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

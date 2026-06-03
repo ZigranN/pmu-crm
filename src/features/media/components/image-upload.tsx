@@ -12,6 +12,8 @@ interface ImageUploadProps {
   onRemove?: () => void;
   disabled?: boolean;
   maxSizeMB?: number;
+  mode?: "generic" | "media"; // generic = simple upload (master/studio), media = requires clientId
+  clientId?: string; // only for media mode
 }
 
 export function ImageUpload({
@@ -20,6 +22,8 @@ export function ImageUpload({
   onRemove,
   disabled = false,
   maxSizeMB = 5,
+  mode = "generic",
+  clientId,
 }: ImageUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -46,23 +50,34 @@ export function ImageUpload({
     try {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("type", "other");
 
-      const response = await fetch("/api/media/upload", {
+      let endpoint = "/api/upload/image"; // default generic upload
+
+      if (mode === "media") {
+        if (!clientId) {
+          throw new Error("Client ID required for media upload");
+        }
+        endpoint = "/api/media/upload";
+        formData.append("clientId", clientId);
+        formData.append("type", "other");
+      }
+
+      const response = await fetch(endpoint, {
         method: "POST",
         body: formData,
       });
 
       if (!response.ok) {
-        throw new Error("Upload failed");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Upload failed");
       }
 
       const data = await response.json();
       onChange(data.url);
       toast.success("Фото загружено");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Upload error:", error);
-      toast.error("Ошибка при загрузке фото");
+      toast.error(error.message || "Ошибка при загрузке фото");
     } finally {
       setIsUploading(false);
       if (inputRef.current) {

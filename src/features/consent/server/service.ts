@@ -68,14 +68,13 @@ export const consentService = {
   },
 
   async getClientConsents(clientId: string, studioId: string) {
+    // Note: Simplified to avoid Drizzle relations issues
+    // Media can be fetched separately if needed
     return await db.query.consents.findMany({
       where: and(
         eq(consents.clientId, clientId),
         eq(consents.studioId, studioId)
       ),
-      with: {
-        media: true,
-      },
       orderBy: (consents, { desc }) => [desc(consents.signedAt)],
     });
   },

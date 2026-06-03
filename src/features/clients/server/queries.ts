@@ -32,17 +32,12 @@ export async function getClients(studioId: string, filters?: { search?: string, 
 }
 
 export async function getClientById(id: string, studioId: string) {
+  // Note: Simplified to avoid Drizzle relations issues
+  // Medical profile and activity events fetched separately if needed
   return await db.query.clients.findFirst({
     where: and(
       eq(clients.id, id),
       eq(clients.studioId, studioId)
-    ),
-    with: {
-      medicalProfile: true,
-      activityEvents: {
-        orderBy: (events, { desc }) => [desc(events.createdAt)],
-        limit: 20
-      }
-    }
+    )
   });
 }
