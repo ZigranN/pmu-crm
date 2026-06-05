@@ -11,7 +11,11 @@ export default async function NewMasterPage() {
   const studioId = await getCurrentStudioId(session.user.id);
   if (!studioId) redirect("/dashboard");
 
-  const services = await getActiveServices(studioId);
+  const services = await getActiveServices(studioId)
+    .catch((error) => {
+      console.error("[Master New Page Error]", error);
+      throw error;
+    });
 
   return (
     <div className="space-y-6">

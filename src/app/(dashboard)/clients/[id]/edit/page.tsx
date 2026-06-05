@@ -18,7 +18,12 @@ export default async function EditClientPage({ params }: EditClientPageProps) {
   const studioId = await getCurrentStudioId(session.user.id);
   if (!studioId) redirect("/dashboard");
 
-  const client = await getClientById(id, studioId);
+  const client = await getClientById(id, studioId)
+    .catch((error) => {
+      console.error("[Client Edit Page Error]", error);
+      throw error;
+    });
+  
   if (!client) notFound();
 
   return (

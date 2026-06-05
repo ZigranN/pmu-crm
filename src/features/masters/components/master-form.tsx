@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { FormSection } from "@/components/shared/form-section";
-import { MobileActionBar } from "@/components/shared/mobile-action-bar";
+import { FormActionBar } from "@/components/shared/form-action-bar";
 import { createMasterAction, updateMasterAction, archiveMasterAction, restoreMasterAction } from "../server/actions";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -260,50 +260,34 @@ export function MasterForm({ initialData, availableServices }: MasterFormProps) 
           />
         </FormSection>
 
-        <MobileActionBar>
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1 h-11"
-            onClick={() => router.back()}
-            disabled={isPending}
-          >
-            Отмена
-          </Button>
-          <Button
-            type="submit"
-            className="flex-1 bg-taupe hover:bg-espresso text-ivory h-11"
-            disabled={isPending}
-          >
-            Сохранить
-          </Button>
-        </MobileActionBar>
-
-        {initialData && (
-          <div className="pt-4">
-            {initialData.deletedAt ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full h-11 text-success border-success/20 hover:bg-success/10"
-                onClick={onRestore}
-                disabled={isPending}
-              >
-                Восстановить из архива
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full h-11 text-danger hover:bg-danger/10 hover:text-danger"
-                onClick={() => setIsConfirmOpen(true)}
-                disabled={isPending}
-              >
-                Архивировать мастера
-              </Button>
-            )}
-          </div>
-        )}
+        <FormActionBar
+          onSave={form.handleSubmit(onSubmit)}
+          onCancel={() => router.back()}
+          isSubmitting={isPending}
+        >
+          {initialData && !initialData.deletedAt && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="flex-1 md:flex-initial text-danger hover:bg-danger/10 hover:text-danger h-12 md:h-10"
+              onClick={() => setIsConfirmOpen(true)}
+              disabled={isPending}
+            >
+              Архивировать
+            </Button>
+          )}
+          {initialData && initialData.deletedAt && (
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 md:flex-initial text-success border-success/20 hover:bg-success/10 h-12 md:h-10"
+              onClick={onRestore}
+              disabled={isPending}
+            >
+              Восстановить
+            </Button>
+          )}
+        </FormActionBar>
 
         <ConfirmDialog
           open={isConfirmOpen}

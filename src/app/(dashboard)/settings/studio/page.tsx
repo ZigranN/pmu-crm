@@ -13,10 +13,18 @@ export default async function StudioSettingsPage() {
   const studioId = await getCurrentStudioId(session.user.id);
   if (!studioId) redirect("/dashboard");
 
-  const studio = await getStudioById(studioId);
+  const data = await Promise.all([
+    getStudioById(studioId),
+    hasPermission(db, session.user.id, studioId, PERMISSIONS.SETTINGS_UPDATE)
+  ]).catch((error) => {
+    console.error("[Studio Settings Page Error]", error);
+    throw error;
+  });
+  
+  const studio = data[0];
+  const canUpdate = data[1];
+  
   if (!studio) notFound();
-
-  const canUpdate = await hasPermission(db, session.user.id, studioId, PERMISSIONS.SETTINGS_UPDATE);
 
   return (
     <div className="space-y-6">

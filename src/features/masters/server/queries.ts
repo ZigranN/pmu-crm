@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { masters, masterServices } from "@/db/schema";
-import { eq, and, isNull, ilike, inArray } from "drizzle-orm";
+import { masters } from "@/db/schema";
+import { eq, and, isNull, ilike } from "drizzle-orm";
 
 export async function getMasters(studioId: string, filters?: { search?: string, showArchived?: boolean }) {
   const conditions = [

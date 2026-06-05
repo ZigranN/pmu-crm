@@ -15,6 +15,13 @@
       "when": 1780047034069,
       "tag": "0001_rainy_norman_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780655874063,
+      "tag": "0002_spicy_captain_midlands",
+      "breakpoints": true
     }
   ]
 }

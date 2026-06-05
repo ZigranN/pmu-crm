@@ -5,13 +5,10 @@ import { Search, Users, Scissors, User, Loader2, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 import { globalSearchAction } from "../server/actions";
-import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
 
 interface GlobalSearchProps {

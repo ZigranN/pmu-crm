@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/db";
 import { services } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
@@ -24,9 +24,15 @@ export default async function ServiceDetailPage({
   const canRead = await hasPermission(db, session.user.id, studioId, PERMISSIONS.SERVICE_READ);
   if (!canRead) redirect("/dashboard");
 
-  const service = await db.query.services.findFirst({
-    where: and(eq(services.id, params.id), eq(services.studioId, studioId)),
-  });
+  let service;
+  try {
+    service = await db.query.services.findFirst({
+      where: and(eq(services.id, params.id), eq(services.studioId, studioId)),
+    });
+  } catch (error) {
+    console.error("[Service Detail Page Error]", error);
+    throw error;
+  }
 
   if (!service) notFound();
 

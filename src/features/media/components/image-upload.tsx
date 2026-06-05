@@ -14,6 +14,7 @@ interface ImageUploadProps {
   maxSizeMB?: number;
   mode?: "generic" | "media"; // generic = simple upload (master/studio), media = requires clientId
   clientId?: string; // only for media mode
+  type?: string; // for media mode
 }
 
 export function ImageUpload({
@@ -24,6 +25,7 @@ export function ImageUpload({
   maxSizeMB = 5,
   mode = "generic",
   clientId,
+  type = "other",
 }: ImageUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -59,7 +61,7 @@ export function ImageUpload({
         }
         endpoint = "/api/media/upload";
         formData.append("clientId", clientId);
-        formData.append("type", "other");
+        formData.append("type", type);
       }
 
       const response = await fetch(endpoint, {

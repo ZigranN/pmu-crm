@@ -1,4 +1,4 @@
-import { studioMembers, rolePermissions, permissions, userCustomPermissions } from "@/db/schema";
+import { studioMembers, rolePermissions, permissions, userCustomPermissions, roles } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { ROLES } from "./roles";
 
@@ -67,47 +67,57 @@ export const PERMISSIONS = {
 export type PermissionCode = keyof typeof PERMISSIONS;
 
 export async function hasPermission(dbInstance: any, userId: string, studioId: string, permissionCode: PermissionCode): Promise<boolean> {
-  // 1. Получаем роль пользователя в студии
-  const member = await dbInstance.query.studioMembers.findFirst({
-    where: and(
-      eq(studioMembers.userId, userId),
-      eq(studioMembers.studioId, studioId),
-      eq(studioMembers.isActive, true)
-    ),
-    with: {
-      role: true,
-    },
-  });
+  try {
+    // 1. Получаем роль пользователя в студии
+    const member = await dbInstance.query.studioMembers.findFirst({
+      where: and(
+        eq(studioMembers.userId, userId),
+        eq(studioMembers.studioId, studioId),
+        eq(studioMembers.isActive, true)
+      ),
+    });
 
-  if (!member) return false;
+    if (!member) return false;
 
-  // SUPER_ADMIN может всё
-  if ((member.role as any).code === ROLES.SUPER_ADMIN) return true;
+    const role = await dbInstance.query.roles.findFirst({
+      where: eq(roles.id, member.roleId),
+    });
 
-  // 2. Проверяем кастомные пермишены (allow/deny)
-  const customPerm = await dbInstance.query.userCustomPermissions.findFirst({
-    where: and(
-      eq(userCustomPermissions.userId, userId),
-      eq(userCustomPermissions.studioId, studioId)
-    ),
-    with: {
-      permission: true
+    if (!role) return false;
+
+    // SUPER_ADMIN может всё
+    if (role.code === ROLES.SUPER_ADMIN) return true;
+
+    // 2. Проверяем кастомные пермишены (allow/deny)
+    const customPerm = await dbInstance.query.userCustomPermissions.findFirst({
+      where: and(
+        eq(userCustomPermissions.userId, userId),
+        eq(userCustomPermissions.studioId, studioId)
+      ),
+    });
+    
+    // Если нашли кастомный пермишен, проверим его код
+    if (customPerm) {
+      const permission = await dbInstance.query.permissions.findFirst({
+        where: eq(permissions.id, customPerm.permissionId),
+      });
+
+      if (permission && permission.code === permissionCode) {
+        return customPerm.effect === "allow";
+      }
     }
-  });
-  
-  // Если нашли кастомный пермишен с кодом, который ищем
-  if (customPerm && (customPerm.permission as any).code === permissionCode) {
-      return customPerm.effect === "allow";
+
+    // 3. Проверяем пермишены роли
+    const allRolePerms = await dbInstance.select()
+      .from(rolePermissions)
+      .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+      .where(eq(rolePermissions.roleId, member.roleId));
+
+    return allRolePerms.some((rp: any) => rp.permissions.code === permissionCode);
+  } catch (error) {
+    console.error("[hasPermission error]", error);
+    return false;
   }
-
-  // 3. Проверяем пермишены роли
-  // В реальном приложении здесь должен быть поиск по всем пермишенам роли
-  const allRolePerms = await dbInstance.select()
-    .from(rolePermissions)
-    .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
-    .where(eq(rolePermissions.roleId, member.roleId));
-
-  return allRolePerms.some((rp: any) => (rp.permissions as any).code === permissionCode);
 }
 
 // Helpers as requested

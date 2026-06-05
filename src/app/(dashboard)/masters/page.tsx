@@ -10,7 +10,11 @@ export default async function MastersPage() {
   const studioId = await getCurrentStudioId(session.user.id);
   if (!studioId) redirect("/dashboard");
 
-  const mastersList = await getMasters(studioId, { showArchived: true });
+  const mastersList = await getMasters(studioId, { showArchived: true })
+    .catch((error) => {
+      console.error("[Masters Page Error]", error);
+      throw error;
+    });
 
   return <MasterList initialMasters={mastersList} />;
 }

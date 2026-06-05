@@ -1,4 +1,4 @@
-import { studioMembers } from "@/db/schema";
+import { studioMembers, roles } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 
 export const ROLES = {
@@ -15,22 +15,29 @@ export type RoleCode = keyof typeof ROLES;
  * Проверяет, есть ли у пользователя определенная роль в студии
  */
 export async function hasRole(dbInstance: any, userId: string, studioId: string, roleCode: RoleCode) {
-  const member = await dbInstance.query.studioMembers.findFirst({
-    where: and(
-      eq(studioMembers.userId, userId),
-      eq(studioMembers.studioId, studioId),
-      eq(studioMembers.isActive, true)
-    ),
-    with: {
-      role: true,
-    },
-  });
+  try {
+    const member = await dbInstance.query.studioMembers.findFirst({
+      where: and(
+        eq(studioMembers.userId, userId),
+        eq(studioMembers.studioId, studioId),
+        eq(studioMembers.isActive, true)
+      ),
+    });
 
-  if (!member) return false;
-  
-  const role = member.role as any;
-  if (role.code === ROLES.SUPER_ADMIN) return true;
-  return role.code === roleCode;
+    if (!member) return false;
+
+    const role = await dbInstance.query.roles.findFirst({
+      where: eq(roles.id, member.roleId),
+    });
+
+    if (!role) return false;
+
+    if (role.code === ROLES.SUPER_ADMIN) return true;
+    return role.code === roleCode;
+  } catch (error) {
+    console.error("[hasRole error]", error);
+    return false;
+  }
 }
 
 export function canAccessDashboard(role?: string | null) {

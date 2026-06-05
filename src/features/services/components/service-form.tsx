@@ -1,9 +1,9 @@
 "use client";
 
 import React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { serviceSchema, type ServiceSchema } from "../schemas/service.schema";
+import { serviceSchema } from "../schemas/service.schema";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { serviceCategoryEnum, procedureTypeEnum } from "@/db/schema";
 import { FormSection } from "@/components/shared/form-section";
-import { MobileActionBar } from "@/components/shared/mobile-action-bar";
+import { FormActionBar } from "@/components/shared/form-action-bar";
 import { createServiceAction, updateServiceAction, archiveServiceAction, restoreServiceAction } from "../server/actions";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -45,6 +45,11 @@ export function ServiceForm({ initialData }: ServiceFormProps) {
       isActive: true,
       correctionAfterDays: null,
     },
+  });
+
+  const requiresCorrection = useWatch({
+    control: form.control,
+    name: "requiresCorrection",
   });
 
   async function onSubmit(values: any) {
@@ -142,7 +147,19 @@ export function ServiceForm({ initialData }: ServiceFormProps) {
                     <SelectContent>
                       {serviceCategoryEnum.enumValues.map((cat) => (
                         <SelectItem key={cat} value={cat}>
-                          {cat}
+                          {cat === 'brows' ? 'Брови' :
+                           cat === 'lips' ? 'Губы' :
+                           cat === 'eyes' ? 'Глаза' :
+                           cat === 'total_look' ? 'Полный образ' :
+                           cat === 'consultation' ? 'Консультация' :
+                           cat === 'correction' ? 'Коррекция' :
+                           cat === 'refresh' ? 'Обновление' :
+                           cat === 'facial' ? 'Лицо' :
+                           cat === 'remover' ? 'Удаление' :
+                           cat === 'cover_up' ? 'Перекрытие' :
+                           cat === 'lamination' ? 'Ламинирование' :
+                           cat === 'skin' ? 'Кожа' :
+                           cat === 'other' ? 'Другое' : cat}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -167,7 +184,18 @@ export function ServiceForm({ initialData }: ServiceFormProps) {
                     <SelectContent>
                       {procedureTypeEnum.enumValues.map((type) => (
                         <SelectItem key={type} value={type}>
-                          {type}
+                          {type === 'brows' ? 'Брови' :
+                           type === 'lips' ? 'Губы' :
+                           type === 'eyes' ? 'Глаза' :
+                           type === 'total_look' ? 'Полный образ' :
+                           type === 'correction' ? 'Коррекция' :
+                           type === 'refresh' ? 'Обновление' :
+                           type === 'consultation' ? 'Консультация' :
+                           type === 'remover' ? 'Удаление' :
+                           type === 'cover_up' ? 'Перекрытие' :
+                           type === 'lamination' ? 'Ламинирование' :
+                           type === 'facial' ? 'Лицо' :
+                           type === 'other' ? 'Другое' : type}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -261,7 +289,7 @@ export function ServiceForm({ initialData }: ServiceFormProps) {
             )}
           />
 
-          {form.watch("requiresCorrection") && (
+          {requiresCorrection && (
             <FormField
               control={form.control}
               name="correctionAfterDays"
@@ -299,50 +327,34 @@ export function ServiceForm({ initialData }: ServiceFormProps) {
           />
         </FormSection>
 
-        <MobileActionBar>
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1 h-11"
-            onClick={() => router.back()}
-            disabled={isPending}
-          >
-            Отмена
-          </Button>
-          <Button
-            type="submit"
-            className="flex-1 bg-taupe hover:bg-espresso text-ivory h-11"
-            disabled={isPending}
-          >
-            Сохранить
-          </Button>
-        </MobileActionBar>
-
-        {initialData && (
-          <div className="pt-4">
-            {initialData.deletedAt ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full h-11 text-success border-success/20 hover:bg-success/10"
-                onClick={onRestore}
-                disabled={isPending}
-              >
-                Восстановить из архива
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full h-11 text-danger hover:bg-danger/10 hover:text-danger"
-                onClick={() => setIsConfirmOpen(true)}
-                disabled={isPending}
-              >
-                Архивировать услугу
-              </Button>
-            )}
-          </div>
-        )}
+        <FormActionBar
+          onSave={form.handleSubmit(onSubmit)}
+          onCancel={() => router.back()}
+          isSubmitting={isPending}
+        >
+          {initialData && !initialData.deletedAt && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="flex-1 md:flex-initial text-danger hover:bg-danger/10 hover:text-danger h-12 md:h-10"
+              onClick={() => setIsConfirmOpen(true)}
+              disabled={isPending}
+            >
+              Архивировать
+            </Button>
+          )}
+          {initialData && initialData.deletedAt && (
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 md:flex-initial text-success border-success/20 hover:bg-success/10 h-12 md:h-10"
+              onClick={onRestore}
+              disabled={isPending}
+            >
+              Восстановить
+            </Button>
+          )}
+        </FormActionBar>
 
         <ConfirmDialog
           open={isConfirmOpen}

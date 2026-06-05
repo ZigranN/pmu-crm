@@ -2,7 +2,7 @@ import React from "react";
 import { EntityCard } from "@/components/shared/entity-card";
 import { StatusBadge, type StatusVariant } from "@/components/shared/status-badge";
 import { type clients } from "@/db/schema";
-import { User, Phone, AtSign } from "lucide-react";
+import { Phone, AtSign } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { formatPhone } from "@/lib/phone";
 

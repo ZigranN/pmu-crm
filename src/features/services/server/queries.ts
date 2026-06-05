@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { services } from "@/db/schema";
-import { eq, and, isNull, ilike, or } from "drizzle-orm";
+import { eq, and, isNull, ilike } from "drizzle-orm";
 
 export async function getServices(studioId: string, filters?: { search?: string, showArchived?: boolean }) {
   const conditions = [

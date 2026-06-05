@@ -10,7 +10,11 @@ export default async function ServicesPage() {
   const studioId = await getCurrentStudioId(session.user.id);
   if (!studioId) redirect("/dashboard");
 
-  const services = await getServices(studioId, { showArchived: true });
+  const services = await getServices(studioId, { showArchived: true })
+    .catch((error) => {
+      console.error("[Services Page Error]", error);
+      throw error;
+    });
 
   return <ServiceList initialServices={services} />;
 }

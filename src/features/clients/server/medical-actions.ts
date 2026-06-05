@@ -8,7 +8,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { auditLogService } from "@/server/services/audit-log.service";
 import { activityService } from "@/server/services/activity.service";
 import { revalidatePath } from "next/cache";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 export async function updateMedicalProfileAction(clientId: string, input: MedicalProfileSchema) {
   const session = await getSession();

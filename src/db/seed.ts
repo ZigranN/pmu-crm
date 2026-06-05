@@ -6,7 +6,7 @@ import { getSeedEnv, getDbEnv } from "@/lib/env";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROLES } from "@/lib/roles";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import * as relations from "./relations";
 
@@ -59,11 +59,10 @@ async function main() {
     isSystem: true,
   }));
 
-  const seededRoles = await db
+  await db
     .insert(schema.roles)
     .values(roleValues)
-    .onConflictDoNothing()
-    .returning();
+    .onConflictDoNothing();
 
   const allRoles = await db.query.roles.findMany();
   console.log(`✅ Roles ready: ${allRoles.length}`);
@@ -74,11 +73,10 @@ async function main() {
     name: code.replace("_", " ").toLowerCase(),
   }));
 
-  const seededPermissions = await db
+  await db
     .insert(schema.permissions)
     .values(permissionValues)
-    .onConflictDoNothing()
-    .returning();
+    .onConflictDoNothing();
 
   const allPermissions = await db.query.permissions.findMany();
   console.log(`✅ Permissions ready: ${allPermissions.length}`);

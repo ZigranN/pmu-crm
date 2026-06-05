@@ -28,6 +28,12 @@ export const clientSchema = z.object({
   leadStatus: z.string().optional(),
   notes: z.string().optional(),
   tags: z.string().or(z.array(z.string())).optional(),
+  referredByName: z.string().optional(),
+  interest: z.string().optional(),
+  treatmentZone: z.string().optional(),
+  nextContactAt: z.date().optional().nullable(),
+  campaignTag: z.string().optional(),
+  serviceTag: z.string().optional(),
 });
 
 export type ClientSchema = z.infer<typeof clientSchema>;

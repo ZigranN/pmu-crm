@@ -10,7 +10,11 @@ export default async function ClientsPage() {
   const studioId = await getCurrentStudioId(session.user.id);
   if (!studioId) redirect("/dashboard");
 
-  const clientsList = await getClients(studioId);
+  const clientsList = await getClients(studioId)
+    .catch((error) => {
+      console.error("[Clients Page Error]", error);
+      throw error;
+    });
 
   return <ClientList initialClients={clientsList} />;
 }

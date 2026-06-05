@@ -5,12 +5,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { redirect, notFound } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Edit, Phone, Mail, Calendar as CalendarIcon, User, History, ShieldAlert, AtSign } from "lucide-react";
+import { Edit, Phone, Mail, Calendar as CalendarIcon, User, History, ShieldAlert, AtSign, Image as ImageIcon, FileText } from "lucide-react";
 import Link from "next/link";
 import { formatPhone } from "@/lib/phone";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { MedicalProfileForm } from "@/features/clients/components/medical-profile-form";
+import { ClientMediaSection } from "@/features/media/components/client-media-section";
 import { Timeline, TimelineItem } from "@/components/shared/timeline";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { db } from "@/db";
@@ -31,22 +32,28 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
   const studioId = await getCurrentStudioId(session.user.id);
   if (!studioId) redirect("/dashboard");
 
-  const client = await getClientById(id, studioId);
+  const data = await Promise.all([
+    getClientById(id, studioId),
+    db.query.clientMedicalProfiles.findFirst({
+      where: eq(clientMedicalProfiles.clientId, id),
+    }),
+    db.query.activityEvents.findMany({
+      where: eq(activityEvents.clientId, id),
+      orderBy: [desc(activityEvents.createdAt)],
+      limit: 20,
+    }),
+    hasPermission(db, session.user.id, studioId, PERMISSIONS.MEDICAL_PROFILE_UPDATE)
+  ]).catch((error) => {
+    console.error("[Client Detail Page Error]", error);
+    throw error;
+  });
+
+  const client = data[0];
+  const medicalProfile = data[1];
+  const events = data[2];
+  const canEditMedical = data[3];
+
   if (!client) notFound();
-
-  // Fetch medical profile separately
-  const medicalProfile = await db.query.clientMedicalProfiles.findFirst({
-    where: eq(clientMedicalProfiles.clientId, id),
-  });
-
-  // Fetch activity events separately
-  const events = await db.query.activityEvents.findMany({
-    where: eq(activityEvents.clientId, id),
-    orderBy: [desc(activityEvents.createdAt)],
-    limit: 20,
-  });
-
-  const canEditMedical = await hasPermission(db, session.user.id, studioId, PERMISSIONS.MEDICAL_PROFILE_UPDATE);
 
   return (
     <div className="space-y-6">
@@ -64,14 +71,22 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
       </PageHeader>
 
       <Tabs defaultValue="info" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
+        <TabsList className="grid w-full grid-cols-5 lg:w-[600px]">
           <TabsTrigger value="info" className="gap-2">
             <User className="h-4 w-4" />
-            <span className="hidden sm:inline">Информация</span>
+            <span className="hidden sm:inline">Инфо</span>
           </TabsTrigger>
           <TabsTrigger value="medical" className="gap-2">
             <ShieldAlert className="h-4 w-4" />
             <span className="hidden sm:inline">Мед. профиль</span>
+          </TabsTrigger>
+          <TabsTrigger value="media" className="gap-2">
+            <ImageIcon className="h-4 w-4" />
+            <span className="hidden sm:inline">Фото</span>
+          </TabsTrigger>
+          <TabsTrigger value="consent" className="gap-2">
+            <FileText className="h-4 w-4" />
+            <span className="hidden sm:inline">Согласия</span>
           </TabsTrigger>
           <TabsTrigger value="history" className="gap-2">
             <History className="h-4 w-4" />
@@ -153,6 +168,14 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
             initialData={medicalProfile}
             readonly={!canEditMedical}
           />
+        </TabsContent>
+
+        <TabsContent value="media" className="mt-6">
+          <ClientMediaSection clientId={client.id} />
+        </TabsContent>
+
+        <TabsContent value="consent" className="mt-6">
+          <ClientMediaSection clientId={client.id} initialType="consent" />
         </TabsContent>
 
         <TabsContent value="history" className="mt-6">

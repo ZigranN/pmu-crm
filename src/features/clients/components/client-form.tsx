@@ -4,13 +4,13 @@ import React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { clientSchema, type ClientSchema } from "../schemas/client.schema";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormSection } from "@/components/shared/form-section";
-import { MobileActionBar } from "@/components/shared/mobile-action-bar";
+import { FormActionBar } from "@/components/shared/form-action-bar";
 import { createClientAction, updateClientAction, archiveClientAction } from "../server/actions";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -37,6 +37,12 @@ export function ClientForm({ initialData }: ClientFormProps) {
       source: initialData.source || "",
       notes: initialData.notes || "",
       tags: initialData.tags || "",
+      referredByName: initialData.referredByName || "",
+      interest: initialData.interest || "",
+      treatmentZone: initialData.treatmentZone || "",
+      nextContactAt: initialData.nextContactAt ? new Date(initialData.nextContactAt) : null,
+      campaignTag: initialData.campaignTag || "",
+      serviceTag: initialData.serviceTag || "",
     } : {
       firstName: "",
       lastName: "",
@@ -50,6 +56,12 @@ export function ClientForm({ initialData }: ClientFormProps) {
       birthDate: null,
       notes: "",
       tags: "",
+      referredByName: "",
+      interest: "",
+      treatmentZone: "",
+      nextContactAt: null,
+      campaignTag: "",
+      serviceTag: "",
     },
   });
 
@@ -199,6 +211,99 @@ export function ClientForm({ initialData }: ClientFormProps) {
           />
         </FormSection>
 
+        <FormSection title="ПМ Учет">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="referredByName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Кто привел клиента</FormLabel>
+                  <FormControl>
+                    <Input placeholder="ФИО или контакт" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="interest"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Интерес клиента</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Например: ПМ губ, обучение" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="treatmentZone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Зона процедуры</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Брови, губы, глаза" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="nextContactAt"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Следующий контакт</FormLabel>
+                  <FormControl>
+                    <Input 
+                      type="datetime-local" 
+                      value={field.value instanceof Date ? new Date(field.value.getTime() - field.value.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''} 
+                      onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)} 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="campaignTag"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Marketing / ADV tag</FormLabel>
+                  <FormControl>
+                    <Input placeholder="ADS_FB_MAY" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="serviceTag"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Service tag</FormLabel>
+                  <FormControl>
+                    <Input placeholder="POWDER_BROWS" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </FormSection>
+
         <FormSection title="Системная информация">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField
@@ -218,10 +323,15 @@ export function ClientForm({ initialData }: ClientFormProps) {
                       <SelectItem value="contacted">Связались</SelectItem>
                       <SelectItem value="needs_consultation">Нужна консультация</SelectItem>
                       <SelectItem value="consultation_booked">Консультация назначена</SelectItem>
-                      <SelectItem value="appointment_booked">Записан</SelectItem>
+                      <SelectItem value="no_reply">Нет ответа</SelectItem>
+                      <SelectItem value="appointment_booked">Записан на процедуру</SelectItem>
                       <SelectItem value="procedure_done">Процедура выполнена</SelectItem>
-                      <SelectItem value="returning_client">Постоянный</SelectItem>
+                      <SelectItem value="follow_up">Поддержка (follow-up)</SelectItem>
+                      <SelectItem value="second_session_needed">Нужен второй сеанс</SelectItem>
+                      <SelectItem value="correction_needed">Нужна коррекция</SelectItem>
                       <SelectItem value="completed">Завершено</SelectItem>
+                      <SelectItem value="returning_client">Постоянный клиент</SelectItem>
+                      <SelectItem value="refresh_needed">Нужен рефреш</SelectItem>
                       <SelectItem value="lost">Потерян</SelectItem>
                     </SelectContent>
                   </Select>
@@ -300,38 +410,23 @@ export function ClientForm({ initialData }: ClientFormProps) {
           />
         </FormSection>
 
-        <MobileActionBar>
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1 h-11"
-            onClick={() => router.back()}
-            disabled={isPending}
-          >
-            Отмена
-          </Button>
-          <Button
-            type="submit"
-            className="flex-1 bg-taupe hover:bg-espresso text-ivory h-11"
-            disabled={isPending}
-          >
-            Сохранить
-          </Button>
-        </MobileActionBar>
-
-        {initialData && (
-          <div className="pt-4">
+        <FormActionBar
+          onSave={form.handleSubmit(onSubmit)}
+          onCancel={() => router.back()}
+          isSubmitting={isPending}
+        >
+          {initialData && (
             <Button
               type="button"
               variant="ghost"
-              className="w-full h-11 text-danger hover:bg-danger/10 hover:text-danger"
+              className="flex-1 md:flex-initial text-danger hover:bg-danger/10 hover:text-danger h-12 md:h-10"
               onClick={() => setIsConfirmOpen(true)}
               disabled={isPending}
             >
-              Архивировать клиента
+              Архивировать
             </Button>
-          </div>
-        )}
+          )}
+        </FormActionBar>
 
         <ConfirmDialog
           open={isConfirmOpen}

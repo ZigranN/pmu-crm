@@ -2,7 +2,7 @@
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { studioSettingsSchema, type StudioSettingsSchema } from "../schemas/studio-settings.schema";
+import { studioSettingsSchema } from "../schemas/studio-settings.schema";
 import { updateStudioSettingsAction } from "../server/actions";
 import {
   Form,
@@ -13,12 +13,12 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { useState } from "react";
-import { Loader2, Save } from "lucide-react";
 import { ImageUpload } from "@/features/media/components/image-upload";
+import { FormActionBar } from "@/components/shared/form-action-bar";
+import { useRouter } from "next/navigation";
 
 interface StudioSettingsFormProps {
   initialData: any;
@@ -26,6 +26,7 @@ interface StudioSettingsFormProps {
 }
 
 export function StudioSettingsForm({ initialData, readonly = false }: StudioSettingsFormProps) {
+  const router = useRouter();
   const [isPending, setIsPending] = useState(false);
 
   const form = useForm<any>({
@@ -236,12 +237,11 @@ export function StudioSettingsForm({ initialData, readonly = false }: StudioSett
         </Card>
 
         {!readonly && (
-          <div className="flex justify-end">
-            <Button type="submit" disabled={isPending} className="bg-taupe hover:bg-espresso text-ivory">
-              {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Сохранить изменения
-            </Button>
-          </div>
+          <FormActionBar
+            onSave={form.handleSubmit(onSubmit)}
+            onCancel={() => router.back()}
+            isSubmitting={isPending}
+          />
         )}
       </form>
     </Form>

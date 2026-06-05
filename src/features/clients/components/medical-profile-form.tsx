@@ -1,6 +1,6 @@
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { medicalProfileSchema, type MedicalProfileSchema } from "../schemas/medical-profile.schema";
 import { updateMedicalProfileAction } from "../server/medical-actions";
@@ -11,16 +11,14 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { FormActionBar } from "@/components/shared/form-action-bar";
 
 interface MedicalProfileFormProps {
   clientId: string;
@@ -51,6 +49,11 @@ export function MedicalProfileForm({ clientId, initialData, readonly = false }: 
       skinSensitivity: !!initialData?.skinSensitivity,
       medicalNotes: initialData?.medicalNotes || "",
     },
+  });
+
+  const previousPMU = useWatch({
+    control: form.control,
+    name: "previousPMU",
   });
 
   async function onSubmit(values: MedicalProfileSchema) {
@@ -267,7 +270,7 @@ export function MedicalProfileForm({ clientId, initialData, readonly = false }: 
                 </FormItem>
               )}
             />
-            {form.watch("previousPMU") && (
+            {previousPMU && (
               <FormField
                 control={form.control}
                 name="previousPMUNotes"
@@ -362,12 +365,13 @@ export function MedicalProfileForm({ clientId, initialData, readonly = false }: 
         </Card>
 
         {!readonly && (
-          <div className="flex justify-end">
-            <Button type="submit" disabled={isPending} className="bg-taupe hover:bg-espresso text-ivory">
-              {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Сохранить анкету
-            </Button>
-          </div>
+          <FormActionBar
+            onSave={form.handleSubmit(onSubmit)}
+            onCancel={() => form.reset()}
+            isSubmitting={isPending}
+            saveLabel="Сохранить анкету"
+            cancelLabel="Сбросить"
+          />
         )}
       </form>
     </Form>

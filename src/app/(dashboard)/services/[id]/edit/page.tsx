@@ -16,7 +16,14 @@ export default async function EditServicePage({ params }: EditServicePageProps) 
   const studioId = await getCurrentStudioId(session.user.id);
   if (!studioId) redirect("/dashboard");
 
-  const service = await getServiceById(id, studioId);
+  let service;
+  try {
+    service = await getServiceById(id, studioId);
+  } catch (error) {
+    console.error("[Service Edit Page Error]", error);
+    throw error;
+  }
+  
   if (!service) notFound();
 
   return (

@@ -4,23 +4,14 @@ import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { LogOut, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { GlobalSearch } from "@/features/search/components/global-search";
+import Link from "next/link";
 
 export function AppHeader() {
   const { data: session } = authClient.useSession();
   const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
-  const [studioId, setStudioId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (session?.user?.id) {
-      // In a real app we'd fetch the studioId from the session or a separate call
-      // For Phase 2 we'll use a hack or assume it's available via session extension if possible
-      // But better to use the getCurrentStudioId pattern if we can
-      // For now, let's just use the search button to trigger the dialog
-    }
-  }, [session]);
 
   const handleLogout = async () => {
     await authClient.signOut();
@@ -29,10 +20,13 @@ export function AppHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-ivory/95 backdrop-blur border-borderSoft">
+    <header className="sticky top-0 z-50 w-full border-b bg-ivory/80 backdrop-blur-md border-borderSoft">
       <div className="flex h-16 items-center justify-between px-4">
         <div className="flex items-center gap-2">
-          <span className="text-xl font-bold text-taupe">PMU CRM</span>
+          <Link href="/dashboard" className="flex flex-col">
+            <span className="text-xl font-bold text-taupe leading-none">PMU CRM</span>
+            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Alty CRM</span>
+          </Link>
         </div>
         
         <div className="flex items-center gap-2 sm:gap-4">

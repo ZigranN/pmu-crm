@@ -10,32 +10,37 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 
 export async function updateStudioSettingsAction(input: StudioSettingsSchema) {
-  const session = await getSession();
-  if (!session) throw new Error("Unauthorized");
+  try {
+    const session = await getSession();
+    if (!session) throw new Error("Unauthorized");
 
-  const studioId = await getCurrentStudioId(session.user.id);
-  if (!studioId) throw new Error("Studio not found");
+    const studioId = await getCurrentStudioId(session.user.id);
+    if (!studioId) throw new Error("Studio not found");
 
-  const canUpdate = await hasPermission(db, session.user.id, studioId, PERMISSIONS.SETTINGS_UPDATE);
-  if (!canUpdate) throw new Error("Permission denied");
+    const canUpdate = await hasPermission(db, session.user.id, studioId, PERMISSIONS.SETTINGS_UPDATE);
+    if (!canUpdate) throw new Error("Permission denied");
 
-  const validated = studioSettingsSchema.parse(input);
+    const validated = studioSettingsSchema.parse(input);
 
-  await db.update(studios)
-    .set({
-      ...validated,
-      updatedAt: new Date(),
-    })
-    .where(eq(studios.id, studioId));
+    await db.update(studios)
+      .set({
+        ...validated,
+        updatedAt: new Date(),
+      })
+      .where(eq(studios.id, studioId));
 
-  await auditLogService.create({
-    studioId,
-    userId: session.user.id,
-    action: "studio_settings_updated",
-    entityType: "studio",
-    entityId: studioId,
-    metadata: validated,
-  });
+    await auditLogService.create({
+      studioId,
+      userId: session.user.id,
+      action: "studio_settings_updated",
+      entityType: "studio",
+      entityId: studioId,
+      metadata: validated,
+    });
 
-  revalidatePath("/settings/studio");
+    revalidatePath("/settings/studio");
+  } catch (error) {
+    console.error("[updateStudioSettingsAction error]", error);
+    throw error;
+  }
 }

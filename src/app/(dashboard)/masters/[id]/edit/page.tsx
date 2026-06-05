@@ -17,10 +17,17 @@ export default async function EditMasterPage({ params }: EditMasterPageProps) {
   const studioId = await getCurrentStudioId(session.user.id);
   if (!studioId) redirect("/dashboard");
 
-  const master = await getMasterById(id, studioId);
+  let master;
+  let services;
+  try {
+    master = await getMasterById(id, studioId);
+    services = await getActiveServices(studioId);
+  } catch (error) {
+    console.error("[Master Edit Page Error]", error);
+    throw error;
+  }
+  
   if (!master) notFound();
-
-  const services = await getActiveServices(studioId);
 
   return (
     <div className="space-y-6">
