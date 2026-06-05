@@ -13,6 +13,10 @@ export const auth = betterAuth({
 
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
+    trustedOrigins: [
+        env.BETTER_AUTH_URL,
+        "https://pmu-crm.vercel.app",
+    ],
 
     emailAndPassword: {
         enabled: true,
@@ -24,7 +28,7 @@ export const auth = betterAuth({
             role: {
                 type: "string",
                 required: true,
-                defaultValue: "CLIENT",
+                defaultValue: "ASSISTANT",
             },
         },
     },

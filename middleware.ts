@@ -1,62 +1,64 @@
-import { auth } from "@/lib/auth";
-import { canAccessDashboard } from "@/lib/roles";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-const publicRoutes = ["/login", "/register", "/api/auth"];
+const publicPaths = [
+  "/login",
+  "/register",
+];
 
-export default async function middleware(request: NextRequest) {
-    const { pathname } = request.nextUrl;
+function isPublicPath(pathname: string) {
+  return (
+    publicPaths.some((path) => pathname.startsWith(path)) ||
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/_next") ||
+    pathname === "/favicon.ico"
+  );
+}
 
-    if (publicRoutes.some(route => pathname.startsWith(route))) {
-        return NextResponse.next();
-    }
+function hasBetterAuthSessionCookie(request: NextRequest) {
+  const cookies = request.cookies.getAll();
 
-    try {
-        const session = await auth.api.getSession({
-            headers: request.headers,
-        });
+  return cookies.some((cookie) => {
+    const name = cookie.name.toLowerCase();
+    return name.includes("better-auth") && name.includes("session");
+  });
+}
 
-        if (!session) {
-            return NextResponse.redirect(
-                new URL("/login", request.url)
-            );
-        }
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
 
-        if (
-            pathname !== "/login" &&
-            pathname !== "/register" &&
-            !canAccessDashboard(session.user.role)
-        ) {
-            return NextResponse.redirect(
-                new URL("/login", request.url)
-            );
-        }
+  if (isPublicPath(pathname)) {
+    return NextResponse.next();
+  }
 
-        return NextResponse.next();
-    } catch (error) {
-        console.error("Middleware session error:", error);
+  const isProtected =
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/services") ||
+    pathname.startsWith("/masters") ||
+    pathname.startsWith("/clients") ||
+    pathname.startsWith("/calendar") ||
+    pathname.startsWith("/appointments") ||
+    pathname.startsWith("/procedures") ||
+    pathname.startsWith("/media") ||
+    pathname.startsWith("/tasks") ||
+    pathname.startsWith("/whatsapp") ||
+    pathname.startsWith("/analytics");
 
-        return NextResponse.redirect(
-            new URL("/login", request.url)
-        );
-    }
+  if (!isProtected) {
+    return NextResponse.next();
+  }
+
+  if (!hasBetterAuthSessionCookie(request)) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {
-    matcher: [
-        "/dashboard/:path*",
-        "/settings/:path*",
-        "/calendar/:path*",
-        "/clients/:path*",
-        "/appointments/:path*",
-        "/services/:path*",
-        "/masters/:path*",
-        "/procedures/:path*",
-        "/media/:path*",
-        "/tasks/:path*",
-        "/whatsapp/:path*",
-        "/analytics/:path*",
-        "/login",
-        "/register",
-    ],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico).*)",
+  ],
 };
