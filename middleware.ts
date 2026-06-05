@@ -7,32 +7,39 @@ const publicRoutes = ["/login", "/register", "/api/auth"];
 export default async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
-    // Пропускаем публичные роуты и API auth
     if (publicRoutes.some(route => pathname.startsWith(route))) {
         return NextResponse.next();
     }
 
-    const session = await auth.api.getSession({
-        headers: request.headers
-    });
+    try {
+        const session = await auth.api.getSession({
+            headers: request.headers,
+        });
 
-    // Если нет сессии и пытаемся зайти на защищенный роут
-    if (!session) {
-        return NextResponse.redirect(new URL("/login", request.url));
+        if (!session) {
+            return NextResponse.redirect(
+                new URL("/login", request.url)
+            );
+        }
+
+        if (
+            pathname !== "/login" &&
+            pathname !== "/register" &&
+            !canAccessDashboard(session.user.role)
+        ) {
+            return NextResponse.redirect(
+                new URL("/login", request.url)
+            );
+        }
+
+        return NextResponse.next();
+    } catch (error) {
+        console.error("Middleware session error:", error);
+
+        return NextResponse.redirect(
+            new URL("/login", request.url)
+        );
     }
-
-    // Если есть сессия и пытаемся зайти на логин/регистрацию
-    if (session && (pathname === "/login" || pathname === "/register")) {
-        return NextResponse.redirect(new URL("/dashboard", request.url));
-    }
-
-    // Проверка доступа к dashboard для роли CLIENT
-    if (!canAccessDashboard(session.user.role)) {
-        // В MVP клиент не имеет доступа к dashboard
-        return NextResponse.redirect(new URL("/login", request.url));
-    }
-
-    return NextResponse.next();
 }
 
 export const config = {
@@ -50,6 +57,6 @@ export const config = {
         "/whatsapp/:path*",
         "/analytics/:path*",
         "/login",
-        "/register"
-    ]
+        "/register",
+    ],
 };
