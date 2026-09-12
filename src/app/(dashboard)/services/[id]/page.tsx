@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/db";
-import { services } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { getServiceById } from "@/features/services/server/queries";
 import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
@@ -13,8 +12,9 @@ import Link from "next/link";
 export default async function ServiceDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const session = await getSession();
   if (!session) redirect("/login");
 
@@ -26,9 +26,7 @@ export default async function ServiceDetailPage({
 
   let service;
   try {
-    service = await db.query.services.findFirst({
-      where: and(eq(services.id, params.id), eq(services.studioId, studioId)),
-    });
+    service = await getServiceById(id, studioId);
   } catch (error) {
     console.error("[Service Detail Page Error]", error);
     throw error;

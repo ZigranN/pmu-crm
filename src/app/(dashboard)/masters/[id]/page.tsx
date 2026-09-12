@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/db";
-import { masters } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { getMasterById } from "@/features/masters/server/queries";
 import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,7 @@ import { PageHeader } from "@/components/shared/page-header";
 export default async function MasterDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
   const session = await getSession();
@@ -29,9 +28,7 @@ export default async function MasterDetailPage({
 
   let master;
   try {
-    master = await db.query.masters.findFirst({
-      where: and(eq(masters.id, id), eq(masters.studioId, studioId)),
-    });
+    master = await getMasterById(id, studioId);
   } catch (error) {
     console.error("[Master Detail Page Error]", error);
     throw error;

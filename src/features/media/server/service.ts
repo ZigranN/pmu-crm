@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { media } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, ne } from "drizzle-orm";
 import { uploadToCloudinary, deleteFromCloudinary } from "@/lib/cloudinary";
 import { auditLogService } from "@/server/services/audit-log.service";
 
@@ -83,10 +83,11 @@ export const mediaService = {
     });
   },
 
-  async getClientMedia(clientId: string, studioId: string) {
+  async getClientMedia(clientId: string, studioId: string, kind: "media" | "consent" = "media") {
     return await db.query.media.findMany({
       where: and(
         eq(media.clientId, clientId),
+        kind === "consent" ? eq(media.type, "consent") : ne(media.type, "consent"),
         eq(media.studioId, studioId),
         isNull(media.deletedAt)
       ),

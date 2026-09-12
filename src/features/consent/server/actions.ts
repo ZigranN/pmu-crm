@@ -1,5 +1,6 @@
 "use server";
 
+import { getClientById } from "@/features/clients/server/queries";
 import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { db } from "@/db";
@@ -51,6 +52,7 @@ export async function getClientConsentsAction(clientId: string) {
   const canRead = await hasPermission(db, session.user.id, studioId, PERMISSIONS.CONSENT_READ);
   if (!canRead) throw new Error("Permission denied");
 
+  if (!await getClientById(clientId, studioId)) return [];
   return await consentService.getClientConsents(clientId, studioId);
 }
 

@@ -1,3 +1,5 @@
+import { hasPermission } from "@/lib/permissions";
+import { db } from "@/db";
 import { getServices } from "@/features/services/server/queries";
 import { ServiceList } from "@/features/services/components/service-list";
 import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
@@ -9,6 +11,7 @@ export default async function ServicesPage() {
 
   const studioId = await getCurrentStudioId(session.user.id);
   if (!studioId) redirect("/dashboard");
+  if (!await hasPermission(db, session.user.id, studioId, "SERVICE_READ")) redirect("/dashboard");
 
   const services = await getServices(studioId, { showArchived: true })
     .catch((error) => {

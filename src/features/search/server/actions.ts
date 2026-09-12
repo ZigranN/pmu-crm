@@ -1,10 +1,13 @@
 "use server";
 
+import { requireStudioContext, requireStudioPermission } from "@/server/auth/context";
+import { hasPermission } from "@/lib/permissions";
 import { db } from "@/db";
 import { clients, services, masters } from "@/db/schema";
-import { eq, and, isNull, ilike, or } from "drizzle-orm";
+import { eq, and, isNull, ilike, or, sql } from "drizzle-orm";
 
 export async function searchClientsAction(studioId: string, query: string) {
+  await requireStudioPermission("CLIENT_READ", studioId);
   if (!query || query.length < 2) return [];
 
   const searchPattern = `%${query}%`;
@@ -28,11 +31,17 @@ export async function searchClientsAction(studioId: string, query: string) {
 }
 
 export async function globalSearchAction(studioId: string, query: string) {
+  const context = await requireStudioContext(studioId);
+  const [readClients, readServices, readMasters] = await Promise.all(
+    (["CLIENT_READ", "SERVICE_READ", "MASTER_READ"] as const).map(
+      (permission) => hasPermission(db, context.userId, context.studioId, permission)
+    )
+  );
   if (!query || query.length < 2) return { clients: [], services: [], masters: [] };
 
   const searchPattern = `%${query}%`;
 
-  const foundClients = await db.query.clients.findMany({
+  const foundClients = readClients ? await db.query.clients.findMany({
     where: and(
       eq(clients.studioId, studioId),
       isNull(clients.deletedAt),
@@ -47,22 +56,22 @@ export async function globalSearchAction(studioId: string, query: string) {
       )
     ),
     limit: 5,
-  });
+  }) : [];
 
-  const foundServices = await db.query.services.findMany({
+  const foundServices = readServices ? await db.query.services.findMany({
     where: and(
       eq(services.studioId, studioId),
       isNull(services.deletedAt),
       eq(services.isActive, true),
       or(
         ilike(services.name, searchPattern),
-        ilike(services.category, searchPattern)
+        ilike(sql`${services.category}::text`, searchPattern)
       )
     ),
     limit: 5,
-  });
+  }) : [];
 
-  const foundMasters = await db.query.masters.findMany({
+  const foundMasters = readMasters ? await db.query.masters.findMany({
     where: and(
       eq(masters.studioId, studioId),
       isNull(masters.deletedAt),
@@ -74,7 +83,7 @@ export async function globalSearchAction(studioId: string, query: string) {
       )
     ),
     limit: 5,
-  });
+  }) : [];
 
   return {
     clients: foundClients,
