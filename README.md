@@ -66,3 +66,43 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 5. Open [http://localhost:3000/login](http://localhost:3000/login) and login with the same credentials.
 
 6. Verify that your role in the dashboard is `STUDIO_ADMIN` and you have access to Services, Masters, and Clients.
+
+
+## Automated checks (Phase 0.2)
+
+Use Node **22.22.2** (`nvm install && nvm use`) and `npm ci`.
+Copy `.env.example` to `.env.local` for development and supply your own local values.
+Tests and `build:test` use synthetic configuration; they do not use application credentials.
+
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run build:test
+npx playwright install chromium
+npm run test:e2e
+```
+
+`npm test` runs migration tests, Vitest unit/integration checks and the known-defect
+regressions. Local integration tests default to isolated PGlite. For server PostgreSQL:
+
+```bash
+docker compose -f compose.test.yml up -d --wait
+TEST_DATABASE_URL=postgresql://pmu_test:local-only@127.0.0.1:5433/pmu_test npm run test:postgres
+docker compose -f compose.test.yml down
+```
+
+The container stores only disposable synthetic data in tmpfs. Tests accept only loopback
+PostgreSQL URLs and a database named `pmu_test` or `pmu_test_*`, without URL options.
+Migrations run in that database; cleanup removes only fixtures created by this run.
+Do not put application data in a database with that name. `test:postgres` fails if
+TEST_DATABASE_URL is absent; CI never silently falls back to PGlite.
+
+The browser smoke suite starts its own production build on port 3100. The failed-login
+response is mocked there; actual auth/session behavior is tested in the integration suite.
+If the local environment cannot launch Chromium, `npm run test:e2e:http` verifies only HTTP smoke checks, not browser behavior. Run `build:test` before `test:e2e`; that build embeds a local URL and must not be deployed.
+Use the normal `build` command with deployment configuration for releases.
+
+See [test baseline and known defects](docs/phase3/TEST-BASELINE.md).
+The [CI workflow](.github/workflows/ci.yml) runs on push and pull request with a disposable
+PostgreSQL 17 service and synthetic credentials. No Neon, Cloudinary or AI keys are required.

@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/db";
-import { masters } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { getMasterById } from "@/features/masters/server/queries";
 import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
@@ -12,8 +11,9 @@ import Link from "next/link";
 export default async function MasterSchedulePage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const session = await getSession();
   if (!session) redirect("/login");
 
@@ -23,9 +23,7 @@ export default async function MasterSchedulePage({
   const canRead = await hasPermission(db, session.user.id, studioId, PERMISSIONS.MASTER_READ);
   if (!canRead) redirect("/dashboard");
 
-  const master = await db.query.masters.findFirst({
-    where: and(eq(masters.id, params.id), eq(masters.studioId, studioId)),
-  });
+  const master = await getMasterById(id, studioId);
 
   if (!master) notFound();
 

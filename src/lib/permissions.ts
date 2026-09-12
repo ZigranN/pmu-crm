@@ -88,24 +88,21 @@ export async function hasPermission(dbInstance: any, userId: string, studioId: s
     // SUPER_ADMIN может всё
     if (role.code === ROLES.SUPER_ADMIN) return true;
 
-    // 2. Проверяем кастомные пермишены (allow/deny)
-    const customPerm = await dbInstance.query.userCustomPermissions.findFirst({
+    // Scope overrides to the requested permission. Deny wins if duplicate
+    // overrides exist in the legacy schema (which has no unique constraint).
+    const permission = await dbInstance.query.permissions.findFirst({
+      where: eq(permissions.code, permissionCode),
+    });
+    if (!permission) return false;
+    const overrides = await dbInstance.query.userCustomPermissions.findMany({
       where: and(
         eq(userCustomPermissions.userId, userId),
-        eq(userCustomPermissions.studioId, studioId)
+        eq(userCustomPermissions.studioId, studioId),
+        eq(userCustomPermissions.permissionId, permission.id)
       ),
     });
-    
-    // Если нашли кастомный пермишен, проверим его код
-    if (customPerm) {
-      const permission = await dbInstance.query.permissions.findFirst({
-        where: eq(permissions.id, customPerm.permissionId),
-      });
-
-      if (permission && permission.code === permissionCode) {
-        return customPerm.effect === "allow";
-      }
-    }
+    if (overrides.some((override: { effect: string }) => override.effect === "deny")) return false;
+    if (overrides.some((override: { effect: string }) => override.effect === "allow")) return true;
 
     // 3. Проверяем пермишены роли
     const allRolePerms = await dbInstance.select()

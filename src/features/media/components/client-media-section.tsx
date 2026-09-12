@@ -40,7 +40,7 @@ export function ClientMediaSection({ clientId, initialType = "other" }: ClientMe
     async function loadMedia() {
       try {
         setIsLoading(true);
-        const data = await getClientMediaAction(clientId);
+        const data = await getClientMediaAction(clientId, initialType === "consent" ? "consent" : "media");
         
         if (!cancelled) {
           const filteredData = initialType === "other" 
@@ -83,7 +83,7 @@ export function ClientMediaSection({ clientId, initialType = "other" }: ClientMe
   const onUploadSuccess = async () => {
     try {
       setIsLoading(true);
-      const data = await getClientMediaAction(clientId);
+      const data = await getClientMediaAction(clientId, initialType === "consent" ? "consent" : "media");
       const filteredData = initialType === "other" 
         ? data.filter((m: any) => m.type !== "consent")
         : data.filter((m: any) => m.type === initialType);

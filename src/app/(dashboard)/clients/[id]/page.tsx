@@ -1,5 +1,5 @@
 import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
-import { getClientById } from "@/features/clients/server/queries";
+import { getClientById, getClientMedicalProfile, getClientActivity } from "@/features/clients/server/queries";
 import { PageHeader } from "@/components/shared/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,15 +13,11 @@ import { ru } from "date-fns/locale";
 import { MedicalProfileForm } from "@/features/clients/components/medical-profile-form";
 import { ClientMediaSection } from "@/features/media/components/client-media-section";
 import { Timeline, TimelineItem } from "@/components/shared/timeline";
-import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 import { db } from "@/db";
-import { clientMedicalProfiles, activityEvents } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
 
 interface ClientDetailPageProps {
-  params: {
-    id: string;
-  };
+  params: Promise<{ id: string }>;
 }
 
 export default async function ClientDetailPage({ params }: ClientDetailPageProps) {
@@ -31,29 +27,18 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
 
   const studioId = await getCurrentStudioId(session.user.id);
   if (!studioId) redirect("/dashboard");
+  if (!await hasPermission(db, session.user.id, studioId, "CLIENT_READ")) redirect("/dashboard");
 
-  const data = await Promise.all([
-    getClientById(id, studioId),
-    db.query.clientMedicalProfiles.findFirst({
-      where: eq(clientMedicalProfiles.clientId, id),
-    }),
-    db.query.activityEvents.findMany({
-      where: eq(activityEvents.clientId, id),
-      orderBy: [desc(activityEvents.createdAt)],
-      limit: 20,
-    }),
-    hasPermission(db, session.user.id, studioId, PERMISSIONS.MEDICAL_PROFILE_UPDATE)
-  ]).catch((error) => {
-    console.error("[Client Detail Page Error]", error);
-    throw error;
-  });
-
-  const client = data[0];
-  const medicalProfile = data[1];
-  const events = data[2];
-  const canEditMedical = data[3];
-
+  const client = await getClientById(id, studioId);
   if (!client) notFound();
+  const [canReadMedical, canEditMedical, canReadMedia, canReadConsent] = await Promise.all(
+    (["MEDICAL_PROFILE_READ", "MEDICAL_PROFILE_UPDATE", "MEDIA_READ", "CONSENT_READ"] as const)
+      .map((permission) => hasPermission(db, session.user.id, studioId, permission))
+  );
+  const [medicalProfile, events] = await Promise.all([
+    canReadMedical ? getClientMedicalProfile(id, studioId) : undefined,
+    getClientActivity(id, studioId),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -76,18 +61,18 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
             <User className="h-4 w-4" />
             <span className="hidden sm:inline">Инфо</span>
           </TabsTrigger>
-          <TabsTrigger value="medical" className="gap-2">
+          {canReadMedical && (<TabsTrigger value="medical" className="gap-2">
             <ShieldAlert className="h-4 w-4" />
             <span className="hidden sm:inline">Мед. профиль</span>
-          </TabsTrigger>
-          <TabsTrigger value="media" className="gap-2">
+          </TabsTrigger>)}
+          {canReadMedia && (<TabsTrigger value="media" className="gap-2">
             <ImageIcon className="h-4 w-4" />
             <span className="hidden sm:inline">Фото</span>
-          </TabsTrigger>
-          <TabsTrigger value="consent" className="gap-2">
+          </TabsTrigger>)}
+          {canReadConsent && (<TabsTrigger value="consent" className="gap-2">
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Согласия</span>
-          </TabsTrigger>
+          </TabsTrigger>)}
           <TabsTrigger value="history" className="gap-2">
             <History className="h-4 w-4" />
             <span className="hidden sm:inline">История</span>
@@ -162,21 +147,21 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
           )}
         </TabsContent>
 
-        <TabsContent value="medical" className="mt-6">
+        {canReadMedical && (<TabsContent value="medical" className="mt-6">
           <MedicalProfileForm
             clientId={client.id}
             initialData={medicalProfile}
             readonly={!canEditMedical}
           />
-        </TabsContent>
+        </TabsContent>)}
 
-        <TabsContent value="media" className="mt-6">
+        {canReadMedia && (<TabsContent value="media" className="mt-6">
           <ClientMediaSection clientId={client.id} />
-        </TabsContent>
+        </TabsContent>)}
 
-        <TabsContent value="consent" className="mt-6">
+        {canReadConsent && (<TabsContent value="consent" className="mt-6">
           <ClientMediaSection clientId={client.id} initialType="consent" />
-        </TabsContent>
+        </TabsContent>)}
 
         <TabsContent value="history" className="mt-6">
           <Card>

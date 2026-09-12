@@ -1,5 +1,7 @@
 "use server";
 
+import { requireStudioPermission } from "@/server/auth/context";
+import { getClientById } from "@/features/clients/server/queries";
 import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { db } from "@/db";
@@ -69,20 +71,9 @@ export async function deleteMediaAction(mediaId: string) {
   }
 }
 
-export async function getClientMediaAction(clientId: string) {
-  try {
-    const session = await getSession();
-    if (!session) throw new Error("Unauthorized");
-
-    const studioId = await getCurrentStudioId(session.user.id);
-    if (!studioId) throw new Error("Studio not found");
-
-    const canRead = await hasPermission(db, session.user.id, studioId, PERMISSIONS.MEDIA_READ);
-    if (!canRead) throw new Error("Permission denied");
-
-    return await mediaService.getClientMedia(clientId, studioId);
-  } catch (error) {
-    console.error("[getClientMediaAction error]", error);
-    throw error;
-  }
+export async function getClientMediaAction(clientId: string, kind: "media" | "consent" = "media") {
+  if (kind !== "media" && kind !== "consent") throw new Error("Invalid media kind");
+  const { studioId } = await requireStudioPermission(kind === "consent" ? "CONSENT_READ" : "MEDIA_READ");
+  if (!await getClientById(clientId, studioId)) return [];
+  return mediaService.getClientMedia(clientId, studioId, kind);
 }
