@@ -106,3 +106,5 @@ Use the normal `build` command with deployment configuration for releases.
 See [test baseline and known defects](docs/phase3/TEST-BASELINE.md).
 The [CI workflow](.github/workflows/ci.yml) runs on push and pull request with a disposable
 PostgreSQL 17 service and synthetic credentials. No Neon, Cloudinary or AI keys are required.
+
+The authenticated master-edit E2E requires the disposable PostgreSQL service and TEST_DATABASE_URL. Playwright passes that validated test URL to its app server; build:test continues to use synthetic build configuration. CI runs the full suite with PostgreSQL.

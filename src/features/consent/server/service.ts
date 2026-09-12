@@ -1,118 +1,45 @@
+import "server-only";
 import { db } from "@/db";
-import { consents } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
-import { mediaService } from "@/features/media/server/service";
-import { auditLogService } from "@/server/services/audit-log.service";
-import { activityService } from "@/server/services/activity.service";
+import { consents, media, auditLogs, activityEvents, consentTypeEnum } from "@/db/schema";
+import { eq, and, isNull, desc } from "drizzle-orm";
+import { mediaService, withMediaUpload } from "@/features/media/server/service";
+import { z } from "zod";
 
 export interface CreateConsentInput {
-  studioId: string;
-  clientId: string;
-  procedureSessionId?: string;
-  consentType: "pmu_general" | "brows" | "lips" | "eyes" | "facial" | "remover" | "photo_permission" | "marketing_permission" | "other";
-  signedAt: Date;
-  notes?: string;
-  createdById: string;
+  studioId: string; clientId: string; procedureSessionId?: string;
+  consentType: typeof consentTypeEnum.enumValues[number];
+  signedAt: Date; notes?: string; createdById: string;
 }
 
 export const consentService = {
   async uploadConsent(file: File, input: CreateConsentInput) {
-    // Upload media first
-    const newMedia = await mediaService.uploadMedia(file, {
-      studioId: input.studioId,
-      clientId: input.clientId,
-      procedureSessionId: input.procedureSessionId,
-      type: "consent",
-      caption: input.consentType,
-      createdById: input.createdById,
+    const consentType = z.enum(consentTypeEnum.enumValues).parse(input.consentType);
+    const signedAt = z.date().parse(input.signedAt);
+    return withMediaUpload(file, { studioId: input.studioId, clientId: input.clientId,
+      procedureSessionId: input.procedureSessionId, type: "consent", caption: consentType, createdById: input.createdById },
+    async (tx, record) => {
+      const [consent] = await tx.insert(consents).values({ studioId: input.studioId, clientId: input.clientId,
+        procedureSessionId: input.procedureSessionId || null, mediaId: record.id, consentType, signedAt, notes: input.notes || null }).returning();
+      await tx.insert(auditLogs).values({ studioId: input.studioId, userId: input.createdById, action: "consent_uploaded",
+        entityType: "consent", entityId: consent.id, metadata: { clientId: input.clientId, consentType } });
+      await tx.insert(activityEvents).values({ studioId: input.studioId, clientId: input.clientId, userId: input.createdById,
+        type: "consent_uploaded", title: "Согласие загружено", description: `Добавлено согласие: ${consentType}` });
+      return consent;
     });
-
-    // Create consent record
-    const [consent] = await db.insert(consents).values({
-      studioId: input.studioId,
-      clientId: input.clientId,
-      procedureSessionId: input.procedureSessionId || null,
-      mediaId: newMedia.id,
-      consentType: input.consentType as any,
-      signedAt: input.signedAt,
-      expiresAt: null,
-      notes: input.notes || null,
-    }).returning();
-
-    // Create audit log
-    await auditLogService.create({
-      studioId: input.studioId,
-      userId: input.createdById,
-      action: "consent_uploaded",
-      entityType: "consent",
-      entityId: consent.id,
-      metadata: {
-        clientId: input.clientId,
-        consentType: input.consentType,
-      },
-    });
-
-    // Create activity event
-    await activityService.create({
-      studioId: input.studioId,
-      clientId: input.clientId,
-      userId: input.createdById,
-      type: "consent_uploaded",
-      title: "Согласие загружено",
-      description: `Добавлено согласие: ${input.consentType}`,
-    });
-
-    return consent;
   },
 
   async getClientConsents(clientId: string, studioId: string) {
-    // Note: Simplified to avoid Drizzle relations issues
-    // Media can be fetched separately if needed
-    return await db.query.consents.findMany({
-      where: and(
-        eq(consents.clientId, clientId),
-        eq(consents.studioId, studioId)
-      ),
-      orderBy: (consents, { desc }) => [desc(consents.signedAt)],
-    });
+    const rows = await db.select({ consent: consents }).from(consents).innerJoin(media, and(
+      eq(media.id, consents.mediaId), eq(media.studioId, studioId), eq(media.clientId, clientId), isNull(media.deletedAt),
+    )).where(and(eq(consents.clientId, clientId), eq(consents.studioId, studioId))).orderBy(desc(consents.signedAt));
+    return rows.map((row) => row.consent);
   },
 
-  async deleteConsent(consentId: string, studioId: string, userId: string) {
+  async deleteConsent(consentId: string, studioId: string, userId: string, expectedClientId: string) {
     const consent = await db.query.consents.findFirst({
-      where: and(eq(consents.id, consentId), eq(consents.studioId, studioId)),
+      where: and(eq(consents.id, consentId), eq(consents.studioId, studioId), eq(consents.clientId, expectedClientId)),
     });
-
-    if (!consent) {
-      throw new Error("Consent not found");
-    }
-
-    // Delete media
-    await mediaService.deleteMedia(consent.mediaId, studioId, userId);
-
-    // Delete consent record (cascade will handle it when media is deleted)
-    await db.delete(consents).where(eq(consents.id, consentId));
-
-    // Create audit log
-    await auditLogService.create({
-      studioId,
-      userId,
-      action: "consent_deleted",
-      entityType: "consent",
-      entityId: consentId,
-      metadata: {
-        clientId: consent.clientId,
-        consentType: consent.consentType,
-      },
-    });
-
-    // Create activity event
-    await activityService.create({
-      studioId,
-      clientId: consent.clientId,
-      userId,
-      type: "consent_deleted",
-      title: "Согласие удалено",
-      description: `Удалено согласие: ${consent.consentType}`,
-    });
+    if (!consent) throw new Error("Consent not found");
+    await mediaService.deleteMedia(consent.mediaId, studioId, userId, consent.clientId);
   },
 };

@@ -8,7 +8,7 @@ export const masterSchema = z.object({
   photoUrl: z.string().optional(),
   calendarColor: z.string(),
   isActive: z.boolean(),
-  serviceIds: z.array(z.string()).optional(),
+  serviceIds: z.array(z.string().uuid()).refine((ids) => new Set(ids).size === ids.length, "Duplicate services").optional(),
 });
 
 export type MasterSchema = z.infer<typeof masterSchema>;

@@ -3,8 +3,6 @@
 import { requireStudioPermission } from "@/server/auth/context";
 import { getClientById } from "@/features/clients/server/queries";
 import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
-import { hasPermission, PERMISSIONS } from "@/lib/permissions";
-import { db } from "@/db";
 import { mediaService } from "./service";
 import { revalidatePath } from "next/cache";
 
@@ -15,9 +13,6 @@ export async function uploadMediaAction(formData: FormData) {
 
     const studioId = await getCurrentStudioId(session.user.id);
     if (!studioId) throw new Error("Studio not found");
-
-    const canCreate = await hasPermission(db, session.user.id, studioId, PERMISSIONS.MEDIA_CREATE);
-    if (!canCreate) throw new Error("Permission denied");
 
     const file = formData.get("file") as File;
     const clientId = formData.get("clientId") as string;
@@ -51,9 +46,6 @@ export async function deleteMediaAction(mediaId: string) {
 
     const studioId = await getCurrentStudioId(session.user.id);
     if (!studioId) throw new Error("Studio not found");
-
-    const canCreate = await hasPermission(db, session.user.id, studioId, PERMISSIONS.MEDIA_CREATE);
-    if (!canCreate) throw new Error("Permission denied");
 
     const mediaRecord = await mediaService.getMediaById(mediaId, studioId);
     if (!mediaRecord) throw new Error("Media not found");

@@ -66,7 +66,7 @@ export async function deleteConsentAction(consentId: string, clientId: string) {
   const canUpload = await hasPermission(db, session.user.id, studioId, PERMISSIONS.CONSENT_UPLOAD);
   if (!canUpload) throw new Error("Permission denied");
 
-  await consentService.deleteConsent(consentId, studioId, session.user.id);
+  await consentService.deleteConsent(consentId, studioId, session.user.id, clientId);
 
   revalidatePath(`/clients/${clientId}`);
   return { success: true };

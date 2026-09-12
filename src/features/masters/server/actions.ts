@@ -1,175 +1,77 @@
 "use server";
 
 import { db } from "@/db";
-import { masters, masterServices } from "@/db/schema";
+import { masters, masterServices, services, auditLogs } from "@/db/schema";
 import { masterSchema, type MasterSchema } from "../schemas/master.schema";
-import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
-import { hasPermission, PERMISSIONS } from "@/lib/permissions";
-import { auditLogService } from "@/server/services/audit-log.service";
+import { requireStudioPermission } from "@/server/auth/context";
+import { entityId, type Transaction } from "@/server/commands/ownership";
 import { revalidatePath } from "next/cache";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray, asc } from "drizzle-orm";
+
+async function validateServices(tx: Transaction, studioId: string, ids: string[], existing: string[] = []) {
+  if (!ids.length) return;
+  const rows = await tx.select().from(services).where(and(
+    eq(services.studioId, studioId), inArray(services.id, ids),
+  )).orderBy(asc(services.id)).for("share");
+  if (rows.length !== ids.length || rows.some((row) =>
+    (!row.isActive || row.deletedAt) && !existing.includes(row.id))) {
+    throw new Error("Service not available in this studio");
+  }
+}
 
 export async function createMasterAction(input: MasterSchema) {
-  try {
-    const session = await getSession();
-    if (!session) throw new Error("Unauthorized");
-
-    const studioId = await getCurrentStudioId(session.user.id);
-    if (!studioId) throw new Error("Studio not found");
-
-    const canCreate = await hasPermission(db, session.user.id, studioId, PERMISSIONS.MASTER_CREATE);
-    if (!canCreate) throw new Error("Permission denied");
-
-    const { serviceIds, ...masterData } = masterSchema.parse(input);
-
-    const [newMaster] = await db.insert(masters).values({
-      ...masterData,
-      studioId,
-    }).returning();
-
-    if (serviceIds && serviceIds.length > 0) {
-      await db.insert(masterServices).values(
-        serviceIds.map(serviceId => ({
-          studioId,
-          masterId: newMaster.id,
-          serviceId,
-        }))
-      );
-    }
-
-    await auditLogService.create({
-      studioId,
-      userId: session.user.id,
-      action: "master_created",
-      entityType: "master",
-      entityId: newMaster.id,
-      metadata: input,
-    });
-
-    revalidatePath("/masters");
-    return newMaster;
-  } catch (error) {
-    console.error("[createMasterAction error]", error);
-    throw error;
-  }
+  const { studioId, userId } = await requireStudioPermission("MASTER_CREATE");
+  const { serviceIds = [], ...masterData } = masterSchema.parse(input);
+  const master = await db.transaction(async (tx) => {
+    await validateServices(tx, studioId, serviceIds);
+    const [created] = await tx.insert(masters).values({ ...masterData, studioId }).returning();
+    if (serviceIds.length) await tx.insert(masterServices).values(serviceIds.map((serviceId) => ({ studioId, masterId: created.id, serviceId })));
+    await tx.insert(auditLogs).values({ studioId, userId, action: "master_created", entityType: "master", entityId: created.id, metadata: { ...masterData, serviceIds } });
+    return created;
+  });
+  revalidatePath("/masters");
+  return master;
 }
 
 export async function updateMasterAction(id: string, input: MasterSchema) {
-  try {
-    const session = await getSession();
-    if (!session) throw new Error("Unauthorized");
-
-    const studioId = await getCurrentStudioId(session.user.id);
-    if (!studioId) throw new Error("Studio not found");
-
-    const canUpdate = await hasPermission(db, session.user.id, studioId, PERMISSIONS.MASTER_UPDATE);
-    if (!canUpdate) throw new Error("Permission denied");
-
-    const { serviceIds, ...masterData } = masterSchema.parse(input);
-
-    const [updatedMaster] = await db.update(masters)
-      .set({
-        ...masterData,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(masters.id, id), eq(masters.studioId, studioId)))
-      .returning();
-
-    // Обновляем услуги мастера
-    await db.delete(masterServices).where(eq(masterServices.masterId, id));
-    
-    if (serviceIds && serviceIds.length > 0) {
-      await db.insert(masterServices).values(
-        serviceIds.map(serviceId => ({
-          studioId,
-          masterId: id,
-          serviceId,
-        }))
-      );
+  const { studioId, userId } = await requireStudioPermission("MASTER_UPDATE");
+  entityId.parse(id);
+  const { serviceIds, ...masterData } = masterSchema.parse(input);
+  const master = await db.transaction(async (tx) => {
+    const [before] = await tx.select().from(masters).where(and(eq(masters.id, id), eq(masters.studioId, studioId))).for("update");
+    if (!before || before.deletedAt) throw new Error("Master not found");
+    const links = await tx.select().from(masterServices).where(and(eq(masterServices.masterId, id), eq(masterServices.studioId, studioId)));
+    if (serviceIds !== undefined) await validateServices(tx, studioId, serviceIds, links.map((l) => l.serviceId));
+    const [updated] = await tx.update(masters).set({ ...masterData, updatedAt: new Date() })
+      .where(and(eq(masters.id, id), eq(masters.studioId, studioId))).returning();
+    if (!updated) throw new Error("Master not found");
+    // Omitted means preserve; an explicit empty array means remove all links.
+    if (serviceIds !== undefined) {
+      await tx.delete(masterServices).where(and(eq(masterServices.masterId, id), eq(masterServices.studioId, studioId)));
+      if (serviceIds.length) await tx.insert(masterServices).values(serviceIds.map((serviceId) => ({ studioId, masterId: id, serviceId })));
     }
-
-    await auditLogService.create({
-      studioId,
-      userId: session.user.id,
-      action: "master_updated",
-      entityType: "master",
-      entityId: id,
-      metadata: input,
-    });
-
-    revalidatePath("/masters");
-    revalidatePath(`/masters/${id}`);
-    return updatedMaster;
-  } catch (error) {
-    console.error("[updateMasterAction error]", error);
-    throw error;
-  }
+    await tx.insert(auditLogs).values({ studioId, userId, action: "master_updated", entityType: "master", entityId: id,
+      metadata: { before, after: updated, previousServiceIds: links.map((l) => l.serviceId), serviceIds: serviceIds ?? links.map((l) => l.serviceId) } });
+    return updated;
+  });
+  revalidatePath("/masters");
+  revalidatePath(`/masters/${id}`);
+  return master;
 }
 
-export async function archiveMasterAction(id: string) {
-  try {
-    const session = await getSession();
-    if (!session) throw new Error("Unauthorized");
-
-    const studioId = await getCurrentStudioId(session.user.id);
-    if (!studioId) throw new Error("Studio not found");
-
-    const canArchive = await hasPermission(db, session.user.id, studioId, PERMISSIONS.MASTER_ARCHIVE || "MASTER_UPDATE");
-    if (!canArchive) throw new Error("Permission denied");
-
-    await db.update(masters)
-      .set({
-        isActive: false,
-        deletedAt: new Date(),
-        deletedById: session.user.id,
-      })
-      .where(and(eq(masters.id, id), eq(masters.studioId, studioId)));
-
-    await auditLogService.create({
-      studioId,
-      userId: session.user.id,
-      action: "master_archived",
-      entityType: "master",
-      entityId: id,
-    });
-
-    revalidatePath("/masters");
-  } catch (error) {
-    console.error("[archiveMasterAction error]", error);
-    throw error;
-  }
+async function changeArchiveState(id: string, archived: boolean) {
+  const { studioId, userId } = await requireStudioPermission(archived ? "MASTER_ARCHIVE" : "MASTER_UPDATE");
+  entityId.parse(id);
+  await db.transaction(async (tx) => {
+    const [updated] = await tx.update(masters).set({ isActive: !archived, deletedAt: archived ? new Date() : null,
+      deletedById: archived ? userId : null, updatedAt: new Date() })
+      .where(and(eq(masters.id, id), eq(masters.studioId, studioId))).returning();
+    if (!updated) throw new Error("Master not found");
+    await tx.insert(auditLogs).values({ studioId, userId, action: archived ? "master_archived" : "master_restored", entityType: "master", entityId: id });
+  });
+  revalidatePath("/masters");
+  revalidatePath(`/masters/${id}`);
 }
 
-export async function restoreMasterAction(id: string) {
-  try {
-    const session = await getSession();
-    if (!session) throw new Error("Unauthorized");
-
-    const studioId = await getCurrentStudioId(session.user.id);
-    if (!studioId) throw new Error("Studio not found");
-
-    const canUpdate = await hasPermission(db, session.user.id, studioId, PERMISSIONS.MASTER_UPDATE);
-    if (!canUpdate) throw new Error("Permission denied");
-
-    await db.update(masters)
-      .set({
-        isActive: true,
-        deletedAt: null,
-        deletedById: null,
-      })
-      .where(and(eq(masters.id, id), eq(masters.studioId, studioId)));
-
-    await auditLogService.create({
-      studioId,
-      userId: session.user.id,
-      action: "master_restored",
-      entityType: "master",
-      entityId: id,
-    });
-
-    revalidatePath("/masters");
-  } catch (error) {
-    console.error("[restoreMasterAction error]", error);
-    throw error;
-  }
-}
+export async function archiveMasterAction(id: string) { await changeArchiveState(id, true); }
+export async function restoreMasterAction(id: string) { await changeArchiveState(id, false); }
