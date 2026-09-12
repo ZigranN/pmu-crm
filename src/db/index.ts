@@ -6,6 +6,6 @@ import { getDbEnv } from "@/lib/env";
 
 export const databaseClient = postgres(getDbEnv().DATABASE_URL);
 
-export const db = drizzle(databaseClient, { 
-  schema: { ...schema, ...relations } 
+export const db = drizzle(databaseClient, {
+  schema: { ...schema, ...relations }
 });

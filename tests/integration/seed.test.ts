@@ -66,7 +66,7 @@ test("legacy demo rows are adopted without changing identity or price; ambiguity
 
 test("seed links a registered admin once and does not reactivate an existing membership", async () => {
   const id = randomUUID();
-  await database.db.insert(s.user).values({ id, name: "Synthetic", email: settings.SEED_ADMIN_EMAIL });
+  await database.db.insert(s.user).values({ id, name: "Synthetic", email: settings.SEED_ADMIN_EMAIL, emailVerified: false, createdAt: new Date(), updatedAt: new Date() });
   try {
     const result = await seed(settings);
     expect(result.adminLinked).toBe(true);

@@ -29,14 +29,14 @@ export function AppHeader({ studioId }: { studioId?: string }) {
             <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Alty CRM</span>
           </Link>
         </div>
-        
+
         <nav aria-label="Основная навигация" className="hidden md:flex items-center gap-4 text-sm">
           {navItems.map((item) => <Link key={item.href} href={item.href} className="hover:underline">{item.label}</Link>)}
         </nav>
         <div className="flex items-center gap-2 sm:gap-4">
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             aria-label="Поиск"
             disabled={!studioId}
             onClick={() => setSearchOpen(true)}
@@ -58,12 +58,12 @@ export function AppHeader({ studioId }: { studioId?: string }) {
           )}
         </div>
       </div>
-      
+
       {studioId && (
-        <GlobalSearch 
-          studioId={studioId} 
-          open={searchOpen} 
-          onOpenChange={setSearchOpen} 
+        <GlobalSearch
+          studioId={studioId}
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
         />
       )}
     </header>
