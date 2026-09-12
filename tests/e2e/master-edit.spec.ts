@@ -17,7 +17,7 @@ test("renaming a master in the browser preserves assigned services", async ({ pa
   const permissionIds: string[] = [];
   try {
     const response = await page.request.post("/api/auth/sign-up/email", { data: {
-      name: "Synthetic browser user", email, password: "Synthetic-password-123!",
+      name: "Synthetic serviceer user", email, password: "Synthetic-password-123!",
     } });
     expect(response.status()).toBe(200);
     const body = await response.json();
@@ -28,11 +28,18 @@ test("renaming a master in the browser preserves assigned services", async ({ pa
     const permissions = await db.select().from(s.permissions).where(inArray(s.permissions.code, codes));
     await db.insert(s.rolePermissions).values(permissions.map((p) => ({ roleId: roleId!, permissionId: p.id })));
     await db.insert(s.studioMembers).values({ studioId, userId: body.user.id, roleId });
-    const [service] = await db.insert(s.services).values({ studioId, name: "Synthetic brows", category: "brows", procedureType: "brows", durationMinutes: 60, priceCents: 10000 }).returning();
+    const [service] = await db.insert(s.services).values({ studioId, name: "Synthetic service", category: "brows", procedureType: "brows", durationMinutes: 60, priceCents: 10000 }).returning();
     const [master] = await db.insert(s.masters).values({ studioId, displayName: "Before rename", calendarColor: "#8B6F5A" }).returning();
     await db.insert(s.masterServices).values({ studioId, masterId: master.id, serviceId: service.id });
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/masters/${master.id}/edit`);
-    await expect(page.getByRole("checkbox", { name: "Synthetic brows" })).toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "Synthetic service" })).toBeChecked();
+    await expect(page.getByRole("navigation", { name: "Нижняя навигация" })).toBeVisible();
+    await expect(page.getByRole("main")).toHaveCount(1);
+    const save = await page.getByRole("button", { name: "Сохранить", exact: true }).boundingBox();
+    const nav = await page.getByRole("navigation", { name: "Нижняя навигация" }).boundingBox();
+    expect(save && nav && save.y + save.height <= nav.y).toBeTruthy();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     await page.getByLabel("Имя мастера", { exact: true }).fill("After rename");
     await page.getByRole("button", { name: "Сохранить", exact: true }).click();
     await expect(page).toHaveURL(/\/masters$/);
@@ -41,7 +48,14 @@ test("renaming a master in the browser preserves assigned services", async ({ pa
     const links = await db.select().from(s.masterServices).where(eq(s.masterServices.masterId, master.id));
     expect(links.map((l) => l.serviceId)).toEqual([service.id]);
     await page.goto(`/masters/${master.id}/edit`);
-    await expect(page.getByRole("checkbox", { name: "Synthetic brows" })).toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "Synthetic service" })).toBeChecked();
+    await page.getByRole("button", { name: "Поиск", exact: true }).click();
+    await page.getByRole("textbox", { name: "Поисковый запрос" }).fill("brows");
+    await page.getByRole("button", { name: /Synthetic service/ }).click();
+    await expect(page).toHaveURL(`/services/${service.id}`);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect(page.getByRole("navigation", { name: "Основная навигация" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Нижняя навигация" })).toBeHidden();
   } finally {
     try {
       if (studioId) await db.delete(s.auditLogs).where(eq(s.auditLogs.studioId, studioId));

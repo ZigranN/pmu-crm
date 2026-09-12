@@ -423,7 +423,7 @@ export const rolePermissions = pgTable("role_permissions", {
     .notNull()
     .references(() => permissions.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({ rolePermissionUnique: uniqueIndex("role_permissions_role_permission_unique").on(table.roleId, table.permissionId) }));
 
 export const userCustomPermissions = pgTable("user_custom_permissions", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -535,6 +535,7 @@ export const services = pgTable(
             .notNull()
             .references(() => studios.id, { onDelete: "cascade" }),
         name: text("name").notNull(),
+        seedKey: text("seed_key"),
         description: text("description"),
         category: serviceCategoryEnum("category").notNull(),
         procedureType: procedureTypeEnum("procedure_type").notNull(),
@@ -551,6 +552,7 @@ export const services = pgTable(
         deletedById: text("deleted_by_id"),
     },
     (table) => ({
+        seedKeyUnique: uniqueIndex("services_studio_seed_key_unique").on(table.studioId, table.seedKey),
         studioIdIdx: index("services_studio_id_idx").on(table.studioId),
         nameIdx: index("services_name_idx").on(table.name),
         priceCheck: check("services_price_cents_check", sql`${table.priceCents} >= 0`),

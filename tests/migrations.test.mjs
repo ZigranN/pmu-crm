@@ -17,6 +17,7 @@ const deployedHashes = [
   "2a69d9c73b08542f9314754839615f4f97d31c09a94688981bbcea8b5e238501",
   "561a13c58337d1e58fa50c65cd1d36af507213cf084e1e866dff14c1a4797f72",
   "375530a134520709f555bcc994706cb44cbffbfdc4d0480f18c137ef9f64ae8d",
+  "0565454bb96666200a5161ae920cbb5f8cac1b46be028aba7983d4106f6713d3",
 ];
 const clientFields = [
   "referred_by_name", "interest", "treatment_zone",
@@ -26,7 +27,7 @@ const clientFields = [
 test("migration history is readable and preserves deployed SQL hashes", () => {
   const migrations = readMigrationFiles({ migrationsFolder });
   assert.ok(migrations.length >= deployedHashes.length);
-  assert.deepEqual(migrations.slice(0, 3).map((m) => m.hash), deployedHashes);
+  assert.deepEqual(migrations.slice(0, deployedHashes.length).map((m) => m.hash), deployedHashes);
 });
 
 test("every journal entry has a linked snapshot and increasing timestamp", async () => {
@@ -116,7 +117,15 @@ test("fresh install, upgrade with data, and repeated migrate converge", async (t
     insert into clients (studio_id, first_name, full_name, phone, client_status, notes)
     values (${studio.id}, 'Fixture', 'Fixture Client', '+390000000000', 'new_lead', 'Preserve me')
     returning *`;
+  const [role] = await upgraded`insert into roles (code, name) values ('TEST', 'Test') returning id`;
+  const [permission] = await upgraded`insert into permissions (code, name) values ('TEST', 'Test') returning id`;
+  const [originalGrant] = await upgraded`insert into role_permissions (role_id, permission_id, created_at)
+    values (${role.id}, ${permission.id}, '2026-01-01') returning id`;
+  await upgraded`insert into role_permissions (role_id, permission_id, created_at)
+    values (${role.id}, ${permission.id}, '2026-01-02')`;
   await migrate(drizzle(upgradedDatabase.engine), { migrationsFolder });
+  assert.deepEqual(await upgraded`select id from role_permissions`, [originalGrant]);
+  await assert.rejects(upgraded`insert into role_permissions (role_id, permission_id) values (${role.id}, ${permission.id})`);
   const [preserved] = await upgraded`select * from clients where id = ${client.id}`;
   for (const [key, value] of Object.entries(client)) assert.deepEqual(preserved[key], value);
   for (const field of clientFields) assert.equal(preserved[field], null);

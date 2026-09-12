@@ -1,7 +1,6 @@
 "use client";
 
 import { authClient } from "@/lib/auth-client";
-import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Users, Scissors, UserCog, Settings, Calendar } from "lucide-react";
 import Link from "next/link";
@@ -19,7 +18,7 @@ export default function DashboardPage() {
   const { data: session } = authClient.useSession();
 
   return (
-    <DashboardShell>
+    <>
       <div className="space-y-6 pb-20">
         <PageHeader 
           title={`Добро пожаловать, ${session?.user.name || "Гость"}`}
@@ -73,6 +72,6 @@ export default function DashboardPage() {
           </Card>
         </div>
       </div>
-    </DashboardShell>
+    </>
   );
 }

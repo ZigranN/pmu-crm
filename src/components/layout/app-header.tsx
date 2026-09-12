@@ -7,8 +7,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { GlobalSearch } from "@/features/search/components/global-search";
 import Link from "next/link";
+import { navItems } from "./navigation-items";
 
-export function AppHeader() {
+export function AppHeader({ studioId }: { studioId?: string }) {
   const { data: session } = authClient.useSession();
   const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -29,10 +30,15 @@ export function AppHeader() {
           </Link>
         </div>
         
+        <nav aria-label="Основная навигация" className="hidden md:flex items-center gap-4 text-sm">
+          {navItems.map((item) => <Link key={item.href} href={item.href} className="hover:underline">{item.label}</Link>)}
+        </nav>
         <div className="flex items-center gap-2 sm:gap-4">
           <Button 
             variant="ghost" 
             size="icon" 
+            aria-label="Поиск"
+            disabled={!studioId}
             onClick={() => setSearchOpen(true)}
             className="text-muted hover:text-taupe"
           >
@@ -45,7 +51,7 @@ export function AppHeader() {
                 <span className="text-sm font-medium">{session.user.name}</span>
                 <span className="text-xs text-muted">{(session.user as any).role}</span>
               </div>
-              <Button variant="ghost" size="icon" onClick={handleLogout}>
+              <Button variant="ghost" size="icon" aria-label="Выйти" onClick={handleLogout}>
                 <LogOut className="w-5 h-5 text-muted" />
               </Button>
             </div>
@@ -53,9 +59,9 @@ export function AppHeader() {
         </div>
       </div>
       
-      {session && (
+      {studioId && (
         <GlobalSearch 
-          studioId={(session.user as any).studioId || ""} 
+          studioId={studioId} 
           open={searchOpen} 
           onOpenChange={setSearchOpen} 
         />
