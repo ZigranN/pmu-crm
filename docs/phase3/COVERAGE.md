@@ -9,7 +9,7 @@ PARTIAL — часть функции; FOUNDATION — схема без workflow
 | 1 | ЦЕЛЬ ЭТАПА | MISSING | Дерево routes; dashboard/page.tsx | Сквозной путь не существует | 15.2 |
 | 2 | ОСНОВНЫЕ ПРИНЦИПЫ АРХИТЕКТУРЫ | MISSING | server/services; нет command/outbox/worker | Audit не event-driven; нет business idempotency | 1.3,1.4 |
 | 3 | ОСНОВНЫЕ СУЩНОСТИ | PARTIAL | db/schema.ts:39 таблиц | Нет cycles/packages/conversations, multi-cycle visit; остальные сущности частичны | 3.1,6.1,9.1 |
-| 4 | КАРТОЧКА КЛИЕНТА | PARTIAL/CONFLICT | clients medical form/actions; чтение защищено в локальном шаге 0.3 | Нет clearance/language/assignment; дефекты медицинских мутаций остаются в 0.4 | 0.3,1.1,2.3,4.1 |
+| 4 | КАРТОЧКА КЛИЕНТА | PARTIAL/CONFLICT | clients medical form/actions; scoped reads (0.3), scoped transactional writes (0.4) | Нет clearance/language/assignment; полная медицинская модель остаётся в Phase 4 | 0.3,1.1,2.3,4.1 |
 | 5 | CLIENT DEDUPLICATION | MISSING | clients actions; phone.ts; неуникальные индексы | Нет exact/possible/merge/provenance, create дублируется | 2.4,2.5 |
 | 6 | СПРАВОЧНИК УСЛУГ | PARTIAL | services schema/form/actions | Нет service zone/technique FK, sessions model и templates | 2.1 |
 | 7 | МОДЕЛЬ КОЛИЧЕСТВА СЕССИЙ | MISSING | services.requiresCorrection | Boolean correction не one/two/variable | 2.1,7.1 |
@@ -44,7 +44,7 @@ PARTIAL — часть функции; FOUNDATION — схема без workflow
 | 36 | ФОТО ПЕРЕД КОНТРОЛЕМ | MISSING | Нет healed_result/source/verification | Нет запроса за3дня и missing task без отмены | 4.2,10.3 |
 | 37 | ФОТОГРАФИИ | PARTIAL | media types before/after; галерея | Нет требуемых stage guards/healed_result/pre-consult rules | 4.2,4.3 |
 | 38 | WHATSAPP MEDIA | MISSING | wa.me helper не intake | Нет inbound images и human verification классификации | 9.2,4.2 |
-| 39 | CONSENT | PARTIAL/CONFLICT | consents schema/service; UI пишет media | Нет multi-zone signature/PDF/versions/review2y; hard delete | 4.4,4.5 |
+| 39 | CONSENT | PARTIAL/CONFLICT | consents schema/service; upload transaction и archive сохраняют evidence (0.4); UI пока пишет media | Нет multi-zone signature/PDF/versions/review2y и restore UI; hard delete заменён архивированием | 4.4,4.5 |
 | 40 | ВОРОНКА PMU | CONFLICT | clients.clientStatus и ручной Select | Нет21-stage per-zone pipeline; stages человека не цикл | 3.1,3.2 |
 | 41 | КВАЛИФИКАЦИЯ | PARTIAL | clients contact/source/interest | Нет formal qualification/language/master/consultation decision | 2.3,3.3 |
 | 42 | СУЩЕСТВУЮЩИЙ КЛИЕНТ | MISSING | Нет qualification history rules | Нет same-zone≤2yr shortcut и исключений | 3.3 |

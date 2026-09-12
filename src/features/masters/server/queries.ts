@@ -1,7 +1,7 @@
 import "server-only";
 import { requireStudioPermission } from "@/server/auth/context";
 import { db } from "@/db";
-import { masters } from "@/db/schema";
+import { masters, masterServices } from "@/db/schema";
 import { eq, and, isNull, ilike } from "drizzle-orm";
 
 export async function getMasters(studioId: string, filters?: { search?: string, showArchived?: boolean }) {
@@ -42,12 +42,12 @@ export async function getActiveMasters(studioId: string) {
 
 export async function getMasterById(id: string, studioId: string) {
   await requireStudioPermission("MASTER_READ", studioId);
-  // Note: Simplified to avoid Drizzle relations issues
-  // Services can be fetched separately if needed
-  return await db.query.masters.findFirst({
-    where: and(
-      eq(masters.id, id),
-      eq(masters.studioId, studioId)
-    ),
+  const master = await db.query.masters.findFirst({
+    where: and(eq(masters.id, id), eq(masters.studioId, studioId)),
   });
+  if (!master) return undefined;
+  const links = await db.query.masterServices.findMany({
+    where: and(eq(masterServices.masterId, master.id), eq(masterServices.studioId, studioId)),
+  });
+  return { ...master, services: links };
 }

@@ -265,6 +265,7 @@ export const activityEventTypeEnum = pgEnum("activity_event_type", [
   "pigment_added",
   "photo_uploaded",
   "consent_uploaded",
+  "consent_archived",
   "task_created",
   "task_completed",
   "whatsapp_opened",

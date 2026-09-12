@@ -26,8 +26,8 @@
   {
     "section": "4",
     "status": "PARTIAL/CONFLICT",
-    "evidence": "clients medical form/actions; чтение защищено в локальном шаге 0.3",
-    "gap": "Нет clearance/language/assignment; дефекты медицинских мутаций остаются в 0.4",
+    "evidence": "clients medical form/actions; scoped reads (0.3), scoped transactional writes (0.4)",
+    "gap": "Нет clearance/language/assignment; полная медицинская модель остаётся в Phase 4",
     "steps": "0.3,1.1,2.3,4.1",
     "title": "КАРТОЧКА КЛИЕНТА"
   },
@@ -306,8 +306,8 @@
   {
     "section": "39",
     "status": "PARTIAL/CONFLICT",
-    "evidence": "consents schema/service; UI пишет media",
-    "gap": "Нет multi-zone signature/PDF/versions/review2y; hard delete",
+    "evidence": "consents schema/service; upload transaction и archive сохраняют evidence (0.4); UI пока пишет media",
+    "gap": "Нет multi-zone signature/PDF/versions/review2y и restore UI; hard delete заменён архивированием",
     "steps": "4.4,4.5",
     "title": "CONSENT"
   },

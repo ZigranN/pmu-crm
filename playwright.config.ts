@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { assertTestDatabaseUrl } from "./tests/support/database-url";
 import { testEnvironment } from "./scripts/test-environment.mjs";
 
 export default defineConfig({
@@ -13,7 +14,7 @@ export default defineConfig({
     command: "npm run start -- --hostname 127.0.0.1 --port 3100",
     url: "http://127.0.0.1:3100/login",
     reuseExistingServer: false,
-    env: testEnvironment,
+    env: { ...testEnvironment, ...(process.env.TEST_DATABASE_URL ? { DATABASE_URL: assertTestDatabaseUrl(process.env.TEST_DATABASE_URL) } : {}) },
     timeout: 60000,
   },
 });

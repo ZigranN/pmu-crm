@@ -69,14 +69,14 @@ export function ClientMediaSection({ clientId, initialType = "other" }: ClientMe
   }, [clientId, initialType]);
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Вы уверены, что хотите удалить этот файл?")) return;
+    if (!confirm("Архивировать этот файл? Оригинал и история будут сохранены.")) return;
     
     try {
       await deleteMediaAction(id);
-      toast.success("Файл удален");
+      toast.success("Файл архивирован");
       setMedia(media.filter((m) => m.id !== id));
     } catch {
-      toast.error("Ошибка при удалении");
+      toast.error("Ошибка при архивировании");
     }
   };
 

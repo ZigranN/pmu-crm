@@ -32,6 +32,11 @@ export function MasterForm({ initialData, availableServices }: MasterFormProps) 
     resolver: zodResolver(masterSchema),
     defaultValues: initialData ? {
       ...initialData,
+      phone: initialData.phone ?? "",
+      email: initialData.email ?? "",
+      bio: initialData.bio ?? "",
+      photoUrl: initialData.photoUrl ?? "",
+      calendarColor: initialData.calendarColor ?? "#8B6F5A",
       serviceIds: initialData.services?.map((s: any) => s.serviceId) || [],
     } : {
       displayName: "",
