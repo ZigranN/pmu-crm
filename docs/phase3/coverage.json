@@ -346,8 +346,8 @@
   {
     "section": "44",
     "status": "PARTIAL",
-    "evidence": "Thinking +7×24h; durable task, immutable rescheduling, отмена прежней задачи и история UI",
-    "gap": "Возобновление/Lost, lifecycle cancellation, условия предложения и исходящий контакт — 3.4c/d/10",
+    "evidence": "Thinking tasks, rescheduling, human reassessment/Lost, immutable closures и история UI",
+    "gap": "Срок/условия предложения — 3.4d; реальные исходящие контакты — Phase 9/10",
     "steps": "3.4,10",
     "title": "CLIENT THINKING"
   },
@@ -362,9 +362,9 @@
   {
     "section": "46",
     "status": "PARTIAL",
-    "evidence": "Human unavailable date/reason/comment; suspended PMU; задачи и версионированный перенос специалистом",
-    "gap": "Фактическая повторная оценка и возобновление — 3.4c",
-    "steps": "3.4",
+    "evidence": "Human unavailable + задачи/перенос + повторная оценка и возобновление с live qualification, closure и Lost",
+    "gap": "Production rollout/scheduler и сквозная запись с medical clearance не приняты",
+    "steps": "4,5,10,15",
     "title": "TEMPORARILY UNAVAILABLE"
   },
   {

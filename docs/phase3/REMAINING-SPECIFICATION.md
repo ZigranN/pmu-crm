@@ -90,7 +90,7 @@
 
 #### 3.4 Thinking / unavailable / lost
 
-**Статус:** PARTIAL — 3.4a реализован: [задачи повторного контакта](CYCLE-FOLLOWUPS-BASELINE.md). 3.4b перенос реализован: [baseline](FOLLOWUP-RESCHEDULING-BASELINE.md). Остаток: 3.4c фактическая повторная оценка, возобновление/Lost и отмена задач при выходе из ветки; 3.4d условия предложения. **Основание:** §3,40–46.
+**Статус:** PARTIAL — 3.4a реализован: [задачи повторного контакта](CYCLE-FOLLOWUPS-BASELINE.md). 3.4b перенос реализован: [baseline](FOLLOWUP-RESCHEDULING-BASELINE.md). 3.4c повторная оценка/Lost/closure реализованы: [baseline](CYCLE-REASSESSMENT-BASELINE.md). Остаток: 3.4d срок и условия предложения; production integration/rollout — Phase 4–10/15. **Основание:** §3,40–46.
 
 **Файлы/модули:** +src/features/treatment-cycles/server/followups.ts; src/server/events/worker.ts.
 

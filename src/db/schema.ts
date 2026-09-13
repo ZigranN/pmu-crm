@@ -1658,3 +1658,16 @@ export const followUpRevisions = pgTable("follow_up_revisions", {
 },t=>({sequence:uniqueIndex("follow_up_revision_sequence").on(t.resultId,t.sequence),
  command:uniqueIndex("follow_up_revision_command").on(t.commandId),
  contract:check("follow_up_revision_contract",sql`${t.sequence}>0 and length(trim(${t.reason})) between 3 and 1000 and length(trim(${t.comment})) between 1 and 2000`)}));
+
+export const cycleReviews=pgTable("cycle_reviews",{
+ id:uuid("id").defaultRandom().primaryKey(),studioId:uuid("studio_id").notNull().references(()=>studios.id,{onDelete:"cascade"}),
+ cycleId:uuid("cycle_id").notNull(),resultId:uuid("result_id").references(()=>consultationResults.id),
+ commandId:uuid("command_id").notNull(),actorId:text("actor_id").notNull(),operation:text("operation").notNull(),
+ reason:text("reason").notNull(),comment:text("comment").notNull(),createdAt:timestamp("created_at",{withTimezone:true}).defaultNow().notNull(),
+},t=>({cycle:foreignKey({name:"cycle_review_cycle_fk",columns:[t.cycleId,t.studioId],foreignColumns:[treatmentCycles.id,treatmentCycles.studioId]}),
+ command:uniqueIndex("cycle_review_command_unique").on(t.commandId),contract:check("cycle_review_contract",sql`${t.operation} in ('reassess','lost') and length(trim(${t.reason})) between 3 and 1000 and length(trim(${t.comment})) between 1 and 2000`)}));
+export const followUpClosures=pgTable("follow_up_closures",{
+ id:uuid("id").defaultRandom().primaryKey(),studioId:uuid("studio_id").notNull().references(()=>studios.id,{onDelete:"cascade"}),
+ resultId:uuid("result_id").notNull().references(()=>consultationResults.id),actorId:text("actor_id").notNull(),
+ reason:text("reason").notNull(),createdAt:timestamp("created_at",{withTimezone:true}).defaultNow().notNull(),
+},t=>({result:uniqueIndex("follow_up_closure_result_unique").on(t.resultId),contract:check("follow_up_closure_reason",sql`${t.reason} in ('cycle_left_branch','client_archived')`)}));

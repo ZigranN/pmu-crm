@@ -284,3 +284,74 @@ test("removal-required and lost decisions cannot be reopened through reschedulin
  for(const outcome of ["removal_required","master_cannot_help"] as const){const done=await completed();const response=await actions.recordConsultationResultAction(resultInput(done,outcome),randomUUID());const [decision]=await db.select().from(s.consultationResults).where(eq(s.consultationResults.consultationId,done.consultationId));
  await expect(reschedule({id:done.id,resultId:decision.id,expectedVersion:response.version,dueAt:new Date(Date.now()+20*86400000).toISOString(),reason:"Attempt to change date",comment:"Specialist comment"})).rejects.toThrow("Повторный контакт сейчас недоступен");}
 });
+
+async function reviewInput(id:string,operation:"lost"|"reassess"="reassess") {
+ const panel=await queries.getConsultationPanel(id),base={id,expectedVersion:panel.version,reason:"Specialist reviewed the current situation",comment:"Human review with fresh clinical context"};
+ return operation==="lost"?{...base,operation}:{...base,operation,...risks};
+}
+async function review(input:Awaited<ReturnType<typeof reviewInput>>,key=randomUUID()) {
+ return (await import("@/features/treatment-cycles/server/review")).reviewCycleAction(input,key);
+}
+test.each(["client_thinking","temporarily_unavailable"] as const)("%s reassessment preserves decision and money, closes tasks and requires fresh qualification",async outcome=>{
+ const f=await followUp(outcome);await deliverFollowUp(f.job,f.dueAt);const input=await reviewInput(f.done.id),key=randomUUID(),before=await count();
+ const response=await review(input,key);expect(await review(input,key)).toEqual(response);
+ const panel=await queries.getConsultationPanel(f.done.id);expect(panel.stage).toBe("consultation_needed");expect(panel.suspended).toBe(false);expect(panel.reviews).toHaveLength(1);expect(panel.currentFollowUpAt).toBeNull();expect(panel.followUpTask?.status).toBe("cancelled");expect(panel.qualification?.consultationRequired).toBe(true);
+ expect(await db.select().from(s.consultationResults).where(eq(s.consultationResults.id,f.decision.id))).toEqual([f.decision]);
+ expect(await deliverFollowUp(f.job,f.dueAt)).toMatchObject({skipped:"follow_up_closed"});
+ const [cycle]=await db.select().from(s.treatmentCycles).where(eq(s.treatmentCycles.id,f.done.id));expect(cycle.commercialSnapshot).toBeNull();expect(await db.select().from(s.clientMedicalProfiles).where(eq(s.clientMedicalProfiles.clientId,clientId))).toHaveLength(0);
+ expect((await count())[0]).toBe(before[0]);await expect(review(input)).rejects.toThrow("Цикл изменён");
+ await expect(db.update(s.cycleReviews).set({comment:"Rewrite"}).where(eq(s.cycleReviews.id,response.reviewId))).rejects.toThrow();
+ await expect(db.delete(s.followUpClosures).where(eq(s.followUpClosures.resultId,f.decision.id))).rejects.toThrow();
+});
+test("Lost records a human reason; resumption keeps the same cycle and rechecks current PMU evidence",async()=>{
+ const f=await followUp("temporarily_unavailable");await deliverFollowUp(f.job,f.dueAt);
+ await review(await reviewInput(f.done.id,"lost"));let panel=await queries.getConsultationPanel(f.done.id);expect(panel.stage).toBe("lost");expect(panel.suspended).toBe(true);expect(panel.reviews[0].operation).toBe("lost");
+ await review(await reviewInput(f.done.id));panel=await queries.getConsultationPanel(f.done.id);expect(panel.stage).toBe("consultation_needed");expect(panel.suspended).toBe(false);expect(panel.reviews).toHaveLength(2);
+ expect(await db.select().from(s.treatmentCycles).where(eq(s.treatmentCycles.clientId,clientId))).toHaveLength(1);
+ const generic=await import("@/features/treatment-cycles/server/actions");await expect(generic.transitionCycleAction({id:f.done.id,expectedVersion:panel.version,to:"procedure_slot_selected",reason:"Try to skip booking"},randomUUID())).rejects.toThrow();
+});
+test("reassessment uses live history and all explicit risk flags rather than trusting a previous outcome",async()=>{
+ const h=await cycle({stage:"cycle_completed"}),v=await visit(h,{},"session_1");await db.insert(s.procedureSessions).values({studioId,clientId,masterId,serviceId,appointmentId:v.id,cycleId:h.id,procedureArea:"brows",procedureType:"brows",sessionType:"primary_session"});
+ const f=await followUp("client_thinking");await review(await reviewInput(f.done.id));expect((await queries.getConsultationPanel(f.done.id)).stage).toBe("qualification");
+ const other=await followUp("client_thinking"),input=await reviewInput(other.done.id);if(input.operation!=="reassess")throw new Error("Expected reassessment");await review({...input,conditionChanged:true});expect((await queries.getConsultationPanel(other.done.id)).stage).toBe("consultation_needed");
+});
+test("archiving cancels contact permanently; restoring the client does not revive old timers",async()=>{
+ const f=await followUp("client_thinking");await deliverFollowUp(f.job,f.dueAt);const clientActions=await import("@/features/clients/server/actions");
+ await clientActions.archiveClientAction(clientId);await clientActions.restoreClientAction(clientId);
+ const panel=await queries.getConsultationPanel(f.done.id);expect(panel.closure?.reason).toBe("client_archived");expect(panel.followUpTask?.status).toBe("cancelled");expect(panel.currentFollowUpAt).toBeNull();
+ expect(await deliverFollowUp(f.job,f.dueAt)).toMatchObject({skipped:"follow_up_closed"});await expect(reschedule(await rescheduleInput(f))).rejects.toThrow("Контакт закрыт");
+ await review(await reviewInput(f.done.id));expect((await queries.getConsultationPanel(f.done.id)).stage).toBe("consultation_needed");
+});
+test("review rejects missing clinical explanation, Admin/AI and master without current client scope",async()=>{
+ const f=await followUp("temporarily_unavailable"),input=await reviewInput(f.done.id),before=await count();
+ for(const patch of [{reason:" "},{comment:" "},{...{price:0}}])await expect(review({...input,...patch})).rejects.toThrow();
+ for(const role of ["ADMIN","AI_SYSTEM"]){await db.update(s.studioMembers).set({roleId:roles[role]}).where(eq(s.studioMembers.studioId,studioId));await expect(review(input)).rejects.toThrow();}
+ await db.update(s.studioMembers).set({roleId:roles.MASTER}).where(eq(s.studioMembers.studioId,studioId));const [other]=await db.insert(s.masters).values({studioId,displayName:"Other"}).returning();await db.update(s.clients).set({assignedMasterId:other.id}).where(eq(s.clients.id,clientId));await expect(review(input)).rejects.toThrow();expect(await count()).toEqual(before);
+});
+test("Lost and reassessment cannot bypass existing appointment/payment or remover workflows",async()=>{
+ const f=await followUp("client_thinking"),v=await visit(f.done.c,{status:"confirmed"});await expect(review(await reviewInput(f.done.id,"lost"))).rejects.toThrow("Сначала требуется решение");
+ await db.update(s.appointments).set({status:"completed"}).where(eq(s.appointments.id,v.id));await db.insert(s.payments).values({studioId,clientId,appointmentId:v.id,totalAmountCents:100,paidAmountCents:0,balanceAmountCents:100});await expect(review(await reviewInput(f.done.id))).rejects.toThrow("Сначала требуется решение");
+ const done=await completed();await actions.recordConsultationResultAction(resultInput(done,"removal_required"),randomUUID());for(const operation of ["lost","reassess"] as const)await expect(review(await reviewInput(done.id,operation))).rejects.toThrow("Remover");
+});
+test("review rollback restores tasks, closure, stage, clinical evidence and receipts on outbox failure",async()=>{
+ const f=await followUp("temporarily_unavailable");await deliverFollowUp(f.job,f.dueAt);const input=await reviewInput(f.done.id),before=await count(),outbox=await import("@/server/events/outbox"),spy=vi.spyOn(outbox,"enqueue").mockRejectedValueOnce(new Error("Review event failed"));
+ try{await expect(review(input)).rejects.toThrow("Review event failed");}finally{spy.mockRestore();}
+ expect(await count()).toEqual(before);const panel=await queries.getConsultationPanel(f.done.id);expect(panel.closure).toBeNull();expect(panel.reviews).toHaveLength(0);expect(panel.suspended).toBe(true);expect(panel.followUpTask?.status).toBe("pending");
+});
+test("concurrent review and reschedule commit only one cycle version",async()=>{
+ const f=await followUp("temporarily_unavailable"),input=await reviewInput(f.done.id),move=await rescheduleInput(f);
+ const results=await Promise.allSettled([review(input),reschedule(move)]);expect(results.filter(r=>r.status==="fulfilled")).toHaveLength(1);
+});
+test("review and closures survive client merge with unchanged IDs",async()=>{
+ const f=await followUp("client_thinking");await deliverFollowUp(f.job,f.dueAt);const response=await review(await reviewInput(f.done.id,"lost"));
+ const [target]=await db.insert(s.clients).values({...clientFixture(studioId),assignedMasterId:masterId}).returning();const merge=await import("@/features/clients/server/merge-actions"),{MERGE_FIELDS}=await import("@/features/clients/merge-contract"),preview=await merge.previewClientMerge({sourceId:clientId,targetId:target.id});await merge.mergeClientsAction({sourceId:clientId,targetId:target.id,token:preview.token,reason:"Verified duplicate",choices:Object.fromEntries(Object.keys(MERGE_FIELDS).map(field=>[field,"target" as const]))},randomUUID());
+ const panel=await queries.getConsultationPanel(f.done.id);expect(panel.reviews[0].id).toBe(response.reviewId);expect(panel.closure?.resultId).toBe(f.decision.id);expect((await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,f.decision.id)))[0].clientId).toBe(target.id);
+});
+test("review replay rechecks membership and worker racing with Lost cannot leave a pending contact",async()=>{
+ const f=await followUp("temporarily_unavailable"),input=await reviewInput(f.done.id,"lost"),key=randomUUID(),{runWorkerOnce}=await import("@/server/events/worker"),{handlers}=await import("@/server/events/registry");
+ const handler=handlers["cycle.follow-up-due.v1"];if(handler.kind!=="transactional")throw new Error("Expected transactional handler");
+ const registry={...handlers,"cycle.follow-up-due.v1":{kind:"transactional" as const,run:async(tx:Parameters<typeof handler.run>[0],job:typeof f.job)=>{const clock=vi.spyOn(tx,"execute").mockResolvedValueOnce([{now:f.dueAt}] as never);try{return await handler.run(tx,job);}finally{clock.mockRestore();}}}};
+ await db.update(s.outboxJobs).set({availableAt:new Date(0)}).where(eq(s.outboxJobs.id,f.job.id));await Promise.all([runWorkerOnce(registry),review(input,key)]);
+ const rows=await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,f.decision.id));expect(rows.every(r=>r.status==="cancelled")).toBe(true);
+ await db.update(s.studioMembers).set({roleId:roles.ADMIN}).where(eq(s.studioMembers.studioId,studioId));await expect(review(input,key)).rejects.toThrow();
+});

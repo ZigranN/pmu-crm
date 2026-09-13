@@ -9,3 +9,8 @@ export const resultSchema=z.object({id:z.string().uuid(),expectedVersion:z.numbe
 });
 
 export const rescheduleFollowUpSchema=z.object({id:z.string().uuid(),resultId:z.string().uuid(),expectedVersion:z.number().int().positive(),dueAt:z.string().datetime({offset:true}),reason:z.string().trim().min(3).max(1000),comment:z.string().trim().min(1).max(2000)}).strict();
+
+export const cycleReviewSchema=z.discriminatedUnion("operation",[
+ z.object({id:z.string().uuid(),expectedVersion:z.number().int().positive(),operation:z.literal("reassess"),reason:z.string().trim().min(3).max(1000),comment:z.string().trim().min(1).max(2000),otherMasterPmu:z.boolean(),doubt:z.boolean(),conditionChanged:z.boolean(),evaluationRequired:z.boolean()}).strict(),
+ z.object({id:z.string().uuid(),expectedVersion:z.number().int().positive(),operation:z.literal("lost"),reason:z.string().trim().min(3).max(1000),comment:z.string().trim().min(1).max(2000)}).strict(),
+]);
