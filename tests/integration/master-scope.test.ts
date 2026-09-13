@@ -172,8 +172,8 @@ test("studio-wide mutations remain Owner-only and use the same transaction bound
   const settings = await import("@/features/settings/server/actions");
   const [service] = await database.db.select().from(s.services).where(eq(s.services.studioId, studioId));
   const [studio] = await database.db.select().from(s.studios).where(eq(s.studios.id, studioId));
-  const input = { name: "Updated catalog", category: "brows" as const, procedureType: "brows" as const, price: 123,
-    durationMinutes: 60, bufferBeforeMinutes: 0, bufferAfterMinutes: 0, requiresCorrection: false, isActive: true };
+  const input = { catalogCode: "brows-hair", priceMode: "fixed" as const, price: 123, priceMax: null,
+    durationMinutes: 120, preparationTemplateId: null, postCareTemplateId: null, isActive: true };
   await expect(services.updateServiceAction(service.id, input)).rejects.toThrow("Permission denied");
   await expect(settings.updateStudioSettingsAction({ name: "Forbidden", slug: studio.slug, timezone: studio.timezone })).rejects.toThrow("Permission denied");
   session.id = owner;

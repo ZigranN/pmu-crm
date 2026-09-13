@@ -534,6 +534,23 @@ export const masterServices = pgTable(
     })
 );
 
+export const catalogCategories = pgTable("catalog_categories", { code: text("code").primaryKey(), label: text("label").notNull() });
+export const catalogZones = pgTable("catalog_zones", { code: text("code").primaryKey(), label: text("label").notNull() });
+export const catalogTechniques = pgTable("catalog_techniques", { code: text("code").primaryKey(), label: text("label").notNull() });
+export const serviceDefinitions = pgTable("service_definitions", {
+  code: text("code").primaryKey(), name: text("name").notNull(),
+  categoryCode: text("category_code").notNull().references(() => catalogCategories.code),
+  zoneCode: text("zone_code").notNull().references(() => catalogZones.code),
+  techniqueCode: text("technique_code").notNull().references(() => catalogTechniques.code),
+  category: serviceCategoryEnum("category").notNull(), procedureType: procedureTypeEnum("procedure_type").notNull(),
+  sessionsModel: text("sessions_model").notNull(), priceMode: text("price_mode").notNull(),
+  priceCents: integer("price_cents"), priceMaxCents: integer("price_max_cents"), durationMinutes: integer("duration_minutes"),
+}, table => ({
+  sessionKey: uniqueIndex("service_definitions_session_key").on(table.code, table.sessionsModel),
+  sessionCheck: check("service_definitions_session_check", sql`${table.sessionsModel} in ('one','two','variable')
+    and (${table.categoryCode} != 'pmu' or ${table.sessionsModel} = 'two') and (${table.categoryCode} != 'remover' or ${table.sessionsModel} = 'variable')`),
+}));
+
 export const services = pgTable(
     "services",
     {
@@ -543,11 +560,19 @@ export const services = pgTable(
             .references(() => studios.id, { onDelete: "cascade" }),
         name: text("name").notNull(),
         seedKey: text("seed_key"),
+        catalogVersion: integer("catalog_version").notNull().default(0),
+        catalogCode: text("catalog_code").references(() => serviceDefinitions.code),
+        sessionsModel: text("sessions_model"),
+        priceMode: text("price_mode").notNull().default("legacy"),
+        priceMaxCents: integer("price_max_cents"),
+        preparationTemplateId: uuid("preparation_template_id"),
+        postCareTemplateId: uuid("post_care_template_id"),
+        supersededById: uuid("superseded_by_id"),
         description: text("description"),
         category: serviceCategoryEnum("category").notNull(),
         procedureType: procedureTypeEnum("procedure_type").notNull(),
-        priceCents: integer("price_cents").notNull(),
-        durationMinutes: integer("duration_minutes").notNull(),
+        priceCents: integer("price_cents"),
+        durationMinutes: integer("duration_minutes"),
         bufferBeforeMinutes: integer("buffer_before_minutes").default(0).notNull(),
         bufferAfterMinutes: integer("buffer_after_minutes").default(0).notNull(),
         requiresCorrection: boolean("requires_correction").default(false).notNull(),
@@ -559,6 +584,21 @@ export const services = pgTable(
         deletedById: text("deleted_by_id"),
     },
     (table) => ({
+        studioIdentity: uniqueIndex("services_id_studio_unique").on(table.id, table.studioId),
+        catalogUnique: uniqueIndex("services_studio_catalog_unique").on(table.studioId, table.catalogCode),
+        sessionFk: foreignKey({ columns: [table.catalogCode, table.sessionsModel], foreignColumns: [serviceDefinitions.code, serviceDefinitions.sessionsModel], name: "services_definition_sessions_fk" }),
+        preparationFk: foreignKey({ columns: [table.preparationTemplateId, table.studioId], foreignColumns: [whatsappTemplates.id, whatsappTemplates.studioId], name: "services_preparation_studio_fk" }),
+        postCareFk: foreignKey({ columns: [table.postCareTemplateId, table.studioId], foreignColumns: [whatsappTemplates.id, whatsappTemplates.studioId], name: "services_postcare_studio_fk" }),
+        replacementFk: foreignKey({ columns: [table.supersededById, table.studioId], foreignColumns: [table.id, table.studioId], name: "services_replacement_studio_fk" }),
+        replacementCheck: check("services_replacement_check", sql`${table.supersededById} is null or (${table.supersededById} != ${table.id} and ${table.isActive} = false and ${table.deletedAt} is not null)`),
+        catalogCheck: check("services_catalog_contract_check", sql`${table.catalogVersion} = 0 or (${table.catalogVersion} = 1
+          and ${table.catalogCode} is not null and ${table.sessionsModel} is not null
+          and ${table.bufferBeforeMinutes} = 0 and ${table.bufferAfterMinutes} = 0
+          and (${table.durationMinutes} is null or ${table.durationMinutes} between 5 and 1440)
+          and (${table.isActive} = false or ${table.durationMinutes} is not null)
+          and ((${table.priceMode} in ('fixed','estimate') and ${table.priceCents} is not null and ${table.priceMaxCents} is null)
+            or (${table.priceMode} = 'range' and ${table.priceCents} is not null and ${table.priceMaxCents} is not null and ${table.priceMaxCents} >= ${table.priceCents})
+            or (${table.priceMode} = 'master_quote' and ${table.priceCents} is null and ${table.priceMaxCents} is null)))`),
         seedKeyUnique: uniqueIndex("services_studio_seed_key_unique").on(table.studioId, table.seedKey),
         studioIdIdx: index("services_studio_id_idx").on(table.studioId),
         nameIdx: index("services_name_idx").on(table.name),
@@ -1074,7 +1114,7 @@ export const whatsappTemplates = pgTable("whatsapp_templates", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   deletedAt: timestamp("deleted_at"),
   deletedById: text("deleted_by_id"),
-});
+}, table => ({ studioIdentity: uniqueIndex("whatsapp_templates_id_studio_unique").on(table.id, table.studioId) }));
 
 export const tasks = pgTable(
     "tasks",

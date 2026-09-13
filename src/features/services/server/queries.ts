@@ -46,3 +46,17 @@ export async function getServiceById(id: string, studioId: string) {
     ),
   });
 }
+
+export async function getCatalogOptions(studioId: string) {
+  await requireStudioPermission("SERVICE_READ", studioId);
+  const { serviceDefinitions, whatsappTemplates } = await import("@/db/schema");
+  const definitions = await db.select().from(serviceDefinitions).orderBy(serviceDefinitions.name);
+  const templates = await db.select({ id: whatsappTemplates.id, name: whatsappTemplates.name, category: whatsappTemplates.category }).from(whatsappTemplates)
+    .where(and(eq(whatsappTemplates.studioId, studioId), eq(whatsappTemplates.isActive, true), isNull(whatsappTemplates.deletedAt)));
+  return { definitions, templates };
+}
+// Future booking commands must use the reviewed catalog, then separately resolve quote/offer policy.
+export async function getBookableServices(studioId: string) {
+  await requireStudioPermission("SERVICE_READ", studioId);
+  return db.select().from(services).where(and(eq(services.studioId, studioId), eq(services.catalogVersion, 1), eq(services.isActive, true), isNull(services.deletedAt)));
+}
