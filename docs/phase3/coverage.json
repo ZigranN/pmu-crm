@@ -1,82 +1,82 @@
 [
   {
     "section": "1",
-    "status": "MISSING",
-    "evidence": "Дерево routes; dashboard/page.tsx",
-    "gap": "Сквозной путь не существует",
-    "steps": "15.2",
+    "status": "NOT ACCEPTED",
+    "evidence": "Реализованы основы и текущие client/service workflows",
+    "gap": "Единый путь Lead → Refresh отсутствует",
+    "steps": "3–15",
     "title": "ЦЕЛЬ ЭТАПА"
   },
   {
     "section": "2",
-    "status": "MISSING",
-    "evidence": "server/services; нет command/outbox/worker",
-    "gap": "Audit не event-driven; нет business idempotency",
-    "steps": "1.3,1.4",
+    "status": "PARTIAL",
+    "evidence": "server/commands/idempotency.ts; server/events/{outbox,worker,registry}.ts; transactional audit",
+    "gap": "Framework работает; бизнес-события будущих модулей, реальные adapters и общий E2E ещё не подключены",
+    "steps": "3–12,15",
     "title": "ОСНОВНЫЕ ПРИНЦИПЫ АРХИТЕКТУРЫ"
   },
   {
     "section": "3",
     "status": "PARTIAL",
-    "evidence": "db/schema.ts:39 таблиц",
-    "gap": "Нет cycles/packages/conversations, multi-cycle visit; остальные сущности частичны",
-    "steps": "3.1,6.1,9.1",
+    "evidence": "db/schema.ts; clients/masters/services/appointments/procedureSessions/payments/media/consents; aliases и merge evidence",
+    "gap": "Нет полноценной модели cycles/packages/conversations/ledger allocations; schema сама по себе не workflow",
+    "steps": "3.1,6.1,8,9.1",
     "title": "ОСНОВНЫЕ СУЩНОСТИ"
   },
   {
     "section": "4",
-    "status": "PARTIAL/CONFLICT",
-    "evidence": "clients medical form/actions; scoped reads (0.3), scoped transactional writes (0.4)",
-    "gap": "Нет clearance/language/assignment; полная медицинская модель остаётся в Phase 4",
-    "steps": "0.3,1.1,2.3,4.1",
+    "status": "PARTIAL",
+    "evidence": "CLIENT-ADMINISTRATION-BASELINE.md: language, interested zones, kind, reported PMU, assigned/preferred master и strict allowlists",
+    "gap": "Полная medical/clearance модель — Phase 4; consultation slot — Calendar Phase 5; AI tools — Phase 11",
+    "steps": "2.3,4.1,5.1,11.3",
     "title": "КАРТОЧКА КЛИЕНТА"
   },
   {
     "section": "5",
-    "status": "MISSING",
-    "evidence": "clients actions; phone.ts; неуникальные индексы",
-    "gap": "Нет exact/possible/merge/provenance, create дублируется",
-    "steps": "2.4,2.5",
+    "status": "PARTIAL (текущая схема реализована)",
+    "evidence": "canonical keys, scoped exact/possible review, atomic create и merge, aliases, provenance, retained medical history; CLIENT-DEDUPLICATION-BASELINE.md, CLIENT-MERGE-BASELINE.md",
+    "gap": "Будущие cycles/packages/conversations/ledger расширяют merge registry; поиск имён ограничен; update предлагает ручную проверку",
+    "steps": "3,6,7,9,15.1",
     "title": "CLIENT DEDUPLICATION"
   },
   {
     "section": "6",
     "status": "PARTIAL",
-    "evidence": "services schema/form/actions",
-    "gap": "Нет service zone/technique FK, sessions model и templates",
-    "steps": "2.1",
+    "evidence": "SERVICE-CATALOG-BASELINE.md; нормализованный каталог, FK, sessions, templates",
+    "gap": "Legacy требует ручного разбора; Calendar Engine подключается в Phase 5",
+    "steps": "2.1,5.1",
     "title": "СПРАВОЧНИК УСЛУГ"
   },
   {
     "section": "7",
-    "status": "MISSING",
-    "evidence": "services.requiresCorrection",
-    "gap": "Boolean correction не one/two/variable",
+    "status": "PARTIAL",
+    "evidence": "serviceDefinitions + services sessionsModel, DB constraints",
+    "gap": "Session workflow ещё не реализован",
     "steps": "2.1,7.1",
     "title": "МОДЕЛЬ КОЛИЧЕСТВА СЕССИЙ"
   },
   {
     "section": "8",
-    "status": "CONFLICT",
-    "evidence": "db/seed.ts:180",
-    "gap": "Демо €350/400/250 и150/180мин не соответствуют полному каталогу",
+    "status": "PARTIAL",
+    "evidence": "13 определений §8, повторяемый import; quote/estimate/range",
+    "gap": "Требуется отдельный rollout; legacy не переписываются автоматически",
     "steps": "2.1,2.2",
     "title": "ЦЕНЫ И УСЛУГИ"
   },
   {
     "section": "9",
-    "status": "MISSING",
-    "evidence": "masterServices без price override",
-    "gap": "Нет effective price",
-    "steps": "2.2",
+    "status": "PARTIAL",
+    "evidence": "PRICING-OFFERS-BASELINE.md; resolvePrice + immutable overrides",
+    "gap": "Effective price реализован; будущий booking должен использовать общий resolver",
+    "steps": "2.2,5.1",
     "title": "MASTER-SPECIFIC PRICING"
   },
   {
     "section": "10",
-    "status": "MISSING",
-    "evidence": "Нет offers модуля",
-    "gap": "Нет agreed offer/reason/approval/history",
-    "steps": "2.2",
+    "status": "PARTIAL",
+    "evidence": "offers UI/commands, immutable revisions, reason/approval/audit",
+    "gap": "Client-level offer реализован; ссылки cycle/ledger подключаются в своих фазах",
+    "steps": "2.2,3.1,6.1",
     "title": "CUSTOM OFFER"
   },
   {
@@ -129,10 +129,10 @@
   },
   {
     "section": "17",
-    "status": "MISSING",
-    "evidence": "clients нет assigned_master_id",
-    "gap": "Нет запрета AI assignment и master-based slots",
-    "steps": "2.3,1.2,11.4",
+    "status": "PARTIAL",
+    "evidence": "clients.assignedMasterId/preferredMasterId; role-management.ts; clients/server/administration.ts; CLIENT-ADMINISTRATION-BASELINE.md",
+    "gap": "Назначение и история работают; использование при поиске слотов и AI booking ещё не реализовано",
+    "steps": "5.1,11.2–11.4",
     "title": "PREFERRED / ASSIGNED MASTER"
   },
   {
@@ -146,8 +146,8 @@
   {
     "section": "19",
     "status": "MISSING",
-    "evidence": "Нет scheduler/completion service",
-    "gap": "Нет auto-completion/исправления reason/history",
+    "evidence": "Worker framework есть, но completion handler отсутствует",
+    "gap": "Реализовать scheduled completion, исключения и human correction с причиной",
     "steps": "5.4",
     "title": "AUTOMATIC COMPLETION"
   },
@@ -209,10 +209,10 @@
   },
   {
     "section": "27",
-    "status": "FOUNDATION/CONFLICT",
-    "evidence": "refund enum; seed Admin gets all permissions",
-    "gap": "Нет refund service; Admin получает PAYMENT_REFUND вопреки ТЗ",
-    "steps": "1.1,6.3",
+    "status": "PARTIAL",
+    "evidence": "lib/permissions.ts: Admin/Master/AI не имеют PAYMENT_REFUND; сервис refund отсутствует",
+    "gap": "Права ограничены; сам refund, частичный возврат и ledger reconciliation ещё не реализованы",
+    "steps": "6.3",
     "title": "REFUND"
   },
   {
@@ -322,9 +322,9 @@
   {
     "section": "41",
     "status": "PARTIAL",
-    "evidence": "clients contact/source/interest",
-    "gap": "Нет formal qualification/language/master/consultation decision",
-    "steps": "2.3,3.3",
+    "evidence": "Административные поля, язык, источник, зоны, previous PMU со слов клиента; assigned/preferred master",
+    "gap": "Нет формализованного консультационного решения и правила returning client",
+    "steps": "3.3",
     "title": "КВАЛИФИКАЦИЯ"
   },
   {
@@ -385,9 +385,9 @@
   },
   {
     "section": "49",
-    "status": "MISSING",
-    "evidence": "Нет AI policy",
-    "gap": "Нет server-side tool authorization и outbound policy; medical/financial/late-session/free-third запреты не реализованы",
+    "status": "PARTIAL (запрет generic actions)",
+    "evidence": "AI_SYSTEM не имеет доступа к существующим generic actions даже через allow override",
+    "gap": "Нет работающего AI runtime, зарегистрированных tools, server output policy и adversarial acceptance",
     "steps": "11.3,11.4,11.10",
     "title": "AI НЕ МОЖЕТ"
   },
@@ -498,8 +498,8 @@
   {
     "section": "63",
     "status": "MISSING",
-    "evidence": "Нет pre-care job/template association",
-    "gap": "Нет lips-7/-3 дней",
+    "evidence": "services preparationTemplateId/postCareTemplateId есть; runtime pre-care handler отсутствует",
+    "gap": "Нет планирования и доставки lips -7/-3 дня, обработки переноса и поздней записи",
     "steps": "10.1",
     "title": "PRE-CARE"
   },
@@ -514,73 +514,73 @@
   {
     "section": "65",
     "status": "PARTIAL",
-    "evidence": "MobileBottomNav/FormActionBar/components",
-    "gap": "Общий shell только dashboard; основные P0 workflows отсутствуют",
-    "steps": "0.5,13.3",
+    "evidence": "Общий dashboard shell, mobile navigation, forms; client/service/master/merge browser checks 390px",
+    "gap": "Полный набор P0 действий, calendar/payment/takeover и проверка 360/390/430px ещё не завершены",
+    "steps": "5,6,11.7,13.3",
     "title": "MOBILE FIRST"
   },
   {
     "section": "66",
     "status": "PARTIAL",
-    "evidence": "Timeline последних20 activityEvents",
-    "gap": "Нет общей истории messages/payments/appointments/photos/docs",
-    "steps": "13.3,1.3",
+    "evidence": "Client activity timeline; merge переносит события, старые IDs разрешаются",
+    "gap": "Нет общей paginated истории messages/payments/appointments/stages/docs/media",
+    "steps": "13.3",
     "title": "CLIENT TIMELINE"
   },
   {
     "section": "67",
-    "status": "CONFLICT",
-    "evidence": "SUPER_ADMIN/STUDIO_ADMIN/MASTER/ASSISTANT/CLIENT",
-    "gap": "Нет явных OWNER/ADMIN/AI_SYSTEM; legacy mapping не задан",
-    "steps": "1.1",
+    "status": "PARTIAL (текущие роли реализованы)",
+    "evidence": "lib/roles.ts, lib/permissions.ts; OWNER/ADMIN/MASTER/AI_SYSTEM, legacy mapping, ceilings/deny; ROLE-POLICY-BASELINE.md",
+    "gap": "Матрицу нужно применять к каждому новому domain command и AI tool",
+    "steps": "3–12,15.1",
     "title": "РОЛИ"
   },
   {
     "section": "68",
-    "status": "FOUNDATION",
-    "evidence": "SUPER_ADMIN bypass только при membership",
-    "gap": "Нет studio OWNER и экспорт/role management UI/workflow",
-    "steps": "1.1,1.2,14.1",
+    "status": "PARTIAL",
+    "evidence": "Owner membership, role management UI, audit/jobs access; role-management.ts",
+    "gap": "Полноценный export и все будущие бизнес-операции ещё отсутствуют",
+    "steps": "14.1,3–12",
     "title": "OWNER"
   },
   {
     "section": "69",
-    "status": "CONFLICT",
-    "evidence": "seed Admin all permissions",
-    "gap": "Admin имеет refund/settings; нужен точный набор",
-    "steps": "1.1",
+    "status": "PARTIAL (текущие ограничения реализованы)",
+    "evidence": "Admin ограничен capability ceiling; нет refund/medical write/settings; Custom Offer с reason/audit",
+    "gap": "Будущие calendar/payment/AI workflows требуют реализации и проверок матрицы",
+    "steps": "5,6,11,15.1",
     "title": "ADMIN"
   },
   {
     "section": "70",
-    "status": "CONFLICT",
-    "evidence": "clients queries только studio scoped",
-    "gap": "Master не ограничен своими клиентами; нет assignment/scope",
-    "steps": "1.2",
+    "status": "PARTIAL (текущий scope реализован)",
+    "evidence": "server/auth/scopes.ts; master-scope tests; назначенные клиенты, ограниченные medical/media/finance reads",
+    "gap": "Новые cycles/booking/ledger commands должны сохранить этот scope; полный Master E2E отсутствует",
+    "steps": "3–7,15",
     "title": "MASTER"
   },
   {
     "section": "71",
-    "status": "PARTIAL/CONFLICT",
-    "evidence": "auditLogs/сервис ошибки проглатывает",
-    "gap": "Нет обязательных old/new/reason по всем действиям и atomicity",
-    "steps": "1.3",
+    "status": "PARTIAL (текущие boundaries реализованы)",
+    "evidence": "writeAudit(tx), sensitiveRead; old/new/reason/actor; audit/access UI; ошибка audit откатывает мутацию",
+    "gap": "Расширить event contracts на новые модули; retention/экспорт и эксплуатационная защита журналов отдельно",
+    "steps": "3–12,14,15",
     "title": "AUDIT LOG"
   },
   {
     "section": "72",
     "status": "PARTIAL",
-    "evidence": "Auth и storage upload; exportJobs table",
-    "gap": "Нет private delivery policy/access logs/retention/anonymisation/export/verified backups",
-    "steps": "1.1,1.3,4.2,14.1,14.2,14.3",
+    "evidence": "Auth/RBAC, tenant/master scopes, access logs, archive preservation, merge provenance",
+    "gap": "Нет полного private delivery, retention/anonymisation/export и доказанного backup restore",
+    "steps": "4.2,14.1–14.3",
     "title": "DATA PROTECTION"
   },
   {
     "section": "73",
-    "status": "PARTIAL/CONFLICT",
-    "evidence": "Archive CRUD есть; consent hard delete/cloud destroy",
-    "gap": "Нет единой preservation policy для истории и оригиналов",
-    "steps": "0.4,4.2,4.4,14.2",
+    "status": "PARTIAL",
+    "evidence": "Archive вместо удаления клиентов/медиа/согласий; исходные файлы и merge evidence сохранены",
+    "gap": "Нет полного retention/restore/document version workflow; privacy policy не утверждена",
+    "steps": "4.2,4.4,14.2",
     "title": "АРХИВИРОВАНИЕ"
   },
   {
@@ -601,17 +601,17 @@
   },
   {
     "section": "76",
-    "status": "MISSING",
-    "evidence": "Инфраструктура 0.2 и access regression suite 0.3; полная acceptance suite §76 отсутствует",
-    "gap": "Все technical scenarios, включая76.26–50 AI runtime/policy/RAG/tools/evidence, требуют реализации",
+    "status": "PARTIAL (итоговая приёмка открыта)",
+    "evidence": "150 unit/integration + 4 migration + 13 browser tests на eceed9c; покрыты отдельные integrity/roles/retry/merge случаи",
+    "gap": "Все 50 technical acceptance scenarios должны быть привязаны к исполняемым тестам и проверены на готовой системе",
     "steps": "15.1,11.10",
     "title": "ОБЯЗАТЕЛЬНЫЕ TECHNICAL TESTS"
   },
   {
     "section": "77",
-    "status": "MISSING",
-    "evidence": "Нет E2E infrastructure/workflows",
-    "gap": "Human33-step PMU + отдельный AI77.34–48; одинаковый business state не доказан",
+    "status": "MISSING (сквозной сценарий)",
+    "evidence": "Playwright инфраструктура и 13 браузерных тестов есть; полный PMU E2E отсутствует",
+    "gap": "Human 33-step PMU и AI77.34–48; равенство конечного business state не доказано",
     "steps": "15.2,11.10",
     "title": "END-TO-END ACCEPTANCE TEST"
   },
@@ -634,9 +634,9 @@
   {
     "section": "80",
     "status": "NOT ACCEPTED",
-    "evidence": "Build проходит; runtime не проверен",
-    "gap": "AI не источник истины; UI/AI/automation/integration общий command; acceptance/eval gate не пройден",
-    "steps": "15.1,15.2,15.3,15.4,11.10",
+    "evidence": "CI eceed9c зелёный, текущие workflows проверены на PostgreSQL 17/Chromium",
+    "gap": "Нет итоговой приёмки всех P0, реальных integrations/restore/release rehearsal; сборка не равна готовности всей CRM",
+    "steps": "15.1–15.4,11.10",
     "title": "КРИТЕРИЙ ГОТОВНОСТИ"
   }
 ]

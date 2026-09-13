@@ -1,5 +1,8 @@
 # PMU CRM — рабочие документы Phase 3
 
+- [Полный актуальный чек-лист](IMPLEMENTATION-CHECKLIST.md)
+- [ТЗ на весь оставшийся объём](REMAINING-SPECIFICATION.md)
+
 - [Полное ТЗ 1.1](MASTER-SPECIFICATION.md)
 - [План реализации](ROADMAP.md)
 - [Матрица покрытия](COVERAGE.md)
