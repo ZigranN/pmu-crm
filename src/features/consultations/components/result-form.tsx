@@ -1,4 +1,5 @@
 "use client";
+import { rescheduleFollowUpAction } from "@/features/treatment-cycles/server/reschedule-followup";
 import { useRef,useState,useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,15 @@ export function ConsultationPanel({data}:{data:Awaited<ReturnType<typeof getCons
     </form>}
     {data.result&&<div className="rounded border p-4 break-words"><h3>{OUTCOME_LABELS[data.result.outcome as typeof OUTCOMES[number]]}</h3><p>{data.result.reason}</p><p>{data.result.comment}</p>{data.result.removerCycleId&&<a className="underline" href={`/deals/${data.result.removerCycleId}`}>Связанный Remover-цикл</a>}{data.result.reassessmentAt&&<p>Повторная оценка: {new Date(data.result.reassessmentAt).toISOString()}</p>}{data.result.followUpAt&&<p>Следующий контакт: {new Date(data.result.followUpAt).toISOString()}</p>}</div>}
     {data.followUpTask&&<p role="status">Задача повторного контакта: {({pending:"ожидает выполнения",in_progress:"в работе",completed:"выполнена",cancelled:"отменена"})[data.followUpTask.status]}.</p>}
+    {data.currentFollowUpAt&&<p>Актуальная дата контакта: {new Date(data.currentFollowUpAt).toISOString()}</p>}
+    {data.canWrite&&data.result&&data.kind==="pmu"&&((data.result.outcome==="client_thinking"&&data.stage==="thinking"&&!data.suspended)||(data.result.outcome==="temporarily_unavailable"&&data.stage==="consultation_result"&&data.suspended))&&<form className="grid gap-3 rounded border p-4" onSubmit={e=>{e.preventDefault();const form=new FormData(e.currentTarget),payload={id:data.id,resultId:data.result!.id,expectedVersion:data.version,dueAt:new Date(String(form.get("dueAt"))).toISOString(),reason:String(form.get("reason")),comment:String(form.get("comment"))};run("reschedule",payload,key=>rescheduleFollowUpAction(payload,key));}}>
+      <h3>Перенос повторного контакта</h3>
+      <label>Новая дата контакта (время вашего устройства)<input type="datetime-local" name="dueAt" required className={input}/></label>
+      <label>Причина переноса<input name="reason" required minLength={3} maxLength={1000} className={input}/></label>
+      <label>Комментарий к переносу<textarea name="comment" required maxLength={2000} className={input}/></label>
+      <Button disabled={pending}>Перенести повторный контакт</Button>
+    </form>}
+    {data.followUpHistory.length>0&&<details><summary>История переноса дат</summary><ol>{data.followUpHistory.map(r=><li key={r.id} className="rounded border p-3 break-words">Версия {r.sequence}: {new Date(r.dueAt).toISOString()}<p>{r.reason}</p><p>{r.comment}</p></li>)}</ol>{data.followUpHistory.length===50&&<p>Показаны последние 50 переносов.</p>}</details>}
     {!data.canWrite&&<p>Решения записывает специалист с соответствующим доступом.</p>}
   </section>;
 }
