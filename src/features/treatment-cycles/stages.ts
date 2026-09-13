@@ -12,8 +12,8 @@ export const STAGE_LABELS: Record<CycleStage,string> = {
 // requires the authoritative domain command/evidence that owns the target stage.
 export const TRANSITIONS: Readonly<Record<CycleStage,readonly CycleStage[]>> = {
   new_lead:["qualification","lost"], qualification:["consultation_needed","procedure_slot_selected","lost"],
-  consultation_needed:["consultation_offered","lost"], consultation_offered:["consultation_scheduled","lost"],
-  consultation_scheduled:["consultation_confirmed","lost"], consultation_confirmed:["consultation_completed","lost"],
+  consultation_needed:["qualification","consultation_offered","lost"], consultation_offered:["consultation_scheduled","lost"],
+  consultation_scheduled:["consultation_confirmed","consultation_completed","lost"], consultation_confirmed:["consultation_completed","lost"],
   consultation_completed:["consultation_result_required"], consultation_result_required:["consultation_result"],
   consultation_result:["thinking","procedure_slot_selected","lost"], thinking:["procedure_slot_selected","lost"],
   procedure_slot_selected:["awaiting_acconto"], awaiting_acconto:["procedure_confirmed","lost"],

@@ -1,3 +1,4 @@
+import { OUTCOMES } from "@/features/consultations/contracts";
 import { CYCLE_STAGES, CYCLE_KINDS } from "@/features/treatment-cycles/schemas/cycle.schema";
 import {
     pgTable,
@@ -1151,6 +1152,7 @@ export const whatsappTemplates = pgTable("whatsapp_templates", {
 export const tasks = pgTable(
     "tasks",
     {
+        consultationId: uuid("consultation_id").references(() => consultations.id),
         id: uuid("id").defaultRandom().primaryKey(),
         studioId: uuid("studio_id")
             .notNull()
@@ -1181,6 +1183,7 @@ export const tasks = pgTable(
         deletedById: text("deleted_by_id"),
     },
     (table) => ({
+        consultationUnique: uniqueIndex("tasks_consultation_unique").on(table.consultationId),
         studioIdIdx: index("tasks_studio_id_idx").on(table.studioId),
         assignedToIdIdx: index("tasks_assigned_to_id_idx").on(table.assignedToId),
         dueAtIdx: index("tasks_due_at_idx").on(table.dueAt),
@@ -1595,6 +1598,7 @@ export const appointmentCycles = pgTable("appointment_cycles", {
   serviceSnapshot: jsonb("service_snapshot").notNull(), commercialSnapshot: jsonb("commercial_snapshot"), createdAt: timestamp("created_at", {withTimezone:true}).notNull().defaultNow(),
 }, table => ({
   identity: uniqueIndex("appointment_cycles_identity").on(table.appointmentId,table.cycleId,table.studioId,table.clientId),
+  studioIdentity: uniqueIndex("appointment_cycles_studio_identity").on(table.appointmentId,table.cycleId,table.studioId),
   pair: uniqueIndex("appointment_cycles_pair_unique").on(table.appointmentId,table.cycleId),
   client: foreignKey({name:"appointment_cycles_client_fk",columns:[table.clientId,table.studioId],foreignColumns:[clients.id,clients.studioId]}),
   appointment: foreignKey({name:"appointment_cycles_appointment_fk",columns:[table.appointmentId,table.studioId,table.clientId],foreignColumns:[appointments.id,appointments.studioId,appointments.clientId]}),
@@ -1613,8 +1617,27 @@ export const cycleStageHistory = pgTable("cycle_stage_history", {
   cycle: foreignKey({name:"cycle_stage_history_cycle_fk",columns:[table.cycleId,table.studioId],foreignColumns:[treatmentCycles.id,treatmentCycles.studioId]}),
   command: foreignKey({name:"cycle_stage_history_command_fk",columns:[table.commandId],foreignColumns:[commandReceipts.id]}),
   version: uniqueIndex("cycle_stage_history_version_unique").on(table.cycleId,table.version),
-  commandUnique: uniqueIndex("cycle_stage_history_command_unique").on(table.commandId),
+  commandUnique: uniqueIndex("cycle_stage_history_command_unique").on(table.commandId,table.cycleId,table.version),
   contract: check("cycle_stage_history_contract",sql`${table.version} > 0 and length(trim(${table.reason})) between 3 and 1000
     and ${table.toStage} in (${sql.join(CYCLE_STAGES.map(value=>sql.raw("'"+value+"'")),sql`,`)})
     and (${table.fromStage} is null or ${table.fromStage} in (${sql.join(CYCLE_STAGES.map(value=>sql.raw("'"+value+"'")),sql`,`)}))`),
 }));
+
+export const cycleQualifications = pgTable("cycle_qualifications", {
+  id:uuid("id").defaultRandom().primaryKey(),studioId:uuid("studio_id").notNull().references(()=>studios.id,{onDelete:"cascade"}),cycleId:uuid("cycle_id").notNull(),
+  actorId:text("actor_id").notNull(),commandId:uuid("command_id").notNull(),cycleVersion:integer("cycle_version").notNull(),
+  otherMasterPmu:boolean("other_master_pmu").notNull(),doubt:boolean("doubt").notNull(),conditionChanged:boolean("condition_changed").notNull(),evaluationRequired:boolean("evaluation_required").notNull(),
+  consultationRequired:boolean("consultation_required").notNull(),evidence:jsonb("evidence").notNull(),reason:text("reason").notNull(),createdAt:timestamp("created_at",{withTimezone:true}).defaultNow().notNull(),
+},t=>({cycle:foreignKey({name:"qualification_cycle_fk",columns:[t.cycleId,t.studioId],foreignColumns:[treatmentCycles.id,treatmentCycles.studioId]}),version:uniqueIndex("qualification_version_unique").on(t.cycleId,t.cycleVersion),command:uniqueIndex("qualification_command_unique").on(t.commandId),contract:check("qualification_contract",sql`${t.cycleVersion}>0 and length(trim(${t.reason}))>=3 and jsonb_typeof(${t.evidence})='object'`)}));
+export const consultations = pgTable("consultations", {
+  id:uuid("id").defaultRandom().primaryKey(),studioId:uuid("studio_id").notNull().references(()=>studios.id,{onDelete:"cascade"}),cycleId:uuid("cycle_id").notNull(),appointmentId:uuid("appointment_id").notNull(),masterId:uuid("master_id").notNull(),
+  completedBy:text("completed_by").notNull(),completionReason:text("completion_reason").notNull(),completedAt:timestamp("completed_at",{withTimezone:true}).notNull(),decisionDueAt:timestamp("decision_due_at",{withTimezone:true}).notNull(),resultRecordedAt:timestamp("result_recorded_at",{withTimezone:true}),
+},t=>({identity:uniqueIndex("consultations_identity").on(t.id,t.studioId),visit:uniqueIndex("consultations_cycle_visit_unique").on(t.cycleId,t.appointmentId),cycle:foreignKey({name:"consultations_cycle_fk",columns:[t.cycleId,t.studioId],foreignColumns:[treatmentCycles.id,treatmentCycles.studioId]}),appointment:foreignKey({name:"consultations_visit_fk",columns:[t.appointmentId,t.cycleId,t.studioId],foreignColumns:[appointmentCycles.appointmentId,appointmentCycles.cycleId,appointmentCycles.studioId]}),master:foreignKey({name:"consultations_master_fk",columns:[t.masterId,t.studioId],foreignColumns:[masters.id,masters.studioId]}),due:check("consultations_due_check",sql`${t.decisionDueAt}>${t.completedAt}`)}));
+export const consultationResults = pgTable("consultation_results", {
+  id:uuid("id").defaultRandom().primaryKey(),studioId:uuid("studio_id").notNull().references(()=>studios.id,{onDelete:"cascade"}),consultationId:uuid("consultation_id").notNull(),
+  actorId:text("actor_id").notNull(),commandId:uuid("command_id").notNull(),outcome:text("outcome").notNull(),reason:text("reason").notNull(),comment:text("comment").notNull(),
+  reassessmentAt:timestamp("reassessment_at",{withTimezone:true}),followUpAt:timestamp("follow_up_at",{withTimezone:true}),removerCycleId:uuid("remover_cycle_id"),createdAt:timestamp("created_at",{withTimezone:true}).defaultNow().notNull(),
+},t=>({consultation:foreignKey({name:"result_consultation_fk",columns:[t.consultationId,t.studioId],foreignColumns:[consultations.id,consultations.studioId]}),remover:foreignKey({name:"result_remover_fk",columns:[t.removerCycleId,t.studioId],foreignColumns:[treatmentCycles.id,treatmentCycles.studioId]}),once:uniqueIndex("result_consultation_unique").on(t.consultationId),command:uniqueIndex("result_command_unique").on(t.commandId),contract:check("consultation_result_contract",sql`${t.outcome} in (${sql.join(OUTCOMES.map(v=>sql.raw("'"+v+"'")),sql`,`)}) and length(trim(${t.reason}))>=3
+ and (${t.outcome}!='temporarily_unavailable' or (${t.reassessmentAt} is not null and length(trim(${t.comment}))>0))
+ and ((${t.outcome}='client_thinking' and ${t.followUpAt} is not null) or (${t.outcome}!='client_thinking' and ${t.followUpAt} is null))
+ and ((${t.outcome}='removal_required' and ${t.removerCycleId} is not null) or (${t.outcome}!='removal_required' and ${t.removerCycleId} is null))`)}));

@@ -26,3 +26,5 @@
 - [Treatment Cycle schema — шаг 3.1](TREATMENT-CYCLE-SCHEMA-BASELINE.md).
 
 - [3.2: команды стадий и оставшиеся зависимости](CYCLE-TRANSITIONS-BASELINE.md).
+
+- [3.3: квалификация, решения и overdue task](CONSULTATION-DECISIONS-BASELINE.md).

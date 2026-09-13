@@ -49,13 +49,13 @@ PARTIAL — требование выполнено частично; FOUNDATION
 | 37 | ФОТОГРАФИИ | PARTIAL | media types before/after; галерея | Нет требуемых stage guards/healed_result/pre-consult rules | 4.2,4.3 |
 | 38 | WHATSAPP MEDIA | MISSING | wa.me helper не intake | Нет inbound images и human verification классификации | 9.2,4.2 |
 | 39 | CONSENT | PARTIAL/CONFLICT | consents schema/service; upload transaction и archive сохраняют evidence (0.4); UI пока пишет media | Нет multi-zone signature/PDF/versions/review2y и restore UI; hard delete заменён архивированием | 4.4,4.5 |
-| 40 | ВОРОНКА PMU | PARTIAL (command foundation) | 21-stage matrix, early commands, optimistic version/idempotency, immutable history, scoped board/timeline | Authoritative consultation/booking/payment/procedure/refresh transitions заблокированы до соответствующих модулей; legacy clientStatus отдельно | 3.3,5–7,10 |
-| 41 | КВАЛИФИКАЦИЯ | PARTIAL | Административные поля, язык, источник, зоны, previous PMU со слов клиента; assigned/preferred master | Нет формализованного консультационного решения и правила returning client | 3.3 |
-| 42 | СУЩЕСТВУЮЩИЙ КЛИЕНТ | MISSING | Нет qualification history rules | Нет same-zone≤2yr shortcut и исключений | 3.3 |
-| 43 | РЕЗУЛЬТАТ КОНСУЛЬТАЦИИ | MISSING | Нет consultations module | Нет5 результатов решения мастера | 3.3 |
-| 44 | CLIENT THINKING | MISSING | nextContactAt только поле | Нет thinking7d и offer validity handling | 3.4 |
-| 45 | REMOVAL REQUIRED | PARTIAL (schema foundation) | originCycleId сохраняет связь Remover с исходным PMU той же зоны/клиента | Нет human-result suspension/restoration workflows | 8.3 |
-| 46 | TEMPORARILY UNAVAILABLE | MISSING | Нет unavailable state | Нет reason/reassessment/comment мастера | 3.4 |
+| 40 | ВОРОНКА PMU | PARTIAL (domain integration) | Cycle engine/UI + qualification/completion/result commands и нейтральная история | Полный booking/finance/procedure/refresh path требует Phase 5–7/10 | 3.4,5–7,10 |
+| 41 | КВАЛИФИКАЦИЯ | PARTIAL | Административные поля + specialist qualification с immutable risk/evidence | AI administrative extraction и Calendar booking интеграция ещё не приняты | 5,11 |
+| 42 | СУЩЕСТВУЮЩИЙ КЛИЕНТ | PARTIAL | Live same-zone ≤2 calendar years, completed procedure, master и исключения; boundary tests | Booking command должна потреблять актуальную оценку; Calendar отсутствует | 5 |
+| 43 | РЕЗУЛЬТАТ КОНСУЛЬТАЦИИ | PARTIAL (domain ready) | Все пять результатов, specialist role, reason/version/receipt/audit, реальный overdue decision task | Реальные calendar prerequisites и scheduler rollout не приняты | 5,10 |
+| 44 | CLIENT THINKING | PARTIAL | Thinking outcome и сохранённый followUpAt +7×24h | Реальный follow-up/условия предложения и перенос даты — 3.4 | 3.4,10 |
+| 45 | REMOVAL REQUIRED | PARTIAL | Human removal_required создаёт linked Remover и приостанавливает исходный PMU; replay/merge tests | Remover appointments/review/ready_for_pmu restoration ещё отсутствуют | 8.3 |
+| 46 | TEMPORARILY UNAVAILABLE | PARTIAL | Human unavailable reason/reassessment/comment, будущая дата и suspension | Задачи повторного контакта, перенос и возобновление — 3.4 | 3.4 |
 | 47 | REFRESH | MISSING | Refresh enum без cycle/jobs | Нет350,last same-zone PMU,year offer,monthly6 stop | 10.5 |
 | 48 | AI AGENT — ОСНОВНЫЕ ПРАВИЛА | MISSING | Нет AI agent/tools | AI runtime/orchestrator/context builder/registry/KB-RAG/memory/execution trace отсутствуют | 11.1,11.2,11.3,11.5,11.6,11.9,11.10 |
 | 49 | AI НЕ МОЖЕТ | PARTIAL (запрет generic actions) | AI_SYSTEM не имеет доступа к существующим generic actions даже через allow override | Нет работающего AI runtime, зарегистрированных tools, server output policy и adversarial acceptance | 11.3,11.4,11.10 |
