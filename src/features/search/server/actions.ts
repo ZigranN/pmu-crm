@@ -1,4 +1,5 @@
 "use server";
+import { resourceScope } from "@/server/auth/scopes";
 
 import { requireStudioContext, requireStudioPermission } from "@/server/auth/context";
 import { hasPermission } from "@/lib/permissions";
@@ -7,14 +8,15 @@ import { clients, services, masters } from "@/db/schema";
 import { eq, and, isNull, ilike, or, sql } from "drizzle-orm";
 
 export async function searchClientsAction(studioId: string, query: string) {
-  await requireStudioPermission("CLIENT_READ", studioId);
+  const context = await requireStudioPermission("CLIENT_READ", studioId);
+  const scope = await resourceScope(context);
   if (!query || query.length < 2) return [];
 
   const searchPattern = `%${query}%`;
 
-  return await db.query.clients.findMany({
+  const rows = await db.query.clients.findMany({
     where: and(
-      eq(clients.studioId, studioId),
+      scope.client,
       isNull(clients.deletedAt),
       or(
         ilike(clients.firstName, searchPattern),
@@ -28,10 +30,12 @@ export async function searchClientsAction(studioId: string, query: string) {
     ),
     limit: 20,
   });
+  return rows.map(row => ({ ...row, ltvCents: scope.isMaster ? null : row.ltvCents }));
 }
 
 export async function globalSearchAction(studioId: string, query: string) {
   const context = await requireStudioContext(studioId);
+  const scope = await resourceScope(context);
   const [readClients, readServices, readMasters] = await Promise.all(
     (["CLIENT_READ", "SERVICE_READ", "MASTER_READ"] as const).map(
       (permission) => hasPermission(db, context.userId, context.studioId, permission)
@@ -43,7 +47,7 @@ export async function globalSearchAction(studioId: string, query: string) {
 
   const foundClients = readClients ? await db.query.clients.findMany({
     where: and(
-      eq(clients.studioId, studioId),
+      scope.client,
       isNull(clients.deletedAt),
       or(
         ilike(clients.firstName, searchPattern),
@@ -73,7 +77,7 @@ export async function globalSearchAction(studioId: string, query: string) {
 
   const foundMasters = readMasters ? await db.query.masters.findMany({
     where: and(
-      eq(masters.studioId, studioId),
+      scope.master,
       isNull(masters.deletedAt),
       eq(masters.isActive, true),
       or(
@@ -86,7 +90,7 @@ export async function globalSearchAction(studioId: string, query: string) {
   }) : [];
 
   return {
-    clients: foundClients,
+    clients: foundClients.map(row => ({ ...row, ltvCents: scope.isMaster ? null : row.ltvCents })),
     services: foundServices,
     masters: foundMasters,
   };

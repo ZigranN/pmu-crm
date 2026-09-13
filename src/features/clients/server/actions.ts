@@ -1,211 +1,65 @@
 "use server";
-
 import { db } from "@/db";
-import { clients, clientStatusHistory } from "@/db/schema";
+import { clients, clientStatusHistory, activityEvents, auditLogs } from "@/db/schema";
 import { clientSchema, type ClientSchema } from "../schemas/client.schema";
-import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
-import { hasPermission, PERMISSIONS } from "@/lib/permissions";
-import { auditLogService } from "@/server/services/audit-log.service";
-import { activityService } from "@/server/services/activity.service";
+import { requireStudioPermission } from "@/server/auth/context";
+import { lockStudioAccess, resourceScope } from "@/server/auth/scopes";
+import { lockClient } from "@/server/commands/ownership";
+import { hasPermission } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/phone";
 import { revalidatePath } from "next/cache";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
+function parseClient(input: ClientSchema) {
+  const validated = clientSchema.parse(input);
+  const phone = normalizePhone(validated.phone);
+  return { ...validated, phone, whatsapp: validated.whatsapp ? normalizePhone(validated.whatsapp) : phone,
+    fullName: `${validated.firstName} ${validated.lastName || ""}`.trim(),
+    clientStatus: validated.clientStatus as typeof clients.$inferInsert.clientStatus,
+    tags: Array.isArray(validated.tags) ? validated.tags.join(",") : validated.tags };
+}
 export async function createClientAction(input: ClientSchema) {
-  try {
-    const session = await getSession();
-    if (!session) throw new Error("Unauthorized");
-
-    const studioId = await getCurrentStudioId(session.user.id);
-    if (!studioId) throw new Error("Studio not found");
-
-    const canCreate = await hasPermission(db, session.user.id, studioId, PERMISSIONS.CLIENT_CREATE);
-    if (!canCreate) throw new Error("Permission denied");
-
-    const validated = clientSchema.parse(input);
-    
-    const phone = normalizePhone(validated.phone);
-    const whatsapp = validated.whatsapp ? normalizePhone(validated.whatsapp) : phone;
-    const fullName = `${validated.firstName} ${validated.lastName || ""}`.trim();
-
-    const [newClient] = await db.insert(clients).values({
-      ...validated,
-      studioId,
-      phone,
-      whatsapp,
-      fullName,
-      clientStatus: validated.clientStatus as any,
-      tags: Array.isArray(validated.tags) ? validated.tags.join(",") : validated.tags,
-    }).returning();
-
-    await activityService.create({
-      studioId,
-      clientId: newClient.id,
-      userId: session.user.id,
-      type: "client_created",
-      title: "Клиент создан",
-      description: `Клиент ${fullName} добавлен в систему`,
-    });
-
-    await auditLogService.create({
-      studioId,
-      userId: session.user.id,
-      action: "client_created",
-      entityType: "client",
-      entityId: newClient.id,
-      metadata: validated,
-    });
-
-    revalidatePath("/clients");
-    return newClient;
-  } catch (error) {
-    console.error("[createClientAction error]", error);
-    throw error;
-  }
+  const context = await requireStudioPermission("CLIENT_CREATE");
+  const data = parseClient(input);
+  const result = await db.transaction(async tx => {
+    await lockStudioAccess(tx, context);
+    if (!await hasPermission(tx, context.userId, context.studioId, "CLIENT_CREATE")) throw new Error("Permission denied");
+    const [created] = await tx.insert(clients).values({ ...data, studioId: context.studioId }).returning();
+    await tx.insert(activityEvents).values({ ...context, clientId: created.id, type: "client_created", title: "Клиент создан" });
+    await tx.insert(auditLogs).values({ ...context, action: "client_created", entityType: "client", entityId: created.id });
+    return created;
+  });
+  revalidatePath("/clients");
+  return result;
 }
-
 export async function updateClientAction(id: string, input: ClientSchema) {
-  try {
-    const session = await getSession();
-    if (!session) throw new Error("Unauthorized");
-
-    const studioId = await getCurrentStudioId(session.user.id);
-    if (!studioId) throw new Error("Studio not found");
-
-    const canUpdate = await hasPermission(db, session.user.id, studioId, PERMISSIONS.CLIENT_UPDATE);
-    if (!canUpdate) throw new Error("Permission denied");
-
-    const validated = clientSchema.parse(input);
-    
-    const phone = normalizePhone(validated.phone);
-    const whatsapp = validated.whatsapp ? normalizePhone(validated.whatsapp) : phone;
-    const fullName = `${validated.firstName} ${validated.lastName || ""}`.trim();
-
-    const oldClient = await db.query.clients.findFirst({
-      where: and(eq(clients.id, id), eq(clients.studioId, studioId)),
+  const context = await requireStudioPermission("CLIENT_UPDATE");
+  const data = parseClient(input);
+  const result = await db.transaction(async tx => {
+    const before = await lockClient(tx, id, context.studioId, context.userId, false, "CLIENT_UPDATE");
+    const [after] = await tx.update(clients).set({ ...data, updatedAt: new Date() }).where(eq(clients.id, before.id)).returning();
+    if (before.clientStatus !== after.clientStatus) await tx.insert(clientStatusHistory).values({
+      studioId: context.studioId, clientId: id, oldStatus: before.clientStatus, newStatus: after.clientStatus, changedById: context.userId,
     });
-
-    const [updatedClient] = await db.update(clients)
-      .set({
-        ...validated,
-        phone,
-        whatsapp,
-        fullName,
-        clientStatus: validated.clientStatus as any,
-        tags: Array.isArray(validated.tags) ? validated.tags.join(",") : validated.tags,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(clients.id, id), eq(clients.studioId, studioId)))
-      .returning();
-
-    if (oldClient && oldClient.clientStatus !== validated.clientStatus) {
-      await db.insert(clientStatusHistory).values({
-        studioId,
-        clientId: id,
-        oldStatus: oldClient.clientStatus,
-        newStatus: validated.clientStatus,
-        changedById: session.user.id,
-      });
-
-      await activityService.create({
-        studioId,
-        clientId: id,
-        userId: session.user.id,
-        type: "client_status_changed",
-        title: "Статус изменен",
-        description: `Статус изменен с ${oldClient.clientStatus} на ${validated.clientStatus}`,
-      });
-    }
-
-    await activityService.create({
-      studioId,
-      clientId: id,
-      userId: session.user.id,
-      type: "client_updated",
-      title: "Данные обновлены",
-      description: "Личные данные клиента были обновлены",
-    });
-
-    await auditLogService.create({
-      studioId,
-      userId: session.user.id,
-      action: "client_updated",
-      entityType: "client",
-      entityId: id,
-      metadata: validated,
-    });
-
-    revalidatePath("/clients");
-    revalidatePath(`/clients/${id}`);
-    return updatedClient;
-  } catch (error) {
-    console.error("[updateClientAction error]", error);
-    throw error;
-  }
+    await tx.insert(activityEvents).values({ ...context, clientId: id, type: "client_updated", title: "Данные клиента обновлены",
+      metadata: { oldStatus: before.clientStatus, newStatus: after.clientStatus } });
+    await tx.insert(auditLogs).values({ ...context, action: "client_updated", entityType: "client", entityId: id,
+      metadata: { before, after } });
+    const scope = await resourceScope(context, tx);
+    return { ...after, ltvCents: scope.isMaster ? null : after.ltvCents };
+  });
+  revalidatePath("/clients"); revalidatePath(`/clients/${id}`);
+  return result;
 }
-
-export async function archiveClientAction(id: string) {
-  try {
-    const session = await getSession();
-    if (!session) throw new Error("Unauthorized");
-
-    const studioId = await getCurrentStudioId(session.user.id);
-    if (!studioId) throw new Error("Studio not found");
-
-    const canArchive = await hasPermission(db, session.user.id, studioId, PERMISSIONS.CLIENT_ARCHIVE || "CLIENT_UPDATE");
-    if (!canArchive) throw new Error("Permission denied");
-
-    await db.update(clients)
-      .set({
-        deletedAt: new Date(),
-        deletedById: session.user.id,
-      })
-      .where(and(eq(clients.id, id), eq(clients.studioId, studioId)));
-
-    await auditLogService.create({
-      studioId,
-      userId: session.user.id,
-      action: "client_archived",
-      entityType: "client",
-      entityId: id,
-    });
-
-    revalidatePath("/clients");
-  } catch (error) {
-    console.error("[archiveClientAction error]", error);
-    throw error;
-  }
+async function archiveState(id: string, archived: boolean) {
+  const permission = archived ? "CLIENT_ARCHIVE" : "CLIENT_UPDATE";
+  const context = await requireStudioPermission(permission);
+  await db.transaction(async tx => {
+    const before = await lockClient(tx, id, context.studioId, context.userId, !archived, permission);
+    await tx.update(clients).set({ deletedAt: archived ? new Date() : null, deletedById: archived ? context.userId : null, updatedAt: new Date() }).where(eq(clients.id, before.id));
+    await tx.insert(auditLogs).values({ ...context, action: archived ? "client_archived" : "client_restored", entityType: "client", entityId: id });
+  });
+  revalidatePath("/clients"); revalidatePath(`/clients/${id}`);
 }
-
-export async function restoreClientAction(id: string) {
-  try {
-    const session = await getSession();
-    if (!session) throw new Error("Unauthorized");
-
-    const studioId = await getCurrentStudioId(session.user.id);
-    if (!studioId) throw new Error("Studio not found");
-
-    const canUpdate = await hasPermission(db, session.user.id, studioId, PERMISSIONS.CLIENT_UPDATE);
-    if (!canUpdate) throw new Error("Permission denied");
-
-    await db.update(clients)
-      .set({
-        deletedAt: null,
-        deletedById: null,
-      })
-      .where(and(eq(clients.id, id), eq(clients.studioId, studioId)));
-
-    await auditLogService.create({
-      studioId,
-      userId: session.user.id,
-      action: "client_restored",
-      entityType: "client",
-      entityId: id,
-    });
-
-    revalidatePath("/clients");
-  } catch (error) {
-    console.error("[restoreClientAction error]", error);
-    throw error;
-  }
-}
+export async function archiveClientAction(id: string) { await archiveState(id, true); }
+export async function restoreClientAction(id: string) { await archiveState(id, false); }

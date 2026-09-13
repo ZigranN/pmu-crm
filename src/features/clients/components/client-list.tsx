@@ -12,7 +12,7 @@ import { type clients } from "@/db/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ClientListProps {
-  initialClients: (typeof clients.$inferSelect)[];
+  initialClients: (Omit<typeof clients.$inferSelect, "ltvCents"> & { ltvCents: number | null })[];
 }
 
 export function ClientList({ initialClients }: ClientListProps) {

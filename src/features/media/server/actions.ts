@@ -47,7 +47,7 @@ export async function deleteMediaAction(mediaId: string) {
     const studioId = await getCurrentStudioId(session.user.id);
     if (!studioId) throw new Error("Studio not found");
 
-    const mediaRecord = await mediaService.getMediaById(mediaId, studioId);
+    const mediaRecord = await mediaService.getMediaById(mediaId, studioId, "archive");
     if (!mediaRecord) throw new Error("Media not found");
 
     await mediaService.deleteMedia(mediaId, studioId, session.user.id);

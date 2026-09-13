@@ -47,9 +47,9 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 Seed does not create accounts or print credentials. Repeating it preserves studio data,
 existing memberships and edited demo services. It adds missing default grants for OWNER/ADMIN/MASTER; AI_SYSTEM has no generic action grants.
-System-role prohibitions cannot be bypassed with personal allow overrides. Master resource scoping is the next step (1.2). `SEED_DEMO_SERVICES=false` is the default.
+System-role prohibitions cannot be bypassed with personal allow overrides. Master access requires an active profile binding and a client assignment (Phase 1.2). `SEED_DEMO_SERVICES=false` is the default.
 Enable it only for demo data: the three sample prices are not an approved production catalog.
-Migrations through `0005` are required before running this version of the app or seed.
+Migrations through `0006` are required before running this version of the app or seed.
 Seed links the configured account as OWNER only if no membership exists. Existing memberships are preserved.
 Legacy STUDIO_ADMIN/SUPER_ADMIN memberships resolve to OWNER within their studio; ASSISTANT resolves to ADMIN with its existing grants. Auth user.role does not grant studio access.
 
@@ -93,3 +93,13 @@ The [CI workflow](.github/workflows/ci.yml) runs on push and pull request with a
 PostgreSQL 17 service and synthetic credentials. No Neon, Cloudinary or AI keys are required.
 
 The authenticated master-edit E2E requires the disposable PostgreSQL service and TEST_DATABASE_URL. Playwright passes that validated test URL to its app server; build:test continues to use synthetic build configuration. CI runs the full suite with PostgreSQL.
+
+### Master access setup
+
+After migrations, Owner opens `/settings/team`, adds an already registered account,
+selects MASTER and its active master profile, and records a reason. Owner/Admin then
+assigns clients from each client card. Existing clients start unassigned; no historical
+appointment is guessed to be an assignment. Master without a binding/assignment sees no clients.
+Transfers and membership changes are audited; the last active Owner cannot be disabled.
+Migration 0006 fails if legacy profiles contain duplicate `(studio_id, user_id)` bindings;
+resolve those explicitly before retrying, without deleting clients or profiles.

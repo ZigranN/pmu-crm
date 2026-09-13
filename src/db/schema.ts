@@ -10,6 +10,7 @@ import {
     index,
     uniqueIndex,
     check,
+    foreignKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -500,7 +501,8 @@ export const masters = pgTable("masters", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   deletedAt: timestamp("deleted_at"),
   deletedById: text("deleted_by_id"),
-});
+}, (table) => ({ identity: uniqueIndex("masters_id_studio_unique").on(table.id, table.studioId),
+  userBinding: uniqueIndex("masters_studio_user_unique").on(table.studioId, table.userId) }));
 
 export const masterServices = pgTable(
     "master_services",
@@ -587,6 +589,7 @@ export const clients = pgTable(
         nextContactAt: timestamp("next_contact_at"),
         campaignTag: text("campaign_tag"),
         serviceTag: text("service_tag"),
+        assignedMasterId: uuid("assigned_master_id"),
         ltvCents: integer("ltv_cents").default(0).notNull(),
         visitCount: integer("visit_count").default(0).notNull(),
         retentionScore: integer("retention_score"),
@@ -599,6 +602,8 @@ export const clients = pgTable(
         deletedById: text("deleted_by_id"),
     },
     (table) => ({
+        assignment: foreignKey({ name: "clients_assigned_master_studio_fk", columns: [table.assignedMasterId, table.studioId], foreignColumns: [masters.id, masters.studioId] }),
+        assignmentIdx: index("clients_studio_assigned_master_idx").on(table.studioId, table.assignedMasterId),
         studioIdIdx: index("clients_studio_id_idx").on(table.studioId),
         phoneIdx: index("clients_phone_idx").on(table.phone),
         whatsappIdx: index("clients_whatsapp_idx").on(table.whatsapp),
@@ -606,6 +611,17 @@ export const clients = pgTable(
         fullNameIdx: index("clients_full_name_idx").on(table.fullName),
     })
 );
+
+export const clientAssignments = pgTable("client_assignments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id").notNull().references(() => studios.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  previousMasterId: uuid("previous_master_id"),
+  masterId: uuid("master_id"),
+  changedById: text("changed_by_id").notNull().references(() => user.id),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({ clientHistory: index("client_assignments_client_history_idx").on(table.studioId, table.clientId, table.createdAt) }));
 
 export const clientMedicalProfiles = pgTable("client_medical_profiles", {
     id: uuid("id").defaultRandom().primaryKey(),

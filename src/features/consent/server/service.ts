@@ -1,7 +1,9 @@
 import "server-only";
+import { resourceScope } from "@/server/auth/scopes";
+import { requireStudioPermission } from "@/server/auth/context";
 import { db } from "@/db";
 import { consents, media, auditLogs, activityEvents, consentTypeEnum } from "@/db/schema";
-import { eq, and, isNull, desc } from "drizzle-orm";
+import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import { mediaService, withMediaUpload } from "@/features/media/server/service";
 import { z } from "zod";
 
@@ -29,9 +31,11 @@ export const consentService = {
   },
 
   async getClientConsents(clientId: string, studioId: string) {
+    const context = await requireStudioPermission("CONSENT_READ", studioId);
+    const scope = await resourceScope(context);
     const rows = await db.select({ consent: consents }).from(consents).innerJoin(media, and(
       eq(media.id, consents.mediaId), eq(media.studioId, studioId), eq(media.clientId, clientId), isNull(media.deletedAt),
-    )).where(and(eq(consents.clientId, clientId), eq(consents.studioId, studioId))).orderBy(desc(consents.signedAt));
+    )).where(and(scope.clientReference(sql`${consents.clientId}`), eq(consents.clientId, clientId), eq(consents.studioId, studioId))).orderBy(desc(consents.signedAt));
     return rows.map((row) => row.consent);
   },
 

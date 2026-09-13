@@ -1,13 +1,15 @@
 import "server-only";
+import { resourceScope } from "@/server/auth/scopes";
 import { requireStudioPermission } from "@/server/auth/context";
 import { db } from "@/db";
 import { masters, masterServices } from "@/db/schema";
 import { eq, and, isNull, ilike } from "drizzle-orm";
 
 export async function getMasters(studioId: string, filters?: { search?: string, showArchived?: boolean }) {
-  await requireStudioPermission("MASTER_READ", studioId);
+  const context = await requireStudioPermission("MASTER_READ", studioId);
+  const scope = await resourceScope(context);
   const conditions = [
-    eq(masters.studioId, studioId),
+    scope.master,
   ];
 
   if (!filters?.showArchived) {
@@ -29,10 +31,11 @@ export async function getMasters(studioId: string, filters?: { search?: string, 
 }
 
 export async function getActiveMasters(studioId: string) {
-  await requireStudioPermission("MASTER_READ", studioId);
+  const context = await requireStudioPermission("MASTER_READ", studioId);
+  const scope = await resourceScope(context);
   return await db.query.masters.findMany({
     where: and(
-      eq(masters.studioId, studioId),
+      scope.master,
       eq(masters.isActive, true),
       isNull(masters.deletedAt)
     ),
@@ -41,9 +44,10 @@ export async function getActiveMasters(studioId: string) {
 }
 
 export async function getMasterById(id: string, studioId: string) {
-  await requireStudioPermission("MASTER_READ", studioId);
+  const context = await requireStudioPermission("MASTER_READ", studioId);
+  const scope = await resourceScope(context);
   const master = await db.query.masters.findFirst({
-    where: and(eq(masters.id, id), eq(masters.studioId, studioId)),
+    where: and(eq(masters.id, id), scope.master),
   });
   if (!master) return undefined;
   const links = await db.query.masterServices.findMany({

@@ -11,7 +11,7 @@ export async function upsertMedicalProfileAction(clientId: string, input: Medica
   const { studioId, userId } = await requireStudioPermission("MEDICAL_PROFILE_UPDATE");
   const validated = medicalProfileSchema.parse(input);
   await db.transaction(async (tx) => {
-    await lockClient(tx, clientId, studioId);
+    await lockClient(tx, clientId, studioId, userId, false, "MEDICAL_PROFILE_UPDATE");
     await tx.insert(clientMedicalProfiles).values({ ...validated, clientId })
       .onConflictDoUpdate({ target: clientMedicalProfiles.clientId, set: { ...validated, updatedAt: new Date() } });
     await tx.insert(activityEvents).values({ studioId, clientId, userId, type: "medical_profile_updated",
