@@ -14,7 +14,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 let database: Awaited<ReturnType<typeof createTestDatabase>>, db: typeof import("@/db").db;
 let actions: typeof import("@/features/services/server/actions"), queries: typeof import("@/features/services/server/queries");
 const owner = randomUUID(); let studioId: string, foreignStudio: string, ownerRole: string, masterRole: string;
-const input: ServiceSchema = { catalogCode: "brows-shading", priceMode: "estimate", price: 500, priceMax: null, durationMinutes: 120,
+const input: ServiceSchema = { priceChangeReason: "Synthetic price review", catalogCode: "brows-shading", priceMode: "estimate", price: 500, priceMax: null, durationMinutes: 120,
   preparationTemplateId: null, postCareTemplateId: null, isActive: true };
 beforeAll(async () => {
   database = await createTestDatabase(); vi.doMock("@/db", () => ({ db: database.db })); db = (await import("@/db")).db;

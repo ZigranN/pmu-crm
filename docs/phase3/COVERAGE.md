@@ -1,6 +1,6 @@
 # Матрица покрытия — 80 разделов
 
-Рабочая редакция ТЗ 1.1. Аудит основан на commit `6ed762f`; последующее восстановление миграций описано в [MIGRATION-BASELINE.md](MIGRATION-BASELINE.md). Локальные исправления доступа 0.3 описаны в ACCESS-BASELINE.md. Расширение требований AI не означает их реализацию.
+Рабочая редакция ТЗ 1.1. Аудит основан на commit `6ed762f`; последующее восстановление миграций описано в [MIGRATION-BASELINE.md](MIGRATION-BASELINE.md). Локальные исправления доступа 0.3 описаны в ACCESS-BASELINE.md. Строки 6–10 обновлены по веткам Phase 2.1/2.2 (см. baseline); это не означает rollout в Neon. Остальная таблица сохраняет исходный аудит. Расширение требований AI не означает их реализацию.
 
 PARTIAL — часть функции; FOUNDATION — схема без workflow; CONFLICT — противоречие; MISSING — отсутствует; DEFERRED — P2; NOT ACCEPTED — готовность не доказана. Пути относятся к src/, если не указано иное.
 
@@ -11,11 +11,11 @@ PARTIAL — часть функции; FOUNDATION — схема без workflow
 | 3 | ОСНОВНЫЕ СУЩНОСТИ | PARTIAL | db/schema.ts:39 таблиц | Нет cycles/packages/conversations, multi-cycle visit; остальные сущности частичны | 3.1,6.1,9.1 |
 | 4 | КАРТОЧКА КЛИЕНТА | PARTIAL/CONFLICT | clients medical form/actions; scoped reads (0.3), scoped transactional writes (0.4) | Нет clearance/language/assignment; полная медицинская модель остаётся в Phase 4 | 0.3,1.1,2.3,4.1 |
 | 5 | CLIENT DEDUPLICATION | MISSING | clients actions; phone.ts; неуникальные индексы | Нет exact/possible/merge/provenance, create дублируется | 2.4,2.5 |
-| 6 | СПРАВОЧНИК УСЛУГ | PARTIAL | services schema/form/actions | Нет service zone/technique FK, sessions model и templates | 2.1 |
-| 7 | МОДЕЛЬ КОЛИЧЕСТВА СЕССИЙ | MISSING | services.requiresCorrection | Boolean correction не one/two/variable | 2.1,7.1 |
-| 8 | ЦЕНЫ И УСЛУГИ | CONFLICT | db/seed.ts:180 | Демо €350/400/250 и150/180мин не соответствуют полному каталогу | 2.1,2.2 |
-| 9 | MASTER-SPECIFIC PRICING | MISSING | masterServices без price override | Нет effective price | 2.2 |
-| 10 | CUSTOM OFFER | MISSING | Нет offers модуля | Нет agreed offer/reason/approval/history | 2.2 |
+| 6 | СПРАВОЧНИК УСЛУГ | PARTIAL | SERVICE-CATALOG-BASELINE.md; нормализованный каталог, FK, sessions, templates | Legacy требует ручного разбора; Calendar Engine подключается в Phase 5 | 2.1,5.1 |
+| 7 | МОДЕЛЬ КОЛИЧЕСТВА СЕССИЙ | PARTIAL | serviceDefinitions + services sessionsModel, DB constraints | Session workflow ещё не реализован | 2.1,7.1 |
+| 8 | ЦЕНЫ И УСЛУГИ | PARTIAL | 13 определений §8, повторяемый import; quote/estimate/range | Требуется отдельный rollout; legacy не переписываются автоматически | 2.1,2.2 |
+| 9 | MASTER-SPECIFIC PRICING | PARTIAL | PRICING-OFFERS-BASELINE.md; resolvePrice + immutable overrides | Effective price реализован; будущий booking должен использовать общий resolver | 2.2,5.1 |
+| 10 | CUSTOM OFFER | PARTIAL | offers UI/commands, immutable revisions, reason/approval/audit | Client-level offer реализован; ссылки cycle/ledger подключаются в своих фазах | 2.2,3.1,6.1 |
 | 11 | TOTAL FACE | MISSING | Enum total_look, нет package | Нет3 cycles,1400,500/400/500,deadline/extension | 8.1,8.2 |
 | 12 | REMOVER | MISSING | Enum remover, нет workflow | Нет variable sessions,100/visit,review30–45,outcomes | 8.3,8.4 |
 | 13 | КАЛЕНДАРЬ | FOUNDATION | availability/breaks/blockedTimes; schedule заглушка | Нет slot engine/DST/holiday/vacation/override | 5.1 |

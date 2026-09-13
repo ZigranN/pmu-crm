@@ -53,6 +53,7 @@ export function ServiceForm({ initialData, definitions, templates }: Props) {
   }
   if (initialData?.supersededById) return <p>Эта запись сохранена как дубль. <Link className="underline" href={`/services/${initialData.supersededById}/edit`}>Открыть основную услугу</Link></p>;
   return <form className="space-y-6 pb-24" onSubmit={event => { event.preventDefault(); void save(); }}>
+    {initialData?.catalogVersion === 1 && !initialData.deletedAt && initialData.isActive && <Link className="underline" href={`/services/${initialData.id}/pricing`}>Цены мастеров</Link>}
     {initialData?.catalogVersion === 0 && <div className="rounded border p-3"><p>Старая запись: {initialData.name}. Выберите соответствующую услугу и проверьте условия перед сохранением.</p>
       <p>Сохранённая цена: {initialData.priceCents === null ? "не указана" : `${initialData.priceCents / 100} €`}; длительность: {initialData.durationMinutes ?? "не указана"} мин. Старый ID и история сохранятся.</p></div>}
     <fieldset disabled={pending || !!initialData?.deletedAt} className="space-y-6">
@@ -81,6 +82,7 @@ export function ServiceForm({ initialData, definitions, templates }: Props) {
           <Input id="service-price" type="number" min="0" step="0.01" value={values.price ?? ""} onChange={event => set("price", event.target.value === "" ? null : Number(event.target.value))} required /></>}
         {values.priceMode === "range" && <><label htmlFor="service-price-max">Верхняя граница (€)</label>
           <Input id="service-price-max" type="number" min="0" step="0.01" value={values.priceMax ?? ""} onChange={event => set("priceMax", event.target.value === "" ? null : Number(event.target.value))} required /></>}
+        {initialData && <><label htmlFor="price-change-reason">Причина изменения цены</label><Input id="price-change-reason" value={values.priceChangeReason ?? ""} onChange={event => set("priceChangeReason", event.target.value)} maxLength={1000} /></>}
         <p className="text-sm text-muted-foreground">Это условия каталога, а не согласованная цена конкретного клиента. Для Remover цена указана за один сеанс.</p>
       </FormSection>
       <FormSection title="Длительность и материалы">

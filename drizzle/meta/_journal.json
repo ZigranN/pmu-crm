@@ -71,6 +71,13 @@
       "when": 1789298283155,
       "tag": "0009_service_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789299305798,
+      "tag": "0010_pricing_offers",
+      "breakpoints": true
     }
   ]
 }

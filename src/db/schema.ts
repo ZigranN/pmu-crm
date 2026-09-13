@@ -649,6 +649,7 @@ export const clients = pgTable(
     (table) => ({
         assignment: foreignKey({ name: "clients_assigned_master_studio_fk", columns: [table.assignedMasterId, table.studioId], foreignColumns: [masters.id, masters.studioId] }),
         assignmentIdx: index("clients_studio_assigned_master_idx").on(table.studioId, table.assignedMasterId),
+        identity: uniqueIndex("clients_id_studio_unique").on(table.id, table.studioId),
         studioIdIdx: index("clients_studio_id_idx").on(table.studioId),
         phoneIdx: index("clients_phone_idx").on(table.phone),
         whatsappIdx: index("clients_whatsapp_idx").on(table.whatsapp),
@@ -1437,3 +1438,51 @@ export const jobAttempts = pgTable("job_attempts", {
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
 }, table => ({ job: index("job_attempts_job_idx").on(table.jobId, table.startedAt) }));
+
+// Append-only pricing/offer history; database triggers reject changes to recorded revisions.
+export const masterPriceRevisions = pgTable("master_price_revisions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id").notNull().references(() => studios.id, { onDelete: "cascade" }),
+  serviceId: uuid("service_id").notNull(), masterId: uuid("master_id").notNull(),
+  revision: integer("revision").notNull(), priceCents: integer("price_cents"),
+  reason: text("reason").notNull(), approvedById: text("approved_by_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => ({
+  version: uniqueIndex("master_price_revision_unique").on(table.studioId, table.serviceId, table.masterId, table.revision),
+  service: foreignKey({ columns: [table.serviceId, table.studioId], foreignColumns: [services.id, services.studioId] }),
+  master: foreignKey({ columns: [table.masterId, table.studioId], foreignColumns: [masters.id, masters.studioId] }),
+  contract: check("master_price_revision_check", sql`${table.revision} > 0 and (${table.priceCents} is null or ${table.priceCents} >= 0) and length(trim(${table.reason})) > 0`),
+}));
+export const customOffers = pgTable("custom_offers", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id").notNull().references(() => studios.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull(), createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => ({
+  identity: uniqueIndex("custom_offers_id_studio_unique").on(table.id, table.studioId),
+  client: foreignKey({ columns: [table.clientId, table.studioId], foreignColumns: [clients.id, clients.studioId] }),
+}));
+export const offerRevisions = pgTable("offer_revisions", {
+  id: uuid("id").defaultRandom().primaryKey(), studioId: uuid("studio_id").notNull().references(() => studios.id, { onDelete: "cascade" }),
+  offerId: uuid("offer_id").notNull(), revision: integer("revision").notNull(),
+  standardTotalCents: integer("standard_total_cents").notNull(), agreedTotalCents: integer("agreed_total_cents").notNull(), discountCents: integer("discount_cents").notNull(),
+  currency: text("currency").notNull().default("EUR"), reason: text("reason").notNull(), approvedById: text("approved_by_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => ({
+  identity: uniqueIndex("offer_revisions_id_studio_unique").on(table.id, table.studioId),
+  version: uniqueIndex("offer_revision_unique").on(table.offerId, table.revision),
+  offer: foreignKey({ columns: [table.offerId, table.studioId], foreignColumns: [customOffers.id, customOffers.studioId] }),
+  totals: check("offer_revision_totals_check", sql`${table.revision} > 0 and ${table.standardTotalCents} >= 0 and ${table.agreedTotalCents} >= 0 and ${table.discountCents} = greatest(0, ${table.standardTotalCents} - ${table.agreedTotalCents}) and ${table.currency} = 'EUR' and length(trim(${table.reason})) > 0`),
+}));
+export const offerItems = pgTable("offer_items", {
+  id: uuid("id").defaultRandom().primaryKey(), studioId: uuid("studio_id").notNull().references(() => studios.id, { onDelete: "cascade" }),
+  revisionId: uuid("revision_id").notNull(), serviceId: uuid("service_id").notNull(), masterId: uuid("master_id"),
+  zoneCode: text("zone_code").notNull().references(() => catalogZones.code),
+  serviceName: text("service_name").notNull(), masterName: text("master_name"),
+  standardCents: integer("standard_cents").notNull(), priceSnapshot: jsonb("price_snapshot").$type<{ source: string; mode: string; priceCents: number | null; priceMaxCents: number | null; version: string; humanQuoted: boolean }>().notNull(),
+}, table => ({
+  zone: uniqueIndex("offer_items_zone_unique").on(table.revisionId, table.zoneCode),
+  revision: foreignKey({ columns: [table.revisionId, table.studioId], foreignColumns: [offerRevisions.id, offerRevisions.studioId] }),
+  service: foreignKey({ columns: [table.serviceId, table.studioId], foreignColumns: [services.id, services.studioId] }),
+  master: foreignKey({ columns: [table.masterId, table.studioId], foreignColumns: [masters.id, masters.studioId] }),
+  amount: check("offer_item_amount_check", sql`${table.standardCents} >= 0 and ${table.zoneCode} in ('brows','eyes','lips')`),
+}));
