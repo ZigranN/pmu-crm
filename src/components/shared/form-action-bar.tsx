@@ -26,8 +26,7 @@ export function FormActionBar({
   return (
     <div
       className={cn(
-        "fixed bottom-0 left-0 right-0 z-40 border-t bg-ivory/95 backdrop-blur-md p-4 md:relative md:bg-transparent md:border-t-0 md:p-0 md:mt-8",
-        "pb-safe", // Support for notched phones
+        "fixed bottom-[calc(4rem+env(safe-area-inset-bottom))] md:bottom-auto left-0 right-0 z-40 border-t bg-ivory/95 backdrop-blur-md p-4 md:relative md:bg-transparent md:border-t-0 md:p-0 md:mt-8",
         className
       )}
     >
@@ -51,8 +50,6 @@ export function FormActionBar({
         </Button>
         {children}
       </div>
-      {/* Spacer for mobile bottom nav since this is sticky */}
-      <div className="h-16 md:hidden" />
     </div>
   );
 }

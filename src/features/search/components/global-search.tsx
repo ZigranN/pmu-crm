@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { Search, Users, Scissors, User, Loader2, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
@@ -25,35 +27,30 @@ export function GlobalSearch({ studioId, open, onOpenChange }: GlobalSearchProps
     masters: any[];
   } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const debouncedQuery = useDebounce(query, 300);
 
-  const handleSearch = useCallback(async (q: string) => {
-    if (q.length < 2) {
-      setResults(null);
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const data = await globalSearchAction(studioId, q);
-      setResults(data);
-    } catch (error) {
-      console.error("Search error:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [studioId]);
-
   useEffect(() => {
-    async function doSearch() {
-      if (debouncedQuery) {
-        await handleSearch(debouncedQuery);
-      } else {
-        setResults({ clients: [], services: [], masters: [] });
+    let active = true;
+    async function search() {
+      setError(null);
+      if (!open || query.trim().length < 2 || query !== debouncedQuery) {
+        setResults(null);
+        setIsLoading(false);
+        return;
       }
+      setIsLoading(true);
+      try {
+        const data = await globalSearchAction(studioId, debouncedQuery.trim());
+        if (active) setResults(data);
+      } catch {
+        if (active) { setResults(null); setError("Не удалось выполнить поиск. Попробуйте ещё раз."); }
+      } finally { if (active) setIsLoading(false); }
     }
-    doSearch();
-  }, [debouncedQuery, handleSearch]);
+    void search();
+    return () => { active = false; };
+  }, [query, debouncedQuery, studioId, open]);
 
   const navigateTo = (path: string) => {
     onOpenChange(false);
@@ -76,23 +73,26 @@ export function GlobalSearch({ studioId, open, onOpenChange }: GlobalSearchProps
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[550px] p-0 gap-0 overflow-hidden">
+        <DialogTitle className="sr-only">Поиск по студии</DialogTitle>
+        <DialogDescription className="sr-only">Найдите клиента, услугу или мастера.</DialogDescription>
         <div className="flex items-center border-b px-3">
           <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
           <Input
+            aria-label="Поисковый запрос"
             placeholder="Поиск клиентов, услуг или мастеров..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setResults(null); }}
             className="flex h-12 w-full rounded-md bg-transparent py-3 text-sm outline-none border-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
           />
           {isLoading && <Loader2 className="h-4 w-4 animate-spin opacity-50" />}
           {query && !isLoading && (
-            <X 
-              className="h-4 w-4 opacity-50 cursor-pointer hover:opacity-100" 
-              onClick={() => setQuery("")}
-            />
+            <button type="button" aria-label="Очистить поиск" onClick={() => setQuery("")} className="p-2 mr-6">
+              <X className="h-4 w-4 opacity-50" />
+            </button>
           )}
         </div>
         <div className="max-h-[400px] overflow-y-auto p-2">
+          {error && <p role="alert" className="p-4 text-sm">{error}</p>}
           {!results && !isLoading && query.length < 2 && (
             <p className="py-6 text-center text-sm text-muted-foreground">
               Введите минимум 2 символа для поиска...
@@ -133,7 +133,7 @@ export function GlobalSearch({ studioId, open, onOpenChange }: GlobalSearchProps
                     {results.services.map((service) => (
                       <button
                         key={service.id}
-                        onClick={() => navigateTo(`/services/${service.id}/edit`)}
+                        onClick={() => navigateTo(`/services/${service.id}`)}
                         className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-sand/50 text-left transition-colors"
                       >
                         <Scissors className="h-4 w-4 text-taupe" />
@@ -156,7 +156,7 @@ export function GlobalSearch({ studioId, open, onOpenChange }: GlobalSearchProps
                     {results.masters.map((master) => (
                       <button
                         key={master.id}
-                        onClick={() => navigateTo(`/masters/${master.id}/edit`)}
+                        onClick={() => navigateTo(`/masters/${master.id}`)}
                         className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-sand/50 text-left transition-colors"
                       >
                         <User className="h-4 w-4 text-taupe" />

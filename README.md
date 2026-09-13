@@ -37,36 +37,19 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 ## Development
 
-### How to create first admin user
+### Bootstrap a development studio
 
-1. Set in `.env.local`:
-   ```bash
-   SEED_ADMIN_EMAIL="email@example.com"
-   SEED_ADMIN_PASSWORD="11111111"
-   SEED_ADMIN_NAME="Alty"
-   ```
+1. Fill the studio settings and `SEED_ADMIN_EMAIL` in your ignored `.env.local`.
+2. Apply committed migrations with `npm run db:migrate`. Do not generate migrations during setup.
+3. Register at `/register` with that email and a password of your choice.
+4. Run `npm run db:seed` to link the registered user to the studio.
+5. Sign in at `/login` and open `/dashboard`.
 
-2. Run migrations and initial seed:
-   ```bash
-   npm run db:generate
-   npm run db:migrate
-   npm run db:seed
-   ```
-
-3. Open [http://localhost:3000/register](http://localhost:3000/register) and register with:
-   - Email: `email@example.com` (must match `SEED_ADMIN_EMAIL`)
-   - Password: `11111111`
-   - Name: `Alty`
-
-4. Run seed again to link the user to the studio as `STUDIO_ADMIN`:
-   ```bash
-   npm run db:seed
-   ```
-
-5. Open [http://localhost:3000/login](http://localhost:3000/login) and login with the same credentials.
-
-6. Verify that your role in the dashboard is `STUDIO_ADMIN` and you have access to Services, Masters, and Clients.
-
+Seed does not create accounts or print credentials. Repeating it preserves studio data,
+existing memberships and edited demo services. It adds missing legacy default role grants;
+the final Phase 1 permission matrix is still pending. `SEED_DEMO_SERVICES=false` is the default.
+Enable it only for demo data: the three sample prices are not an approved production catalog.
+Migration `0004` is required before running this version of the app or seed.
 
 ## Automated checks (Phase 0.2)
 

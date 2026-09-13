@@ -64,9 +64,8 @@ const seedEnvSchema = z.object({
     SEED_STUDIO_CITY: z.string().min(1),
     SEED_STUDIO_ADDRESS: z.string().default(""),
     SEED_STUDIO_WHATSAPP: z.string().default(""),
-    SEED_ADMIN_NAME: z.string().min(1),
     SEED_ADMIN_EMAIL: z.string().email(),
-    SEED_ADMIN_PASSWORD: z.string().min(1),
+    SEED_DEMO_SERVICES: z.enum(["true", "false"]).default("false"),
 });
 
 export function getSeedEnv() {
@@ -78,8 +77,7 @@ export function getSeedEnv() {
         SEED_STUDIO_CITY: process.env.SEED_STUDIO_CITY,
         SEED_STUDIO_ADDRESS: process.env.SEED_STUDIO_ADDRESS,
         SEED_STUDIO_WHATSAPP: process.env.SEED_STUDIO_WHATSAPP,
-        SEED_ADMIN_NAME: process.env.SEED_ADMIN_NAME,
         SEED_ADMIN_EMAIL: process.env.SEED_ADMIN_EMAIL,
-        SEED_ADMIN_PASSWORD: process.env.SEED_ADMIN_PASSWORD,
+        SEED_DEMO_SERVICES: process.env.SEED_DEMO_SERVICES,
     });
 }
