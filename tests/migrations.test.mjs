@@ -123,8 +123,17 @@ test("fresh install, upgrade with data, and repeated migrate converge", async (t
     values (${role.id}, ${permission.id}, '2026-01-01') returning id`;
   await upgraded`insert into role_permissions (role_id, permission_id, created_at)
     values (${role.id}, ${permission.id}, '2026-01-02')`;
+  await upgraded`insert into "user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
+    values ('override-test', 'Test', 'override@example.test', false, now(), now())`;
+  await upgraded`insert into user_custom_permissions (user_id, studio_id, permission_id, effect)
+    values ('override-test', ${studio.id}, ${permission.id}, 'allow'),
+    ('override-test', ${studio.id}, ${permission.id}, 'deny'),
+    ('override-test', ${studio.id}, ${permission.id}, 'deny')`;
   await migrate(drizzle(upgradedDatabase.engine), { migrationsFolder });
-  assert.deepEqual(await upgraded`select id from role_permissions`, [originalGrant]);
+  assert.deepEqual(await upgraded`select effect from user_custom_permissions where user_id = 'override-test'`, [{ effect: 'deny' }]);
+  await assert.rejects(upgraded`insert into user_custom_permissions (user_id, studio_id, permission_id, effect)
+    values ('override-test', ${studio.id}, ${permission.id}, 'allow')`);
+  assert.deepEqual(await upgraded`select id from role_permissions where role_id = ${role.id}`, [originalGrant]);
   await assert.rejects(upgraded`insert into role_permissions (role_id, permission_id) values (${role.id}, ${permission.id})`);
   const [preserved] = await upgraded`select * from clients where id = ${client.id}`;
   for (const [key, value] of Object.entries(client)) assert.deepEqual(preserved[key], value);
@@ -135,6 +144,9 @@ test("fresh install, upgrade with data, and repeated migrate converge", async (t
   const beforeRepeat = await upgraded`select * from clients where id = ${client.id}`;
   const history = await upgraded`select * from drizzle.__drizzle_migrations order by created_at`;
   await migrate(drizzle(upgradedDatabase.engine), { migrationsFolder });
+  assert.deepEqual(await upgraded`select effect from user_custom_permissions where user_id = 'override-test'`, [{ effect: 'deny' }]);
+  await assert.rejects(upgraded`insert into user_custom_permissions (user_id, studio_id, permission_id, effect)
+    values ('override-test', ${studio.id}, ${permission.id}, 'allow')`);
   assert.deepEqual(await upgraded`select * from clients where id = ${client.id}`, beforeRepeat);
   assert.deepEqual(await upgraded`select * from drizzle.__drizzle_migrations order by created_at`, history);
   assert.deepEqual(await catalog(upgraded), await catalog(fresh));

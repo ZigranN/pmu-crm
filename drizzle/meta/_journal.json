@@ -36,6 +36,13 @@
       "when": 1789218693342,
       "tag": "0004_seed_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789289437685,
+      "tag": "0005_role_policy",
+      "breakpoints": true
     }
   ]
 }

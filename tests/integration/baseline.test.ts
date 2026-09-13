@@ -8,12 +8,13 @@ import { hasPermission } from "@/lib/permissions";
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 const studioIds: string[] = [];
+const forgedEmail = `${randomUUID()}@example.test`;
 const authEmail = `${randomUUID()}@example.test`;
 beforeAll(async () => { database = await createTestDatabase(); });
 afterAll(async () => {
   if (!database) return;
   try {
-    await database.db.delete(user).where(eq(user.email, authEmail));
+    await database.db.delete(user).where(inArray(user.email, [authEmail, forgedEmail]));
     if (studioIds.length) await database.db.delete(studios).where(inArray(studios.id, studioIds));
   } finally { await database.close(); }
 });
@@ -49,7 +50,28 @@ test("actual auth configuration signs up, validates session and rejects wrong pa
   expect(cookie).toContain("session_token");
   const session = await auth.api.getSession({ headers: new Headers({ cookie }) });
   expect(session?.user.email).toBe(authEmail);
+  expect(session?.user.role).toBe("CLIENT");
+  const update = await auth.handler(new Request("http://127.0.0.1:3100/api/auth/update-user", {
+    method: "POST", headers: { "content-type": "application/json", cookie, origin: "http://127.0.0.1:3100" },
+    body: JSON.stringify({ role: "SUPER_ADMIN" }),
+  }));
+  expect(update.status).toBe(400);
+  expect((await database.db.select().from(user).where(eq(user.email, authEmail)))[0].role).toBe("CLIENT");
   const wrong = await auth.api.signInEmail({ body: { email: authEmail, password: "wrong-password" }, asResponse: true });
   expect(wrong.status).toBe(401);
   expect(await auth.api.getSession({ headers: new Headers() })).toBeNull();
+});
+
+
+test("HTTP signup cannot choose a privileged auth role", async () => {
+  vi.doMock("@/db", () => ({ db: database.db }));
+  const { auth } = await import("@/lib/auth");
+  const response = await auth.handler(new Request("http://127.0.0.1:3100/api/auth/sign-up/email", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: forgedEmail, password: "Synthetic-password-123!", name: "Forged", role: "SUPER_ADMIN" }),
+  }));
+  expect([200, 400]).toContain(response.status);
+  const saved = await database.db.select().from(user).where(eq(user.email, forgedEmail));
+  if (response.status === 200) { expect(saved).toHaveLength(1); expect(saved[0].role).toBe("CLIENT"); }
+  else expect(saved).toHaveLength(0);
 });

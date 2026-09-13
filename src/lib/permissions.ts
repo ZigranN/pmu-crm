@@ -1,6 +1,6 @@
-import { studioMembers, rolePermissions, permissions, userCustomPermissions, roles } from "@/db/schema";
+import { studioMembers, rolePermissions, permissions, userCustomPermissions, roles, studios } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { ROLES } from "./roles";
+import { normalizeRole } from "./roles";
 
 export const PERMISSIONS = {
   CLIENT_READ: "CLIENT_READ",
@@ -66,6 +66,29 @@ export const PERMISSIONS = {
 
 export type PermissionCode = keyof typeof PERMISSIONS;
 
+// Capability ceiling: even an allow override cannot bypass a system-role prohibition.
+// Resource ownership checks are separate (Phase 1.2).
+export const ROLE_CAPABILITIES: Readonly<Record<"OWNER" | "ADMIN" | "MASTER" | "AI_SYSTEM", readonly PermissionCode[]>> = {
+  OWNER: Object.values(PERMISSIONS),
+  ADMIN: [
+    "CLIENT_READ", "CLIENT_CREATE", "CLIENT_UPDATE", "CLIENT_ARCHIVE", "MEDICAL_PROFILE_READ",
+    "APPOINTMENT_READ", "APPOINTMENT_CREATE", "APPOINTMENT_UPDATE", "APPOINTMENT_CANCEL", "APPOINTMENT_NO_SHOW",
+    "MEDIA_READ", "MEDIA_CREATE", "CONSENT_READ", "CONSENT_UPLOAD", "PAYMENT_READ", "PAYMENT_MARK_DEPOSIT",
+    "SERVICE_READ", "MASTER_READ", "WHATSAPP_TEMPLATE_READ", "WHATSAPP_TEMPLATE_USE",
+    "TASK_READ", "TASK_CREATE", "TASK_UPDATE", "REVIEW_READ", "REVIEW_CREATE",
+  ],
+  MASTER: [
+    "CLIENT_READ", "CLIENT_UPDATE", "MEDICAL_PROFILE_READ", "MEDICAL_PROFILE_UPDATE",
+    "APPOINTMENT_READ", "APPOINTMENT_COMPLETE", "APPOINTMENT_NO_SHOW",
+    "PROCEDURE_READ", "PROCEDURE_CREATE", "PROCEDURE_UPDATE", "MEDIA_READ", "MEDIA_CREATE",
+    "CONSENT_READ", "CONSENT_UPLOAD", "PAYMENT_READ", "PAYMENT_MARK_DEPOSIT", "SERVICE_READ", "MASTER_READ",
+    "WHATSAPP_TEMPLATE_READ", "WHATSAPP_TEMPLATE_USE", "TASK_READ", "TASK_CREATE", "TASK_UPDATE",
+    "REVIEW_READ", "REVIEW_CREATE",
+  ],
+  // No existing generic action is yet an approved AI command. Phase 11 opens typed tools.
+  AI_SYSTEM: [],
+};
+
 export async function hasPermission(dbInstance: any, userId: string, studioId: string, permissionCode: PermissionCode): Promise<boolean> {
   try {
     // 1. Получаем роль пользователя в студии
@@ -78,6 +101,8 @@ export async function hasPermission(dbInstance: any, userId: string, studioId: s
     });
 
     if (!member) return false;
+    const studio = await dbInstance.query.studios.findFirst({ where: and(eq(studios.id, studioId), eq(studios.isActive, true)) });
+    if (!studio) return false;
 
     const role = await dbInstance.query.roles.findFirst({
       where: eq(roles.id, member.roleId),
@@ -85,8 +110,12 @@ export async function hasPermission(dbInstance: any, userId: string, studioId: s
 
     if (!role) return false;
 
-    // SUPER_ADMIN может всё
-    if (role.code === ROLES.SUPER_ADMIN) return true;
+    if (!Object.hasOwn(PERMISSIONS, permissionCode)) return false;
+    const normalized = normalizeRole(role.code);
+    if (role.code === "CLIENT") return false;
+    if (normalized && !ROLE_CAPABILITIES[normalized].includes(permissionCode)) return false;
+    // OWNER is full access, but only within an active studio membership.
+    if (normalized === "OWNER") return true;
 
     // Scope overrides to the requested permission. Deny wins if duplicate
     // overrides exist in the legacy schema (which has no unique constraint).

@@ -9,7 +9,7 @@ import { GlobalSearch } from "@/features/search/components/global-search";
 import Link from "next/link";
 import { navItems } from "./navigation-items";
 
-export function AppHeader({ studioId }: { studioId?: string }) {
+export function AppHeader({ studioId, role }: { studioId?: string; role?: string | null }) {
   const { data: session } = authClient.useSession();
   const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -49,7 +49,7 @@ export function AppHeader({ studioId }: { studioId?: string }) {
             <div className="flex items-center gap-3">
               <div className="hidden sm:flex flex-col items-end">
                 <span className="text-sm font-medium">{session.user.name}</span>
-                <span className="text-xs text-muted">{(session.user as any).role}</span>
+                <span className="text-xs text-muted">{role ?? "Нет роли в студии"}</span>
               </div>
               <Button variant="ghost" size="icon" aria-label="Выйти" onClick={handleLogout}>
                 <LogOut className="w-5 h-5 text-muted" />
