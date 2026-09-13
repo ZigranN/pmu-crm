@@ -47,6 +47,23 @@ for(const outcome of ["removal_required","client_thinking","temporarily_unavaila
    const revisions=await db.select().from(s.followUpRevisions).where(eq(s.followUpRevisions.resultId,result.id));expect(revisions).toHaveLength(1);
    expect((await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,result.id)))[0].status).toBe("cancelled");
    expect(await db.select().from(s.consultationResults).where(eq(s.consultationResults.id,result.id))).toEqual([result]);
+   await page.getByLabel("Действие специалиста",{exact:true}).selectOption("lost");
+   await page.getByLabel("Основание повторного решения",{exact:true}).fill("Client declined for now");
+   await page.getByLabel("Комментарий повторного решения",{exact:true}).fill("Retain clinical evidence and contact history");
+   await page.getByRole("button",{name:"Сохранить повторное решение",exact:true}).click();
+   await expect(page.getByText("Прежний повторный контакт закрыт.",{exact:true})).toBeVisible();
+   expect((await db.select().from(s.treatmentCycles).where(eq(s.treatmentCycles.id,cycle.id)))[0].stage).toBe("lost");
+   await page.getByLabel("Действие специалиста",{exact:true}).selectOption("reassess");
+   await page.getByLabel("Основание повторного решения",{exact:true}).fill("New specialist assessment requested");
+   await page.getByLabel("Комментарий повторного решения",{exact:true}).fill("All qualification exceptions checked again");
+   await page.getByRole("button",{name:"Сохранить повторное решение",exact:true}).click();
+   await expect(page.getByText(/По актуальной проверке нужна консультация/)).toBeVisible();
+   await page.reload();await page.getByText("История повторных решений",{exact:true}).click();
+   await expect(page.getByText("Client declined for now",{exact:true})).toBeVisible();
+   await expect(page.getByText("New specialist assessment requested",{exact:true})).toBeVisible();
+   expect((await db.select().from(s.treatmentCycles).where(eq(s.treatmentCycles.id,cycle.id)))[0]).toMatchObject({stage:"consultation_needed",suspendedAt:null});
+   expect(await db.select().from(s.cycleReviews).where(eq(s.cycleReviews.cycleId,cycle.id))).toHaveLength(2);
+
 
   }
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);

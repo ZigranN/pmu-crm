@@ -15,11 +15,11 @@ export const TRANSITIONS: Readonly<Record<CycleStage,readonly CycleStage[]>> = {
   consultation_needed:["qualification","consultation_offered","lost"], consultation_offered:["consultation_scheduled","lost"],
   consultation_scheduled:["consultation_confirmed","consultation_completed","lost"], consultation_confirmed:["consultation_completed","lost"],
   consultation_completed:["consultation_result_required"], consultation_result_required:["consultation_result"],
-  consultation_result:["thinking","procedure_slot_selected","lost"], thinking:["procedure_slot_selected","lost"],
+  consultation_result:["thinking","procedure_slot_selected","lost","qualification","consultation_needed"], thinking:["procedure_slot_selected","lost","qualification","consultation_needed"],
   procedure_slot_selected:["awaiting_acconto"], awaiting_acconto:["procedure_confirmed","lost"],
   procedure_confirmed:["first_session_completed"], first_session_completed:["second_session_scheduled"],
   second_session_scheduled:["second_session_completed"], second_session_completed:["control_scheduled"],
-  control_scheduled:["cycle_completed"], cycle_completed:["refresh_offered"], refresh_offered:["refresh_no_response"], refresh_no_response:[], lost:[],
+  control_scheduled:["cycle_completed"], cycle_completed:["refresh_offered"], refresh_offered:["refresh_no_response"], refresh_no_response:[], lost:["qualification","consultation_needed"],
 };
 // Until these owners exist, manual stage changes must not forge their business facts.
 export const REQUIRED_COMMAND: Partial<Record<CycleStage,string>> = {

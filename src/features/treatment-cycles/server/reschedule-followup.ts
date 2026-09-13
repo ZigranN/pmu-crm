@@ -2,7 +2,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import type { z } from "zod";
-import { consultations, consultationResults, followUpRevisions, tasks } from "@/db/schema";
+import { consultations, consultationResults, followUpClosures, followUpRevisions, tasks } from "@/db/schema";
 import { rescheduleFollowUpSchema } from "@/features/consultations/contracts";
 import { requireStudioPermission } from "@/server/auth/context";
 import { hasPermission } from "@/lib/permissions";
@@ -23,6 +23,8 @@ export async function rescheduleFollowUpAction(input:z.infer<typeof rescheduleFo
       (result.outcome==="client_thinking"&&cycle.stage==="thinking"&&!cycle.suspendedAt)||
       (result.outcome==="temporarily_unavailable"&&cycle.stage==="consultation_result"&&cycle.suspendedAt&&cycle.suspensionReason==="temporarily_unavailable")
     ))throw new Error("Повторный контакт сейчас недоступен");
+    const [closed]=await tx.select({id:followUpClosures.id}).from(followUpClosures).where(eq(followUpClosures.resultId,result.id));
+    if(closed)throw new Error("Контакт закрыт. Требуется повторная оценка");
     const clock=await tx.execute(sql`select now() as now`),rows=Array.isArray(clock)?clock:(clock as unknown as {rows:{now:Date|string}[]}).rows;
     const now=new Date((rows[0] as {now:Date|string}).now),dueAt=new Date(data.dueAt);
     if(dueAt<=now)throw new Error("Дата должна быть в будущем");

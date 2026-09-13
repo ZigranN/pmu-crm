@@ -121,3 +121,5 @@ Phase 2.5 atomic client merge, aliases, provenance, preserved medical history an
 Phase 3.4a timed follow-up tasks, live scope checks and migration 0017: [Cycle follow-ups baseline](docs/phase3/CYCLE-FOLLOWUPS-BASELINE.md). Rescheduling and resumption remain 3.4b/c.
 
 Phase 3.4b immutable follow-up rescheduling, stale timer protection and migration 0018: [Rescheduling baseline](docs/phase3/FOLLOWUP-RESCHEDULING-BASELINE.md). Clinical reassessment/resumption remain 3.4c.
+
+Phase 3.4c human reassessment, Lost, permanent follow-up closure and migration 0019: [Cycle reassessment baseline](docs/phase3/CYCLE-REASSESSMENT-BASELINE.md). Offer terms remain 3.4d.
