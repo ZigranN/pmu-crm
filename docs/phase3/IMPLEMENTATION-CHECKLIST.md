@@ -1,5 +1,7 @@
 # Полный чек-лист PMU CRM — состояние на 13.09.2026
 
+Дополнение 3.2: `codex/phase-3-cycle-transitions`, [фактический объём](CYCLE-TRANSITIONS-BASELINE.md). Предыдущие GitHub/CI-срезы ниже исторические.
+
 Дополнение шага 3.1: ветка `codex/phase-3-cycle-schema`; [объём и проверки](TREATMENT-CYCLE-SCHEMA-BASELINE.md). Исторические сведения о PR №1–12 ниже относятся к предыдущему срезу; применение 0014 в Neon не выполнялось.
 
 ## Что означает «выполнено»
@@ -73,7 +75,7 @@
 ### Phase 3 — treatment cycles и pipeline (§3,40–46)
 
 - [x] **3.1 Схема циклов — foundation** — см. [ТЗ шага 3.1](REMAINING-SPECIFICATION.md#step-3-1).
-- [ ] **3.2 21 стадия** — см. [ТЗ шага 3.2](REMAINING-SPECIFICATION.md#step-3-2).
+- [ ] **3.2 21 стадия — PARTIAL:** engine/UI/ранние переходы реализованы; интеграции 3.3/5–7/10 остаются. [Baseline](CYCLE-TRANSITIONS-BASELINE.md) — см. [ТЗ шага 3.2](REMAINING-SPECIFICATION.md#step-3-2).
 - [ ] **3.3 Qualification / консультация** — см. [ТЗ шага 3.3](REMAINING-SPECIFICATION.md#step-3-3).
 - [ ] **3.4 Thinking / unavailable / lost** — см. [ТЗ шага 3.4](REMAINING-SPECIFICATION.md#step-3-4).
 
@@ -181,7 +183,7 @@
 |---|---|---|---|---|
 | 1 | ЦЕЛЬ ЭТАПА | NOT ACCEPTED | Единый путь Lead → Refresh отсутствует | 3–15 |
 | 2 | ОСНОВНЫЕ ПРИНЦИПЫ АРХИТЕКТУРЫ | PARTIAL | Framework работает; бизнес-события будущих модулей, реальные adapters и общий E2E ещё не подключены | 3–12,15 |
-| 3 | ОСНОВНЫЕ СУЩНОСТИ | PARTIAL | Схема готова; команды и UI циклов, conversations и ledger allocations ещё отсутствуют | 3.2–3.4,6.1,8,9.1 |
+| 3 | ОСНОВНЫЕ СУЩНОСТИ | PARTIAL | Полный cycle workflow, conversations и ledger allocations ещё не приняты | 3.3–3.4,5–10 |
 | 4 | КАРТОЧКА КЛИЕНТА | PARTIAL | Полная medical/clearance модель — Phase 4; consultation slot — Calendar Phase 5; AI tools — Phase 11 | 2.3,4.1,5.1,11.3 |
 | 5 | CLIENT DEDUPLICATION | PARTIAL (текущая схема реализована) | Будущие conversations/ledger расширяют merge registry; ограничения поиска сохраняются | 6,7,9,15.1 |
 | 6 | СПРАВОЧНИК УСЛУГ | PARTIAL | Legacy требует ручного разбора; Calendar Engine подключается в Phase 5 | 2.1,5.1 |
@@ -218,7 +220,7 @@
 | 37 | ФОТОГРАФИИ | PARTIAL | Нет требуемых stage guards/healed_result/pre-consult rules | 4.2,4.3 |
 | 38 | WHATSAPP MEDIA | MISSING | Нет inbound images и human verification классификации | 9.2,4.2 |
 | 39 | CONSENT | PARTIAL/CONFLICT | Нет multi-zone signature/PDF/versions/review2y и restore UI; hard delete заменён архивированием | 4.4,4.5 |
-| 40 | ВОРОНКА PMU | PARTIAL (legacy UI conflict) | Нет transition guards/history/board; legacy Select пока не заменён | 3.2 |
+| 40 | ВОРОНКА PMU | PARTIAL (command foundation) | Authoritative consultation/booking/payment/procedure/refresh transitions заблокированы до соответствующих модулей; legacy clientStatus отдельно | 3.3,5–7,10 |
 | 41 | КВАЛИФИКАЦИЯ | PARTIAL | Нет формализованного консультационного решения и правила returning client | 3.3 |
 | 42 | СУЩЕСТВУЮЩИЙ КЛИЕНТ | MISSING | Нет same-zone≤2yr shortcut и исключений | 3.3 |
 | 43 | РЕЗУЛЬТАТ КОНСУЛЬТАЦИИ | MISSING | Нет5 результатов решения мастера | 3.3 |
@@ -264,4 +266,4 @@
 
 [Реестр §§76–79](ACCEPTANCE.md) содержит **125 требований**: 50 technical, 48 main/AI E2E, 15 Total Face, 12 Remover. Это не количество существующих тестов. Отдельные integrity/RBAC/retry/merge случаи уже покрыты, но весь реестр не закрыт как релизная приёмка; текущие 150+4+13 тестов не подменяют эти 125 требований.
 
-Следующий шаг разработки: **3.2 — переходы 21 стадии Treatment Cycle**, затем 3.3–3.4. Merge PR, миграции Neon и rollout идут отдельным контролируемым процессом, описанным в оставшемся ТЗ. Их выполнение данным отчётом не разрешается и не заявляется.
+Следующий шаг разработки: **3.3 — квалификация и результат консультации**, затем 3.4. Интеграционные остатки 3.2 закрываются с Phase 5–7/10. Merge PR, миграции Neon и rollout идут отдельным контролируемым процессом, описанным в оставшемся ТЗ. Их выполнение данным отчётом не разрешается и не заявляется.

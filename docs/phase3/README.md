@@ -24,3 +24,5 @@
 - [Административная карточка 2.3](CLIENT-ADMINISTRATION-BASELINE.md)
 
 - [Treatment Cycle schema — шаг 3.1](TREATMENT-CYCLE-SCHEMA-BASELINE.md).
+
+- [3.2: команды стадий и оставшиеся зависимости](CYCLE-TRANSITIONS-BASELINE.md).
