@@ -1,7 +1,8 @@
 import "server-only";
+import { resourceScope } from "@/server/auth/scopes";
 import { db } from "@/db";
 import { media, auditLogs, consents, activityEvents, mediaTypeEnum } from "@/db/schema";
-import { eq, and, isNull, ne } from "drizzle-orm";
+import { eq, and, isNull, ne, sql } from "drizzle-orm";
 import { uploadToCloudinary, deleteFromCloudinary } from "@/lib/cloudinary";
 import { requireStudioPermission } from "@/server/auth/context";
 import { validateMediaLinks, lockClient, entityId, type Transaction } from "@/server/commands/ownership";
@@ -53,12 +54,12 @@ export const mediaService = {
   // versioning will be added separately; this operation never destroys evidence.
   async deleteMedia(mediaId: string, studioId: string, userId: string, expectedClientId?: string) {
     entityId.parse(mediaId);
-    const record = await this.getMediaById(mediaId, studioId);
+    const record = await this.getMediaById(mediaId, studioId, "archive");
     if (!record || (expectedClientId && record.clientId !== expectedClientId)) throw new Error("Media not found");
     const context = await requireStudioPermission(record.type === "consent" ? "CONSENT_UPLOAD" : "MEDIA_CREATE", studioId);
     if (context.userId !== userId) throw new Error("Permission denied");
     await db.transaction(async (tx) => {
-      await lockClient(tx, record.clientId, studioId);
+      await lockClient(tx, record.clientId, studioId, userId, false, record.type === "consent" ? "CONSENT_UPLOAD" : "MEDIA_CREATE");
       const [archived] = await tx.update(media).set({ deletedAt: new Date(), deletedById: userId })
         .where(and(eq(media.id, mediaId), eq(media.studioId, studioId), eq(media.clientId, record.clientId), isNull(media.deletedAt))).returning();
       if (!archived) throw new Error("Media not found");
@@ -76,14 +77,20 @@ export const mediaService = {
   },
 
   async getClientMedia(clientId: string, studioId: string, kind: "media" | "consent" = "media") {
+    const context = await requireStudioPermission(kind === "consent" ? "CONSENT_READ" : "MEDIA_READ", studioId);
+    const scope = await resourceScope(context);
     return db.query.media.findMany({
-      where: and(eq(media.clientId, clientId), eq(media.studioId, studioId), isNull(media.deletedAt),
+      where: and(scope.clientReference(sql`${media.clientId}`), eq(media.clientId, clientId), eq(media.studioId, studioId), isNull(media.deletedAt),
         kind === "consent" ? eq(media.type, "consent") : ne(media.type, "consent")),
       orderBy: (media, { desc }) => [desc(media.createdAt)],
     });
   },
 
-  async getMediaById(mediaId: string, studioId: string) {
-    return db.query.media.findFirst({ where: and(eq(media.id, mediaId), eq(media.studioId, studioId), isNull(media.deletedAt)) });
+  async getMediaById(mediaId: string, studioId: string, intent: "read" | "archive" = "read") {
+    const record = await db.query.media.findFirst({ where: and(eq(media.id, mediaId), eq(media.studioId, studioId), isNull(media.deletedAt)) });
+    if (!record) return undefined;
+    const context = await requireStudioPermission(record.type === "consent" ? (intent === "archive" ? "CONSENT_UPLOAD" : "CONSENT_READ") : (intent === "archive" ? "MEDIA_CREATE" : "MEDIA_READ"), studioId);
+    const scope = await resourceScope(context);
+    return db.query.media.findFirst({ where: and(eq(media.id, record.id), eq(media.studioId, studioId), isNull(media.deletedAt), scope.clientReference(sql`${media.clientId}`)) });
   },
 };

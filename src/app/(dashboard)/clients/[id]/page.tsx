@@ -1,3 +1,6 @@
+import { ClientAssignment } from "@/features/settings/components/client-assignment";
+import { getStudioRole } from "@/lib/roles";
+import { getActiveMasters } from "@/features/masters/server/queries";
 import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
 import { getClientById, getClientMedicalProfile, getClientActivity } from "@/features/clients/server/queries";
 import { PageHeader } from "@/components/shared/page-header";
@@ -29,6 +32,9 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
   if (!studioId) redirect("/dashboard");
   if (!await hasPermission(db, session.user.id, studioId, "CLIENT_READ")) redirect("/dashboard");
 
+  const role = await getStudioRole(db, session.user.id, studioId);
+  const canAssign = (role === "OWNER" || role === "ADMIN") && await hasPermission(db, session.user.id, studioId, "CLIENT_UPDATE");
+  const assignmentOptions = canAssign ? await getActiveMasters(studioId) : [];
   const client = await getClientById(id, studioId);
   if (!client) notFound();
   const [canReadMedical, canEditMedical, canReadMedia, canReadConsent] = await Promise.all(
@@ -55,6 +61,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
         </Button>
       </PageHeader>
 
+      {canAssign && <ClientAssignment clientId={client.id} currentId={client.assignedMasterId} masters={assignmentOptions} />}
       <Tabs defaultValue="info" className="w-full">
         <TabsList className="grid w-full grid-cols-5 lg:w-[600px]">
           <TabsTrigger value="info" className="gap-2">

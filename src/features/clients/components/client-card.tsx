@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { formatPhone } from "@/lib/phone";
 
 interface ClientCardProps {
-  client: typeof clients.$inferSelect;
+  client: Omit<typeof clients.$inferSelect, "ltvCents"> & { ltvCents: number | null };
   onClick?: () => void;
 }
 

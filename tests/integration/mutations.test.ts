@@ -22,7 +22,7 @@ const userId = randomUUID();
 let studioId: string, foreignStudioId: string, clientId: string, foreignClientId: string;
 let serviceId: string, foreignServiceId: string, masterId: string, foreignMasterId: string, roleId: string;
 const addedPermissions: string[] = [];
-const codes = ["MASTER_CREATE", "MASTER_UPDATE", "MASTER_ARCHIVE", "MASTER_READ", "MEDICAL_PROFILE_UPDATE", "MEDIA_CREATE", "CONSENT_UPLOAD"];
+const codes = ["MASTER_CREATE", "MASTER_UPDATE", "MASTER_ARCHIVE", "MASTER_READ", "MEDICAL_PROFILE_UPDATE", "MEDIA_CREATE", "CONSENT_UPLOAD", "CONSENT_READ"];
 const masterInput = { displayName: "Synthetic Master", calendarColor: "#8B6F5A", isActive: true };
 const medicalInput = { previousPMU: false, herpesHistory: false, diabetes: false, bloodThinners: false,
   keloidRisk: false, autoimmuneDiseases: false, recentBotoxFillers: false, recentPeelingLaser: false, skinSensitivity: false };

@@ -1,16 +1,20 @@
-"use client";
 
-import { authClient } from "@/lib/auth-client";
+import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
+import { getStudioRole } from "@/lib/roles";
+import { db } from "@/db";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ChevronRight, Settings, Users, Scissors } from "lucide-react";
 import Link from "next/link";
 
-export default function SettingsPage() {
-  const { data: session } = authClient.useSession();
+export default async function SettingsPage() {
+  const session = await getSession();
+  const studioId = session ? await getCurrentStudioId(session.user.id) : undefined;
+  const role = session && studioId ? await getStudioRole(db, session.user.id, studioId) : null;
 
   const settingsLinks = [
+    { title: "Участники и роли", description: "Доступ к студии и привязка мастеров", icon: Users, href: "/settings/team" },
     {
       title: "Студия",
       description: "Название, адрес, контакты",
@@ -77,7 +81,7 @@ export default function SettingsPage() {
           <div className="flex justify-between items-center">
             <span className="text-muted-foreground">Текущая роль</span>
             <Badge variant="outline" className="text-taupe border-taupe">
-              {session?.user && (session.user as any).role}
+              {role ?? "Нет роли в студии"}
             </Badge>
           </div>
         </CardContent>
