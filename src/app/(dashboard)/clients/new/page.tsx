@@ -1,9 +1,11 @@
+import { requireStudioPermission } from "@/server/auth/context";
 import { PageHeader } from "@/components/shared/page-header";
 import { ClientForm } from "@/features/clients/components/client-form";
 import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
 import { redirect } from "next/navigation";
 
 export default async function NewClientPage() {
+  await requireStudioPermission("CLIENT_CREATE");
   const session = await getSession();
   if (!session) redirect("/login");
 

@@ -1,8 +1,9 @@
+import { LANGUAGES, INTEREST_ZONES, CLIENT_KINDS, CLIENT_SOURCES } from "@/features/clients/administrative";
 import { ClientAssignment } from "@/features/settings/components/client-assignment";
 import { getStudioRole } from "@/lib/roles";
 import { getActiveMasters } from "@/features/masters/server/queries";
 import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
-import { getClientById, getClientMedicalProfile, getClientActivity } from "@/features/clients/server/queries";
+import { getClientById, getClientMedicalProfile, getClientActivity, getClientMasterLabels } from "@/features/clients/server/queries";
 import { PageHeader } from "@/components/shared/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +39,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
   const assignmentOptions = canAssign ? await getActiveMasters(studioId) : [];
   const client = await getClientById(id, studioId);
   if (!client) notFound();
+  const masterLabels = await getClientMasterLabels(id, studioId);
   const [canReadMedical, canEditMedical, canReadMedia, canReadConsent] = await Promise.all(
     (["MEDICAL_PROFILE_READ", "MEDICAL_PROFILE_UPDATE", "MEDIA_READ", "CONSENT_READ"] as const)
       .map((permission) => hasPermission(db, session.user.id, studioId, permission))
@@ -63,12 +65,13 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
       </PageHeader>
       {canReadOffers && <Button asChild variant="outline" size="sm"><Link href={`/clients/${id}/offers`}>Custom Offer</Link></Button>}
 
-      {canAssign && <ClientAssignment clientId={client.id} currentId={client.assignedMasterId} masters={assignmentOptions} />}
+      {canAssign && <div className="grid gap-4 lg:grid-cols-2"><ClientAssignment key={`assigned:${client.assignedMasterId}`} clientId={client.id} currentId={client.assignedMasterId} masters={assignmentOptions} />
+        <ClientAssignment key={`preferred:${client.preferredMasterId}`} kind="preferred" clientId={client.id} currentId={client.preferredMasterId} masters={assignmentOptions} /></div>}
       <Tabs defaultValue="info" className="w-full">
         <TabsList className="grid w-full grid-cols-5 lg:w-[600px]">
           <TabsTrigger value="info" className="gap-2">
             <User className="h-4 w-4" />
-            <span className="hidden sm:inline">Инфо</span>
+            <span className="hidden sm:inline">Админ. карта</span>
           </TabsTrigger>
           {canReadMedical && (<TabsTrigger value="medical" className="gap-2">
             <ShieldAlert className="h-4 w-4" />
@@ -89,6 +92,17 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
         </TabsList>
 
         <TabsContent value="info" className="mt-6 space-y-6">
+          <Card><CardHeader><CardTitle>Административная карточка</CardTitle></CardHeader><CardContent className="space-y-2">
+            <p>WhatsApp: {client.whatsapp ? formatPhone(client.whatsapp) : "Не указан"}</p>
+            <p>Язык: {client.language ? LANGUAGES[client.language as keyof typeof LANGUAGES] : "Не уточнён"}</p>
+            <p>Источник: {client.source ? CLIENT_SOURCES[client.source as keyof typeof CLIENT_SOURCES] ?? client.source : "Не уточнён"}</p>
+            <p>Тип клиента: {client.clientKind ? CLIENT_KINDS[client.clientKind as keyof typeof CLIENT_KINDS] : "Не уточнён"}</p>
+            <p>Интересующие зоны: {client.interestedZones === null ? "Не уточнены" : client.interestedZones.length ? client.interestedZones.map(zone => INTEREST_ZONES[zone as keyof typeof INTEREST_ZONES]).join(", ") : "Не выбраны"}</p>
+            {client.treatmentZone && <p>Зона из старой карточки: {client.treatmentZone}</p>}
+            <p>Предыдущий PMU со слов клиента: {client.reportedPreviousPmu === null ? "Не уточнено" : client.reportedPreviousPmu ? "Да" : "Нет"}</p>
+            <p>Назначенный мастер: {masterLabels?.assignedName ?? "Не назначен"}</p><p>Предпочтительный мастер: {masterLabels?.preferredName ?? "Не выбран"}</p>
+            <p className="text-sm text-muted-foreground">Сведения со слов клиента не являются медицинским заключением. Медицинскую карту и допуск заполняет уполномоченный специалист.</p>
+          </CardContent></Card>
           <Card>
             <CardHeader>
               <CardTitle>Контактные данные</CardTitle>

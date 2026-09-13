@@ -156,6 +156,7 @@ test("fresh install, upgrade with data, and repeated migrate converge", async (t
   const [preserved] = await upgraded`select * from clients where id = ${client.id}`;
   for (const [key, value] of Object.entries(client)) assert.deepEqual(preserved[key], value);
   for (const field of clientFields) assert.equal(preserved[field], null);
+  for (const field of ["language", "interested_zones", "client_kind", "reported_previous_pmu", "preferred_master_id"]) assert.equal(preserved[field], null);
   await upgraded`update clients set referred_by_name = 'Fixture source', interest = 'PMU',
     treatment_zone = 'brows', next_contact_at = '2026-09-15 09:30:00',
     campaign_tag = 'test-campaign', service_tag = 'test-service' where id = ${client.id}`;
