@@ -1,4 +1,5 @@
 "use server";
+import { canonicalClientId } from "./identity";
 import { writeActivity } from "@/server/services/activity.service";
 import { writeAudit } from "@/server/services/audit-log.service";
 import { db } from "@/db";
@@ -57,7 +58,7 @@ export async function createClientAction(input: ClientSchema, requestKey: string
       }
       await enqueue(tx, { studioId: context.studioId, eventKey: commandId, handler: "client.created.v1" }, { clientId: created.id });
       return { id: created.id };
-    }, async (tx, result) => { await lockClient(tx, result.id, context.studioId, context.userId, true, "CLIENT_CREATE"); });
+    }, async (tx, result) => { await lockClient(tx, await canonicalClientId(result.id, context.studioId, tx), context.studioId, context.userId, true, "CLIENT_CREATE"); });
   revalidatePath("/clients");
   return result;
 }

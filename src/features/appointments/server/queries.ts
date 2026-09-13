@@ -1,3 +1,4 @@
+import { canonicalClientId } from "@/features/clients/server/identity";
 import "server-only";
 import { sensitiveRead, recordIds, } from "@/server/services/access-log.service";
 import { db } from "@/db";
@@ -6,6 +7,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { resourceScope } from "@/server/auth/scopes";
 export async function getClientAppointments(clientId: string, studioId: string) {
   return sensitiveRead("APPOINTMENT_READ", studioId, { operation: "appointments.list", targetId: clientId }, async (context) => {
+    clientId = await canonicalClientId(clientId, studioId);
     const scope = await resourceScope(context);
     const rows = await db.select({ appointment: appointments }).from(appointments).innerJoin(clients,
       and(eq(clients.id, appointments.clientId), eq(clients.studioId, appointments.studioId)))

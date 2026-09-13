@@ -17,7 +17,7 @@ export async function lockClient(tx: Transaction, clientId: string, studioId: st
   const [client] = await tx.select().from(clients).where(and(
     eq(clients.id, clientId), scope.client, includeArchived ? undefined : isNull(clients.deletedAt),
   )).for("update");
-  if (!client) throw new Error("Client not found");
+  if (!client || client.mergedIntoId) throw new Error("Client not found");
   return client;
 }
 

@@ -25,6 +25,7 @@ export default async function EditClientPage({ params }: EditClientPageProps) {
     });
   
   if (!client) notFound();
+  if (client.id !== id) redirect(`/clients/${client.id}/edit`);
 
   return (
     <div className="space-y-6">
