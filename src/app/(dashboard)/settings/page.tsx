@@ -14,6 +14,7 @@ export default async function SettingsPage() {
   const role = session && studioId ? await getStudioRole(db, session.user.id, studioId) : null;
 
   const settingsLinks = [
+    ...(role === "OWNER" ? [{ title: "История изменений и доступа", description: "Аудит действий и чтения данных", icon: Settings, href: "/settings/audit" }] : []),
     { title: "Участники и роли", description: "Доступ к студии и привязка мастеров", icon: Users, href: "/settings/team" },
     {
       title: "Студия",

@@ -1,9 +1,10 @@
 "use server";
+import { writeAudit } from "@/server/services/audit-log.service";
 import { lockStudioAccess } from "@/server/auth/scopes";
 import { hasPermission } from "@/lib/permissions";
 
 import { db } from "@/db";
-import { masters, masterServices, services, auditLogs } from "@/db/schema";
+import { masters, masterServices, services } from "@/db/schema";
 import { masterSchema, type MasterSchema } from "../schemas/master.schema";
 import { requireStudioPermission } from "@/server/auth/context";
 import { entityId, type Transaction } from "@/server/commands/ownership";
@@ -30,7 +31,7 @@ export async function createMasterAction(input: MasterSchema) {
     await validateServices(tx, studioId, serviceIds);
     const [created] = await tx.insert(masters).values({ ...masterData, studioId }).returning();
     if (serviceIds.length) await tx.insert(masterServices).values(serviceIds.map((serviceId) => ({ studioId, masterId: created.id, serviceId })));
-    await tx.insert(auditLogs).values({ studioId, userId, action: "master_created", entityType: "master", entityId: created.id, metadata: { ...masterData, serviceIds } });
+    await writeAudit(tx, { studioId, userId, action: "master_created", entityType: "master", entityId: created.id, before: null, after: { ...created, serviceIds }, reason: "command:master_created" });
     return created;
   });
   revalidatePath("/masters");
@@ -56,8 +57,8 @@ export async function updateMasterAction(id: string, input: MasterSchema) {
       await tx.delete(masterServices).where(and(eq(masterServices.masterId, id), eq(masterServices.studioId, studioId)));
       if (serviceIds.length) await tx.insert(masterServices).values(serviceIds.map((serviceId) => ({ studioId, masterId: id, serviceId })));
     }
-    await tx.insert(auditLogs).values({ studioId, userId, action: "master_updated", entityType: "master", entityId: id,
-      metadata: { before, after: updated, previousServiceIds: links.map((l) => l.serviceId), serviceIds: serviceIds ?? links.map((l) => l.serviceId) } });
+    await writeAudit(tx, { studioId, userId, action: "master_updated", entityType: "master", entityId: id,
+      before: { ...before, serviceIds: links.map(l => l.serviceId) }, after: { ...updated, serviceIds: serviceIds ?? links.map(l => l.serviceId) }, reason: "command:master_updated" });
     return updated;
   });
   revalidatePath("/masters");
@@ -71,11 +72,13 @@ async function changeArchiveState(id: string, archived: boolean) {
   await db.transaction(async (tx) => {
     await lockStudioAccess(tx, { studioId, userId });
     if (!await hasPermission(tx, userId, studioId, archived ? "MASTER_ARCHIVE" : "MASTER_UPDATE")) throw new Error("Permission denied");
+    const [before] = await tx.select().from(masters).where(and(eq(masters.id, id), eq(masters.studioId, studioId))).for("update");
+    if (!before) throw new Error("Master not found");
     const [updated] = await tx.update(masters).set({ isActive: !archived, deletedAt: archived ? new Date() : null,
       deletedById: archived ? userId : null, updatedAt: new Date() })
       .where(and(eq(masters.id, id), eq(masters.studioId, studioId))).returning();
     if (!updated) throw new Error("Master not found");
-    await tx.insert(auditLogs).values({ studioId, userId, action: archived ? "master_archived" : "master_restored", entityType: "master", entityId: id });
+    await writeAudit(tx, { studioId, userId, action: archived ? "master_archived" : "master_restored", entityType: "master", entityId: id, before, after: updated, reason: archived ? "command:master_archived" : "command:master_restored" });
   });
   revalidatePath("/masters");
   revalidatePath(`/masters/${id}`);

@@ -13,6 +13,7 @@ import {
     foreignKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { AUDIT_ENTITIES, ACCESS_OPERATIONS, type AuditAction } from "@/lib/audit-contract";
 
 // --- Enums ---
 
@@ -255,6 +256,10 @@ export const reviewStatusEnum = pgEnum("review_status", [
 export const activityEventTypeEnum = pgEnum("activity_event_type", [
   "client_created",
   "client_updated",
+  "client_status_changed",
+  "client_master_assigned",
+  "client_archived",
+  "client_restored",
   "medical_profile_updated",
   "appointment_created",
   "appointment_rescheduled",
@@ -1292,9 +1297,42 @@ export const auditLogs = pgTable("audit_logs", {
     .notNull()
     .references(() => studios.id, { onDelete: "cascade" }),
   userId: text("user_id").references(() => user.id),
-  action: text("action").notNull(),
+  action: text("action").$type<AuditAction>().notNull(),
+  contractVersion: integer("contract_version").default(1).notNull(),
+  oldValues: jsonb("old_values"),
+  newValues: jsonb("new_values"),
+  reason: text("reason"),
+  reasonSource: text("reason_source"),
   entityType: text("entity_type").notNull(),
   entityId: text("entity_id").notNull(),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  studioTime: index("audit_logs_studio_time_idx").on(table.studioId, table.createdAt, table.id),
+  contractCheck: check("audit_logs_contract_check", sql`${table.contractVersion} = 0 or (${table.contractVersion} = 1
+    and ${table.userId} is not null and ${table.oldValues} is not null and ${table.newValues} is not null
+    and ${table.reason} is not null and length(trim(${table.reason})) > 0 and ${table.reasonSource} is not null and ${table.reasonSource} in ('user', 'command')
+    and ${table.entityType} = case ${table.action} ${sql.raw(Object.entries(AUDIT_ENTITIES).map(([action, entity]) => `when '${action}' then '${entity}'`).join(' '))} else '__invalid__' end
+    and ${table.action} in (${sql.raw(Object.keys(AUDIT_ENTITIES).map(action => `'${action}'`).join(', '))}))`),
+}));
+
+
+
+export const accessLogs = pgTable("access_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id").notNull().references(() => studios.id, { onDelete: "cascade" }),
+  // Stable actor identity survives account deletion; do not retain names/emails.
+  actorId: text("actor_id").notNull(),
+  operation: text("operation").notNull(),
+  targetId: text("target_id"),
+  result: text("result").notNull(),
+  recordIds: jsonb("record_ids").$type<string[]>().notNull(),
+  recordCount: integer("record_count").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  studioTime: index("access_logs_studio_time_idx").on(table.studioId, table.createdAt, table.id),
+  actorTime: index("access_logs_actor_time_idx").on(table.studioId, table.actorId, table.createdAt),
+  operationCheck: check("access_logs_operation_check", sql`${table.operation} in (${sql.raw(ACCESS_OPERATIONS.map(operation => `'${operation}'`).join(', '))})`),
+  resultCheck: check("access_logs_result_check", sql`${table.result} in ('returned', 'not_returned', 'denied', 'error')`),
+  countCheck: check("access_logs_count_check", sql`${table.recordCount} >= 0 and jsonb_typeof(${table.recordIds}) = 'array' and jsonb_array_length(${table.recordIds}) = ${table.recordCount}`),
+}));

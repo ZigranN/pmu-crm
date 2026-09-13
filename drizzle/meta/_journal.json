@@ -50,6 +50,13 @@
       "when": 1789290082704,
       "tag": "0006_master_assignment_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789292213333,
+      "tag": "0007_audit_access_contract",
+      "breakpoints": true
     }
   ]
 }

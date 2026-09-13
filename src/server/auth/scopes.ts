@@ -26,7 +26,7 @@ export async function resourceScope(context: Context, executor: typeof db | Tran
   const clientReference = (column: SQL) => sql`exists (select 1 from clients scope_client where scope_client.id = ${column}
     and scope_client.studio_id = ${context.studioId} and scope_client.deleted_at is null and ${currentActor}
     and ${isMaster ? ownsMaster(sql`scope_client.assigned_master_id`) : sql`true`})`;
-  return { isMaster, ownsMaster, client, master, clientReference };
+  return { role, currentActor, isMaster, ownsMaster, client, master, clientReference };
 }
 
 // Serialize changes of membership/binding/assignment with client writes.

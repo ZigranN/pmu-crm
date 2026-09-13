@@ -129,7 +129,15 @@ test("fresh install, upgrade with data, and repeated migrate converge", async (t
     values ('override-test', ${studio.id}, ${permission.id}, 'allow'),
     ('override-test', ${studio.id}, ${permission.id}, 'deny'),
     ('override-test', ${studio.id}, ${permission.id}, 'deny')`;
+  const [legacyAudit] = await upgraded`insert into audit_logs (studio_id, action, entity_type, entity_id, metadata)
+    values (${studio.id}, 'legacy_custom_event', 'client', ${client.id}, '{"preserve":true}') returning *`;
   await migrate(drizzle(upgradedDatabase.engine), { migrationsFolder });
+  const [preservedAudit] = await upgraded`select * from audit_logs where id = ${legacyAudit.id}`;
+  for (const [key, value] of Object.entries(legacyAudit)) assert.deepEqual(preservedAudit[key], value);
+  assert.equal(preservedAudit.contract_version, 0);
+  await assert.rejects(upgraded`insert into audit_logs (studio_id, action, entity_type, entity_id)
+    values (${studio.id}, 'client_updated', 'client', ${client.id})`);
+
   assert.deepEqual(await upgraded`select effect from user_custom_permissions where user_id = 'override-test'`, [{ effect: 'deny' }]);
   await assert.rejects(upgraded`insert into user_custom_permissions (user_id, studio_id, permission_id, effect)
     values ('override-test', ${studio.id}, ${permission.id}, 'allow')`);

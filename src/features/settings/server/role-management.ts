@@ -1,6 +1,8 @@
 "use server";
+import { writeActivity } from "@/server/services/activity.service";
+import { writeAudit } from "@/server/services/audit-log.service";
 import { db } from "@/db";
-import { auditLogs, activityEvents, studioMembers, roles, user, masters, clients, clientAssignments } from "@/db/schema";
+import { studioMembers, roles, user, masters, clients, clientAssignments } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
@@ -40,8 +42,8 @@ export async function saveMembership(input: z.infer<typeof membershipInput>) {
     if (data.masterId) await tx.update(masters).set({ userId: target.id, updatedAt: new Date() }).where(and(eq(masters.id, data.masterId), eq(masters.studioId, studioId)));
     const [after] = await tx.insert(studioMembers).values({ studioId, userId: target.id, roleId: role.id, isActive: data.active })
       .onConflictDoUpdate({ target: [studioMembers.studioId, studioMembers.userId], set: { roleId: role.id, isActive: data.active } }).returning();
-    await tx.insert(auditLogs).values({ studioId, userId: actor.userId, action: "membership_changed", entityType: "studio_member", entityId: after.id,
-      metadata: { before: before?.member ?? null, after, oldRole: before?.role ?? null, newRole: data.role, oldMasterIds: oldBindings.map(m => m.id), masterId: data.masterId, reason: data.reason } });
+    await writeAudit(tx, { studioId, userId: actor.userId, action: "membership_changed", entityType: "studio_member", entityId: after.id,
+      before: before ? { ...before.member, role: before.role, masterIds: oldBindings.map(m => m.id) } : null, after: { ...after, role: data.role, masterId: data.masterId }, reason: data.reason, reasonSource: "user" });
   });
   revalidatePath("/", "layout");
 }
@@ -66,10 +68,10 @@ export async function assignClientMaster(input: z.infer<typeof assignmentInput>)
     await tx.update(clients).set({ assignedMasterId: data.masterId, updatedAt: new Date() }).where(eq(clients.id, before.id));
     const [history] = await tx.insert(clientAssignments).values({ studioId, clientId: before.id, previousMasterId: before.assignedMasterId,
       masterId: data.masterId, changedById: actor.userId, reason: data.reason }).returning();
-    await tx.insert(activityEvents).values({ studioId, userId: actor.userId, clientId: before.id, type: "client_updated",
+    await writeActivity(tx, { studioId, userId: actor.userId, clientId: before.id, type: "client_master_assigned",
       title: "Назначение мастера изменено", description: data.reason, metadata: { kind: "master_assignment", previousMasterId: before.assignedMasterId, masterId: data.masterId } });
-    await tx.insert(auditLogs).values({ studioId, userId: actor.userId, action: "client_master_assigned", entityType: "client", entityId: before.id,
-      metadata: { historyId: history.id, before: before.assignedMasterId, after: data.masterId, reason: data.reason } });
+    await writeAudit(tx, { studioId, userId: actor.userId, action: "client_master_assigned", entityType: "client", entityId: before.id,
+      before: { assignedMasterId: before.assignedMasterId }, after: { assignedMasterId: data.masterId }, reason: data.reason, reasonSource: "user", metadata: { historyId: history.id } });
   });
   revalidatePath(`/clients/${data.clientId}`);
   revalidatePath("/clients");

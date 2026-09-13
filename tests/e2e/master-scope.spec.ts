@@ -35,6 +35,12 @@ test("Owner links a Master and assigns a client; mobile Master cannot open anoth
     await page.getByRole("button", { name: "Сохранить назначение" }).click();
     await expect(page.getByLabel("Причина назначения")).toHaveValue("");
     expect((await db.select().from(s.clients).where(eq(s.clients.id, client.id)))[0].assignedMasterId).toBe(master.id);
+    await page.goto("/settings/audit");
+    await expect(page.getByRole("heading", { name: "История изменений и доступа" })).toBeVisible();
+    await expect(page.locator("summary").filter({ hasText: "client_master_assigned" })).toBeVisible();
+    await page.getByRole("link", { name: "Доступ к данным", exact: true }).click();
+    await expect(page.locator("summary").filter({ hasText: "audit.list" })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     await page.getByRole("button", { name: "Выйти", exact: true }).click();
     await expect(page).toHaveURL(/\/login$/);
     await page.getByLabel("Email", { exact: true }).fill(masterEmail);
@@ -48,6 +54,8 @@ test("Owner links a Master and assigns a client; mobile Master cannot open anoth
     await expect(page.getByText("404", { exact: true })).toBeVisible();
     await expect(page.getByText("Private other client", { exact: true })).toHaveCount(0);
     await page.goto("/settings/team");
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/settings/audit");
     await expect(page).toHaveURL(/\/dashboard$/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   } finally {
