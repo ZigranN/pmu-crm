@@ -113,3 +113,5 @@ Phase 2.1 service catalog, legacy cleanup, optional seed and migration 0009: [Se
 Phase 2.2 pricing, immutable custom offer revisions, access rules and migration 0010: [Pricing and offers baseline](docs/phase3/PRICING-OFFERS-BASELINE.md).
 
 Phase 2.3 administrative client fields, preferred master, strict field boundaries and migration 0011: [Client administration baseline](docs/phase3/CLIENT-ADMINISTRATION-BASELINE.md).
+
+Phase 2.4 contact normalization, duplicate review, concurrent creation and migration 0012: [Client deduplication baseline](docs/phase3/CLIENT-DEDUPLICATION-BASELINE.md). Client merge is the next step.

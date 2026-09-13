@@ -638,6 +638,11 @@ export const clients = pgTable(
         interestedZones: text("interested_zones").array(),
         clientKind: text("client_kind"),
         reportedPreviousPmu: boolean("reported_previous_pmu"),
+        phoneKey: text("phone_key").generatedAlwaysAs(sql`pmu_phone_key(phone)`),
+        whatsappKey: text("whatsapp_key").generatedAlwaysAs(sql`pmu_phone_key(whatsapp)`),
+        emailKey: text("email_key").generatedAlwaysAs(sql`pmu_email_key(email)`),
+        instagramKey: text("instagram_key").generatedAlwaysAs(sql`pmu_instagram_key(instagram)`),
+        nameKey: text("name_key").generatedAlwaysAs(sql`pmu_name_key(full_name)`),
         preferredMasterId: uuid("preferred_master_id"),
         assignedMasterId: uuid("assigned_master_id"),
         ltvCents: integer("ltv_cents").default(0).notNull(),
@@ -652,6 +657,12 @@ export const clients = pgTable(
         deletedById: text("deleted_by_id"),
     },
     (table) => ({
+        phoneKeyIdx: index("clients_studio_phone_key_idx").on(table.studioId, table.phoneKey),
+        whatsappKeyIdx: index("clients_studio_whatsapp_key_idx").on(table.studioId, table.whatsappKey),
+        emailKeyIdx: index("clients_studio_email_key_idx").on(table.studioId, table.emailKey),
+        instagramKeyIdx: index("clients_studio_instagram_key_idx").on(table.studioId, table.instagramKey),
+        nameKeyIdx: index("clients_studio_name_key_idx").on(table.studioId, table.nameKey),
+        namePrefixIdx: index("clients_studio_name_prefix_idx").on(table.studioId, sql`left(${table.nameKey}, 3)`),
         preferred: foreignKey({ name: "clients_preferred_master_studio_fk", columns: [table.preferredMasterId, table.studioId], foreignColumns: [masters.id, masters.studioId] }),
         languageCheck: check("clients_language_check", sql`${table.language} is null or ${table.language} in ('it','en','ru','uk','de','fr','es','ro','pl','other')`),
         kindCheck: check("clients_kind_check", sql`${table.clientKind} is null or ${table.clientKind} in ('new','returning')`),
@@ -1494,4 +1505,13 @@ export const offerItems = pgTable("offer_items", {
   service: foreignKey({ columns: [table.serviceId, table.studioId], foreignColumns: [services.id, services.studioId] }),
   master: foreignKey({ columns: [table.masterId, table.studioId], foreignColumns: [masters.id, masters.studioId] }),
   amount: check("offer_item_amount_check", sql`${table.standardCents} >= 0 and ${table.zoneCode} in ('brows','eyes','lips')`),
+}));
+
+export const clientDuplicateDecisions = pgTable("client_duplicate_decisions", {
+  id: uuid("id").defaultRandom().primaryKey(), studioId: uuid("studio_id").notNull().references(() => studios.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull(), actorId: text("actor_id").notNull(), reason: text("reason").notNull(), reviewToken: text("review_token").notNull(),
+  matches: jsonb("matches").$type<{ id: string; level: string; reasons: string[] }[]>().notNull(), createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => ({ client: foreignKey({ columns: [table.clientId, table.studioId], foreignColumns: [clients.id, clients.studioId] }),
+  identity: uniqueIndex("client_duplicate_decision_client_unique").on(table.clientId),
+  reasonCheck: check("client_duplicate_decision_reason_check", sql`length(trim(${table.reason})) >= 3`),
 }));
