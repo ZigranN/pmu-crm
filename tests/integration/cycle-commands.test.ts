@@ -142,3 +142,9 @@ test("strict commands reject caller-supplied stage, master, price and evidence f
   const {id}=await create();await expect(commands.transitionCycleAction({...{id,expectedVersion:1,to:"qualification" as const,reason:"Human review"},...{paymentConfirmed:true}},randomUUID())).rejects.toThrow();
   expect(await counts()).toEqual([1,1,1,1]);
 });
+test("an initially unassigned lead can qualify after human assignment without replacing existing cycle ownership",async()=>{
+  await db.update(s.clients).set({assignedMasterId:null}).where(eq(s.clients.id,clientId));const {id}=await create();await move(id,1,"qualification");
+  await expect(move(id,2,"consultation_needed")).rejects.toThrow("назначьте мастера");
+  await db.update(s.clients).set({assignedMasterId:masterId}).where(eq(s.clients.id,clientId));await move(id,2,"consultation_needed");expect((await row(id)).assignedMasterId).toBe(masterId);
+  const eyes=await create("eyes");await move(eyes.id,1,"qualification");await db.update(s.clients).set({assignedMasterId:otherMaster}).where(eq(s.clients.id,clientId));await move(eyes.id,2,"consultation_needed");expect((await row(eyes.id)).assignedMasterId).toBe(masterId);
+});

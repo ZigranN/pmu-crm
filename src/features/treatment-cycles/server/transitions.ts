@@ -8,7 +8,7 @@ export function transitionBlock(cycle:typeof treatmentCycles.$inferSelect,to:Cyc
   if(!edges?.includes(to)) return "Переход между этими стадиями запрещён";
   if(to==="lost" && !["new_lead","qualification","consultation_needed","consultation_offered"].includes(cycle.stage)) return "Сначала требуется отмена записи или решение по консультации и оплатам";
   if(REQUIRED_COMMAND[to]) return `Требуется: ${REQUIRED_COMMAND[to]}`;
-  if(to==="consultation_needed" && (!client.language || !client.clientKind || client.reportedPreviousPmu===null || !client.interestedZones?.includes(cycle.zoneCode) || !cycle.assignedMasterId)) return "Заполните язык, тип клиента, предыдущий PMU, интересующую зону и назначьте мастера";
+  if(to==="consultation_needed" && (!client.language || !client.clientKind || client.reportedPreviousPmu===null || !client.interestedZones?.includes(cycle.zoneCode) || !(cycle.assignedMasterId??client.assignedMasterId))) return "Заполните язык, тип клиента, предыдущий PMU, интересующую зону и назначьте мастера";
   return null;
 }
 
@@ -18,7 +18,7 @@ import type { Transaction } from "@/server/commands/ownership";
 export async function guardedTransition(tx:Transaction,cycle:typeof treatmentCycles.$inferSelect,to:CycleStage,client:typeof clients.$inferSelect) {
   const blocked=transitionBlock(cycle,to,client);if(blocked) return blocked;
   if(to==="consultation_needed") {
-    const [master]=await tx.select({id:masters.id}).from(masters).where(and(eq(masters.id,cycle.assignedMasterId!),eq(masters.studioId,cycle.studioId),eq(masters.isActive,true),isNull(masters.deletedAt)));
+    const [master]=await tx.select({id:masters.id}).from(masters).where(and(eq(masters.id,(cycle.assignedMasterId??client.assignedMasterId)!),eq(masters.studioId,cycle.studioId),eq(masters.isActive,true),isNull(masters.deletedAt)));
     if(!master) return "Назначенный мастер недоступен";
   }
   if(to==="lost") {

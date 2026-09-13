@@ -1,6 +1,8 @@
 # Phase 3.2 — команды стадий и история циклов
 
-13.09.2026. Ветка `codex/phase-3-cycle-transitions`, основана на Phase 3.1 / PR №13. Реализован механизм команд и доступный ранний путь. Полный бизнес-путь всех 21 стадий ещё не принят: его обязательные источники данных реализуются в шагах 3.3, 5–7 и 10.
+13.09.2026. Ветка `codex/phase-3-cycle-transitions`, основана на Phase 3.1 / PR №13. Реализован механизм команд и доступный ранний путь. На переходе к Consultation Needed пустое назначение цикла наследуется из актуальной карточки клиента, с audit; существующее назначение цикла не заменяется. Поэтому лид без мастера можно квалифицировать после назначения в карточке.
+
+Полный бизнес-путь всех 21 стадий ещё не принят: его обязательные источники данных реализуются в шагах 3.3, 5–7 и 10.
 
 ## Реализованные контракты
 
@@ -35,7 +37,7 @@
 
 Только новая `0015_cycle_stage_commands.sql` и snapshot; 0014 и применённая история не переписаны. Ручные SQL trigger/deferrability дополнения сохранять при последующих schema изменениях. Neon, seed и merge не выполнялись.
 
-Локально прошли typecheck, lint, 175 unit/integration и 4 migration tests. Проверка PostgreSQL 17 и полного browser suite выполняется в CI на head PR.
+Локально прошли typecheck, lint, 176 unit/integration и 4 migration tests. Проверка PostgreSQL 17 и полного browser suite выполняется в CI на head PR.
 
 `tests/integration/cycle-commands.test.ts`: полная матрица 21×21; public-command запрет каждого protected target; concurrent replay/stale conflicts; rollback audit/outbox; scopes/current deny/archive; legacy clientStatus; immutable history, DB evidence, client merge; versioned worker acknowledgements; payload allowlist; suspension/linked visit/inactive master guards.
 

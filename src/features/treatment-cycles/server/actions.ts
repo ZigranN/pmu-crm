@@ -37,10 +37,10 @@ export async function transitionCycleAction(input:z.infer<typeof transitionSchem
     if(before.version!==data.expectedVersion) throw new Error("Цикл изменён. Обновите страницу перед следующим действием");
     const [client]=await tx.select().from(clients).where(eq(clients.id,before.clientId));
     const blocked=await guardedTransition(tx,before,data.to,client);if(blocked) throw new Error(blocked);
-    const [after]=await tx.update(treatmentCycles).set({stage:data.to,version:before.version+1,updatedAt:new Date()}).where(and(eq(treatmentCycles.id,before.id),eq(treatmentCycles.version,data.expectedVersion))).returning();
+    const [after]=await tx.update(treatmentCycles).set({stage:data.to,version:before.version+1,updatedAt:new Date(),...(data.to==="consultation_needed"?{assignedMasterId:before.assignedMasterId??client.assignedMasterId}:{})}).where(and(eq(treatmentCycles.id,before.id),eq(treatmentCycles.version,data.expectedVersion))).returning();
     if(!after) throw new Error("Цикл изменён");
     await tx.insert(cycleStageHistory).values({studioId:context.studioId,cycleId:after.id,commandId,actorId:context.userId,fromStage:before.stage,toStage:after.stage,version:after.version,reason:data.reason});
-    await writeAudit(tx,{...context,action:"cycle_stage_changed",entityType:"treatment_cycle",entityId:after.id,before:{stage:before.stage,version:before.version},after:{stage:after.stage,version:after.version},reason:data.reason,reasonSource:"user",metadata:{commandId}});
+    await writeAudit(tx,{...context,action:"cycle_stage_changed",entityType:"treatment_cycle",entityId:after.id,before:{stage:before.stage,version:before.version,assignedMasterId:before.assignedMasterId},after:{stage:after.stage,version:after.version,assignedMasterId:after.assignedMasterId},reason:data.reason,reasonSource:"user",metadata:{commandId}});
     await enqueue(tx,{studioId:context.studioId,eventKey:commandId,handler:"cycle.stage-recorded.v1"},{cycleId:after.id,version:after.version,commandId});
     return {id:after.id,version:after.version};
   },async(tx,result)=>{await lockCycle(tx,context,result.id);});

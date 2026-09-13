@@ -20,6 +20,7 @@ export function CycleTimeline({data}:{data:Awaited<ReturnType<typeof getCycleTim
     <p>Зона: {ZONE_LABELS[data.zone]??data.zone} · Версия: {data.version}</p><p>Стадия: <strong>{STAGE_LABELS[data.stage as CycleStage]}</strong></p><Link href={`/clients/${data.clientId}`}>Карточка клиента</Link>
     {data.canWrite&&data.choices.length>0&&<form onSubmit={event=>{event.preventDefault();transition(new FormData(event.currentTarget));}} className="grid gap-3 rounded border p-4">
       <label>Следующая стадия<select required value={to} onChange={e=>setTo(e.target.value)} className="block w-full rounded border p-2"><option value="">Выберите стадию</option>{data.choices.map(choice=><option key={choice.to} value={choice.to}>{STAGE_LABELS[choice.to]}</option>)}</select></label>
+      {to==="consultation_needed"&&<p>Если мастер цикла ещё не выбран, будет использовано назначение из карточки клиента. Существующее назначение цикла сохраняется.</p>}
       {selected?.blocked&&<p role="status">{selected.blocked}</p>}
       <label>Причина перехода<input name="reason" required minLength={3} maxLength={1000} className="block w-full rounded border p-2" /></label>
       <Button disabled={pending||!selected||Boolean(selected.blocked)}>Изменить стадию</Button>
