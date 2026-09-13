@@ -6,7 +6,7 @@ export async function requestKey(storageKey: string, payload: unknown) {
   if (saved) { try { const entry = JSON.parse(saved); if (entry.hash === hash && typeof entry.key === "string") return entry.key as string; } catch { /* Replace corrupt local state. */ } }
   const key = crypto.randomUUID(); sessionStorage.setItem(storageKey, JSON.stringify({ hash, key })); return key;
 }
-export const euro = (cents: number) => new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(cents / 100);
+export const euro = (cents: number) => new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", useGrouping: true }).format(cents / 100);
 export function parseEuro(value: string) {
   if (!/^\d+(?:[.,]\d{1,2})?$/.test(value.trim())) throw new Error("Введите сумму с точностью до цента");
   const result = Math.round(Number(value.replace(",", ".")) * 100);

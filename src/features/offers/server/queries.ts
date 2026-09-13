@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, isNull, desc, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { customOffers, offerRevisions, offerItems, services, masterServices, masters, user } from "@/db/schema";
+import { customOffers, offerRevisions, offerItems, services, masterServices, masters, user, studios } from "@/db/schema";
 import { sensitiveRead } from "@/server/services/access-log.service";
 import { lockClient, entityId, type Transaction } from "@/server/commands/ownership";
 import { lockStudioAccess } from "@/server/auth/scopes";
@@ -27,12 +27,13 @@ export async function getOfferWorkspace(clientId: string) {
   entityId.parse(clientId);
   return sensitiveRead("OFFER_READ", undefined, { operation: "offers.read", targetId: clientId }, context => db.transaction(async tx => {
     await lockClient(tx, clientId, context.studioId, context.userId, false, "OFFER_READ");
+    const [studio] = await tx.select({ timezone: studios.timezone }).from(studios).where(eq(studios.id, context.studioId));
     const offers = await tx.select().from(customOffers).where(and(eq(customOffers.clientId, clientId), eq(customOffers.studioId, context.studioId)));
     const revisions = offers.length ? await tx.select().from(offerRevisions).where(inArray(offerRevisions.offerId, offers.map(row => row.id))).orderBy(desc(offerRevisions.createdAt), desc(offerRevisions.revision)) : [];
     const items = revisions.length ? await tx.select().from(offerItems).where(inArray(offerItems.revisionId, revisions.map(row => row.id))) : [];
     const approvers = revisions.length ? await tx.select({ id: user.id, name: user.name }).from(user).where(inArray(user.id, [...new Set(revisions.map(row => row.approvedById))])) : [];
     const canManage = await hasPermission(tx, context.userId, context.studioId, "OFFER_MANAGE");
-    return { offers, revisions: revisions.map(revision => ({ ...revision, approverName: approvers.find(person => person.id === revision.approvedById)?.name ?? "Пользователь удалён", items: items.filter(item => item.revisionId === revision.id) })), options: canManage ? await pricingOptions(tx, context.studioId) : [], canManage };
+    return { timezone: studio.timezone, offers, revisions: revisions.map(revision => ({ ...revision, approverName: approvers.find(person => person.id === revision.approvedById)?.name ?? "Пользователь удалён", items: items.filter(item => item.revisionId === revision.id) })), options: canManage ? await pricingOptions(tx, context.studioId) : [], canManage };
   }), result => result.revisions.map(row => row.id));
 }
 export async function getServicePricing(serviceId: string) {

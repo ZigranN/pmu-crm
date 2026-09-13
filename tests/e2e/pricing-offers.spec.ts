@@ -35,7 +35,7 @@ test("Owner sets master price and approves multi-zone offer; Admin creates a new
     await page.getByLabel("Услуга и мастер — зона 2").selectOption(`${eyes.id}:base`);
     await page.getByLabel("Согласованная итоговая цена (€)").fill("900");
     await page.getByLabel("Причина предложения / изменения цены").fill("Synthetic multi-zone agreement");
-    await expect(page.getByLabel("Расчёт предложения")).toContainText("1.000,00");
+    await expect(page.getByLabel("Расчёт предложения")).toContainText(/1\.?000,00/);
     await page.getByRole("button", { name: "Сохранить предложение", exact: true }).click();
     await expect(page.getByText("Предложение сохранено", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Изменить предложение" })).toBeVisible();

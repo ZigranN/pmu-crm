@@ -62,7 +62,7 @@ export function OfferForm({ clientId, workspace }: { clientId: string; workspace
     <section className="space-y-4"><h2 className="font-semibold">История предложений</h2>
       {!revisions.length && <p>Предложений пока нет.</p>}
       {revisions.map(revision => <article key={revision.id} className="border rounded p-3 space-y-2 break-words">
-        <h3>Версия {revision.revision} · {new Date(revision.createdAt).toLocaleString("ru-RU")}</h3>
+        <h3>Версия {revision.revision} · {new Date(revision.createdAt).toLocaleString("ru-RU", { timeZone: workspace.timezone })}</h3>
         {revision.items.map(item => <p key={item.id}>{item.serviceName} · {item.masterName ?? "Без выбора мастера"}: {euro(item.standardCents)}</p>)}
         <p>Стандартная сумма: {euro(revision.standardTotalCents)} · Согласовано: {euro(revision.agreedTotalCents)} · Скидка: {euro(revision.discountCents)}</p>
         <p>Причина: {revision.reason}</p><p className="text-sm">Утвердил: {revision.approverName}</p>

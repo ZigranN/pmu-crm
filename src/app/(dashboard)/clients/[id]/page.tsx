@@ -54,7 +54,6 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
         description={`Статус: ${client.clientStatus}`}
         backHref="/clients"
       >
-        {canReadOffers && <Button asChild variant="outline" size="sm"><Link href={`/clients/${id}/offers`}>Custom Offer</Link></Button>}
         <Button asChild variant="outline" size="sm" className="gap-2">
           <Link href={`/clients/${id}/edit`}>
             <Edit className="h-4 w-4" />
@@ -62,6 +61,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
           </Link>
         </Button>
       </PageHeader>
+      {canReadOffers && <Button asChild variant="outline" size="sm"><Link href={`/clients/${id}/offers`}>Custom Offer</Link></Button>}
 
       {canAssign && <ClientAssignment clientId={client.id} currentId={client.assignedMasterId} masters={assignmentOptions} />}
       <Tabs defaultValue="info" className="w-full">
