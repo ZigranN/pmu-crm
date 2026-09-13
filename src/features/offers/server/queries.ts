@@ -1,4 +1,5 @@
 import "server-only";
+import { canonicalClientId } from "@/features/clients/server/identity";
 import { and, eq, isNull, desc, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { customOffers, offerRevisions, offerItems, services, masterServices, masters, user, studios } from "@/db/schema";
@@ -26,6 +27,7 @@ async function pricingOptions(tx: Transaction, studioId: string, serviceId?: str
 export async function getOfferWorkspace(clientId: string) {
   entityId.parse(clientId);
   return sensitiveRead("OFFER_READ", undefined, { operation: "offers.read", targetId: clientId }, context => db.transaction(async tx => {
+    clientId = await canonicalClientId(clientId, context.studioId, tx);
     await lockClient(tx, clientId, context.studioId, context.userId, false, "OFFER_READ");
     const [studio] = await tx.select({ timezone: studios.timezone }).from(studios).where(eq(studios.id, context.studioId));
     const offers = await tx.select().from(customOffers).where(and(eq(customOffers.clientId, clientId), eq(customOffers.studioId, context.studioId)));

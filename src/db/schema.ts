@@ -643,6 +643,7 @@ export const clients = pgTable(
         emailKey: text("email_key").generatedAlwaysAs(sql`pmu_email_key(email)`),
         instagramKey: text("instagram_key").generatedAlwaysAs(sql`pmu_instagram_key(instagram)`),
         nameKey: text("name_key").generatedAlwaysAs(sql`pmu_name_key(full_name)`),
+        mergedIntoId: uuid("merged_into_id"),
         preferredMasterId: uuid("preferred_master_id"),
         assignedMasterId: uuid("assigned_master_id"),
         ltvCents: integer("ltv_cents").default(0).notNull(),
@@ -657,6 +658,9 @@ export const clients = pgTable(
         deletedById: text("deleted_by_id"),
     },
     (table) => ({
+        mergeTarget: foreignKey({ name: "clients_merge_target_studio_fk", columns: [table.mergedIntoId, table.studioId], foreignColumns: [table.id, table.studioId] }),
+        mergeCheck: check("clients_merge_check", sql`${table.mergedIntoId} is null or (${table.mergedIntoId} != ${table.id} and ${table.deletedAt} is not null)`),
+        mergeIdx: index("clients_merge_target_idx").on(table.studioId, table.mergedIntoId),
         phoneKeyIdx: index("clients_studio_phone_key_idx").on(table.studioId, table.phoneKey),
         whatsappKeyIdx: index("clients_studio_whatsapp_key_idx").on(table.studioId, table.whatsappKey),
         emailKeyIdx: index("clients_studio_email_key_idx").on(table.studioId, table.emailKey),
@@ -693,8 +697,9 @@ export const clientMedicalProfiles = pgTable("client_medical_profiles", {
     id: uuid("id").defaultRandom().primaryKey(),
     clientId: uuid("client_id")
         .notNull()
-        .unique()
         .references(() => clients.id, { onDelete: "cascade" }),
+    supersededAt: timestamp("superseded_at"),
+    mergeReviewRequired: boolean("merge_review_required").notNull().default(false),
     allergies: text("allergies"),
     contraindications: text("contraindications"),
     skinType: text("skin_type"),
@@ -713,7 +718,7 @@ export const clientMedicalProfiles = pgTable("client_medical_profiles", {
     medicalNotes: text("medical_notes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, table => ({ active: uniqueIndex("client_medical_active_unique").on(table.clientId).where(sql`${table.supersededAt} is null`) }));
 
 
 export const clientStatusHistory = pgTable("client_status_history", {
@@ -1512,6 +1517,22 @@ export const clientDuplicateDecisions = pgTable("client_duplicate_decisions", {
   clientId: uuid("client_id").notNull(), actorId: text("actor_id").notNull(), reason: text("reason").notNull(), reviewToken: text("review_token").notNull(),
   matches: jsonb("matches").$type<{ id: string; level: string; reasons: string[] }[]>().notNull(), createdAt: timestamp("created_at").defaultNow().notNull(),
 }, table => ({ client: foreignKey({ columns: [table.clientId, table.studioId], foreignColumns: [clients.id, clients.studioId] }),
-  identity: uniqueIndex("client_duplicate_decision_client_unique").on(table.clientId),
+  identity: index("client_duplicate_decision_client_idx").on(table.clientId),
   reasonCheck: check("client_duplicate_decision_reason_check", sql`length(trim(${table.reason})) >= 3`),
+}));
+
+// Immutable evidence; source IDs remain as archived aliases in clients.
+export const clientMerges = pgTable("client_merges", {
+  id: uuid("id").defaultRandom().primaryKey(), studioId: uuid("studio_id").notNull().references(() => studios.id, { onDelete: "cascade" }),
+  sourceId: uuid("source_id").notNull(), targetId: uuid("target_id").notNull(), actorId: text("actor_id").notNull(),
+  reason: text("reason").notNull(), reviewToken: text("review_token").notNull(),
+  sourceSnapshot: jsonb("source_snapshot").notNull(), targetSnapshot: jsonb("target_snapshot").notNull(), resultSnapshot: jsonb("result_snapshot").notNull(),
+  provenance: jsonb("provenance").$type<Record<string, string>>().notNull(),
+  movedRecords: jsonb("moved_records").$type<Record<string, string[]>>().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => ({
+  source: foreignKey({ columns: [table.sourceId, table.studioId], foreignColumns: [clients.id, clients.studioId] }),
+  target: foreignKey({ columns: [table.targetId, table.studioId], foreignColumns: [clients.id, clients.studioId] }),
+  sourceUnique: uniqueIndex("client_merges_source_unique").on(table.sourceId),
+  contract: check("client_merges_check", sql`${table.sourceId} != ${table.targetId} and length(trim(${table.reason})) >= 3`),
 }));

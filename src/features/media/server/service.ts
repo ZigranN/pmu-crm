@@ -1,3 +1,4 @@
+import { canonicalClientId } from "@/features/clients/server/identity";
 import { writeActivity } from "@/server/services/activity.service";
 import { sensitiveRead, recordIds, optionalRecordId } from "@/server/services/access-log.service";
 import { writeAudit } from "@/server/services/audit-log.service";
@@ -81,6 +82,7 @@ export const mediaService = {
 
   async getClientMedia(clientId: string, studioId: string, kind: "media" | "consent" = "media") {
     return sensitiveRead(kind === "consent" ? "CONSENT_READ" : "MEDIA_READ", studioId, { operation: "media.list", targetId: clientId }, async (context) => {
+      clientId = await canonicalClientId(clientId, studioId);
       const scope = await resourceScope(context);
       return db.query.media.findMany({
         where: and(scope.clientReference(sql`${media.clientId}`), eq(media.clientId, clientId), eq(media.studioId, studioId), isNull(media.deletedAt),

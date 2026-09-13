@@ -117,6 +117,7 @@ test("fresh install, upgrade with data, and repeated migrate converge", async (t
     insert into clients (studio_id, first_name, full_name, phone, client_status, notes)
     values (${studio.id}, 'Fixture', 'Fixture Client', '+39 (000) 000-0000', 'new_lead', 'Preserve me')
     returning *`;
+  const [legacyMedical] = await upgraded`insert into client_medical_profiles (client_id, allergies) values (${client.id}, 'Preserved allergy') returning *`;
   const [role] = await upgraded`insert into roles (code, name) values ('TEST', 'Test') returning id`;
   const [permission] = await upgraded`insert into permissions (code, name) values ('TEST', 'Test') returning id`;
   const [originalGrant] = await upgraded`insert into role_permissions (role_id, permission_id, created_at)
@@ -153,6 +154,10 @@ test("fresh install, upgrade with data, and repeated migrate converge", async (t
     values ('override-test', ${studio.id}, ${permission.id}, 'allow')`);
   assert.deepEqual(await upgraded`select id from role_permissions where role_id = ${role.id}`, [originalGrant]);
   await assert.rejects(upgraded`insert into role_permissions (role_id, permission_id) values (${role.id}, ${permission.id})`);
+  const [medical] = await upgraded`select * from client_medical_profiles where id = ${legacyMedical.id}`;
+  for (const [key,value] of Object.entries(legacyMedical)) assert.deepEqual(medical[key],value);
+  assert.equal(medical.superseded_at, null);
+  assert.equal(medical.merge_review_required, false);
   const [preserved] = await upgraded`select * from clients where id = ${client.id}`;
   for (const [key, value] of Object.entries(client)) assert.deepEqual(preserved[key], value);
   assert.equal(preserved.phone_key, "+390000000000");

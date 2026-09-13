@@ -1,3 +1,4 @@
+import { canonicalClientId } from "@/features/clients/server/identity";
 import "server-only";
 import { sensitiveRead, recordIds, } from "@/server/services/access-log.service";
 import { db } from "@/db";
@@ -7,6 +8,7 @@ import { requireStudioPermission } from "@/server/auth/context";
 import { resourceScope } from "@/server/auth/scopes";
 async function paymentVisibility(clientId: string, studioId: string) {
   const context = await requireStudioPermission("PAYMENT_READ", studioId);
+  clientId = await canonicalClientId(clientId, studioId);
   const scope = await resourceScope(context);
   // Unattributed or contradictory legacy finance links are hidden from Master.
   const ownAppointment = sql`exists (select 1 from appointments pa where pa.id = ${payments.appointmentId}
