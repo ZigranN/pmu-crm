@@ -3,6 +3,7 @@ import * as s from "./schema";
 import { getSeedEnv } from "@/lib/env";
 import { PERMISSIONS, ROLE_CAPABILITIES } from "@/lib/permissions";
 import { ROLES } from "@/lib/roles";
+import { initializeCatalog } from "@/features/services/server/catalog-service";
 import { eq, and, inArray, isNull, asc, sql } from "drizzle-orm";
 
 export const demoServices = [
@@ -52,6 +53,11 @@ export async function seedDatabase(settings: ReturnType<typeof getSeedEnv>) {
         }
       }
     }
-    return { studioId: studio.id, adminLinked: !!admin && !!adminRole, demoEnabled: settings.SEED_DEMO_SERVICES === "true" };
+    if (settings.SEED_PHASE3_CATALOG === "true") {
+      if (!admin) throw new Error("Register the configured Owner before initializing Phase 3 catalog");
+      await tx.select().from(s.studios).where(eq(s.studios.id, studio.id)).for("update");
+      await initializeCatalog(tx, studio.id, admin.id);
+    }
+    return { studioId: studio.id, adminLinked: !!admin && !!adminRole, demoEnabled: settings.SEED_DEMO_SERVICES === "true", catalogEnabled: settings.SEED_PHASE3_CATALOG === "true" };
   });
 }

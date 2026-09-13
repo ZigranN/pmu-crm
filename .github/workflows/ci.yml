@@ -36,6 +36,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Seed runtime imports without database access
+        run: node --conditions=react-server --import tsx -e 'require("./src/db/seed-core.ts")'
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test

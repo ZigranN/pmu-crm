@@ -1,371 +1,105 @@
 "use client";
-
-import React from "react";
-import { useForm, useWatch } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { serviceSchema } from "../schemas/service.schema";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
-import { serviceCategoryEnum, procedureTypeEnum } from "@/db/schema";
-import { FormSection } from "@/components/shared/form-section";
-import { FormActionBar } from "@/components/shared/form-action-bar";
-import { createServiceAction, updateServiceAction, archiveServiceAction, restoreServiceAction } from "../server/actions";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
+import type { services, serviceDefinitions } from "@/db/schema";
+import { serviceSchema, type ServiceSchema } from "../schemas/service.schema";
+import { CATALOG_CATEGORIES, CATALOG_ZONES, CATALOG_TECHNIQUES, SESSION_LABELS } from "../catalog";
+import { createServiceAction, updateServiceAction, archiveServiceAction, restoreServiceAction } from "../server/actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { FormSection } from "@/components/shared/form-section";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
-interface ServiceFormProps {
-  initialData?: any;
-}
-
-export function ServiceForm({ initialData }: ServiceFormProps) {
-  const router = useRouter();
-  const [isConfirmOpen, setIsConfirmOpen] = React.useState(false);
-  const [isPending, setIsPending] = React.useState(false);
-
-  const form = useForm<any>({
-    resolver: zodResolver(serviceSchema),
-    defaultValues: initialData ? {
-      ...initialData,
-      price: initialData.priceCents / 100,
-    } : {
-      name: "",
-      description: "",
-      category: "brows",
-      procedureType: "brows",
-      price: 0,
-      durationMinutes: 120,
-      bufferBeforeMinutes: 0,
-      bufferAfterMinutes: 0,
-      requiresCorrection: false,
-      isActive: true,
-      correctionAfterDays: null,
-    },
-  });
-
-  const requiresCorrection = useWatch({
-    control: form.control,
-    name: "requiresCorrection",
-  });
-
-  async function onSubmit(values: any) {
-    setIsPending(true);
-    try {
-      if (initialData) {
-        await updateServiceAction(initialData.id, values);
-        toast.success("Услуга обновлена");
-      } else {
-        await createServiceAction(values);
-        toast.success("Услуга создана");
-      }
-      router.push("/services");
-      router.refresh();
-    } catch (error: any) {
-      toast.error(error.message || "Что-то пошло не так");
-    } finally {
-      setIsPending(false);
-    }
+type Template = { id: string; name: string; category: string };
+type Props = { initialData?: typeof services.$inferSelect; definitions: (typeof serviceDefinitions.$inferSelect)[]; templates: Template[] };
+const blank: ServiceSchema = { catalogCode: "", description: "", priceMode: "master_quote", price: null, priceMax: null,
+  durationMinutes: null, preparationTemplateId: null, postCareTemplateId: null, isActive: false };
+const selectClass = "w-full rounded-md border bg-white p-2 min-h-11";
+export function ServiceForm({ initialData, definitions, templates }: Props) {
+  const router = useRouter(), submitting = useRef(false), request = useRef<{ payload: string; key: string } | null>(null);
+  const [pending, setPending] = useState(false), [confirm, setConfirm] = useState(false), [error, setError] = useState("");
+  const [values, setValues] = useState<ServiceSchema>(initialData?.catalogVersion === 1 ? {
+    catalogCode: initialData.catalogCode!, description: initialData.description ?? "", priceMode: initialData.priceMode as ServiceSchema["priceMode"],
+    price: initialData.priceCents === null ? null : initialData.priceCents / 100, priceMax: initialData.priceMaxCents === null ? null : initialData.priceMaxCents / 100,
+    durationMinutes: initialData.durationMinutes, preparationTemplateId: initialData.preparationTemplateId,
+    postCareTemplateId: initialData.postCareTemplateId, isActive: initialData.isActive,
+  } : blank);
+  const definition = definitions.find(row => row.code === values.catalogCode);
+  const set = <K extends keyof ServiceSchema>(key: K, value: ServiceSchema[K]) => setValues(before => ({ ...before, [key]: value }));
+  function choose(code: string) {
+    const row = definitions.find(item => item.code === code);
+    if (!row) { setValues(blank); return; }
+    setValues({ ...blank, catalogCode: code, priceMode: row.priceMode as ServiceSchema["priceMode"], price: row.priceCents === null ? null : row.priceCents / 100,
+      priceMax: row.priceMaxCents === null ? null : row.priceMaxCents / 100, durationMinutes: row.durationMinutes, isActive: row.durationMinutes !== null });
   }
-
-  async function onArchive() {
-    setIsPending(true);
-    try {
-      await archiveServiceAction(initialData.id);
-      toast.success("Услуга архивирована");
-      router.push("/services");
-      router.refresh();
-    } catch (error: any) {
-      toast.error(error.message || "Ошибка при архивации");
-    } finally {
-      setIsPending(false);
-      setIsConfirmOpen(false);
-    }
+  async function run(action: () => Promise<unknown>, message: string) {
+    if (submitting.current) return; submitting.current = true; setPending(true); setError("");
+    try { await action(); toast.success(message); router.push("/services"); router.refresh(); }
+    catch (error) { setError(error instanceof Error ? error.message : "Не удалось сохранить услугу"); }
+    finally { submitting.current = false; setPending(false); setConfirm(false); }
   }
-
-  async function onRestore() {
-    setIsPending(true);
-    try {
-      await restoreServiceAction(initialData.id);
-      toast.success("Услуга восстановлена");
-      router.refresh();
-    } catch (error: any) {
-      toast.error(error.message || "Ошибка при восстановлении");
-    } finally {
-      setIsPending(false);
-    }
+  async function save() {
+    const parsed = serviceSchema.safeParse(values);
+    if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
+    await run(async () => {
+      if (initialData) return updateServiceAction(initialData.id, parsed.data);
+      const payload = JSON.stringify(parsed.data);
+      if (!request.current || request.current.payload !== payload) request.current = { payload, key: crypto.randomUUID() };
+      return createServiceAction(parsed.data, request.current.key);
+    }, "Услуга сохранена");
   }
-
-  return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pb-24">
-        <FormSection title="Основная информация">
-          <FormField
-            control={form.control}
-            name="name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Название</FormLabel>
-                <FormControl>
-                  <Input placeholder="Например: ПМ Бровей - Сфуматура" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="description"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Описание</FormLabel>
-                <FormControl>
-                  <Textarea placeholder="Краткое описание услуги..." {...field} value={field.value ?? ""} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormField
-              control={form.control}
-              name="category"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Категория</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Выберите категорию" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {serviceCategoryEnum.enumValues.map((cat) => (
-                        <SelectItem key={cat} value={cat}>
-                          {cat === 'brows' ? 'Брови' :
-                           cat === 'lips' ? 'Губы' :
-                           cat === 'eyes' ? 'Глаза' :
-                           cat === 'total_look' ? 'Полный образ' :
-                           cat === 'consultation' ? 'Консультация' :
-                           cat === 'correction' ? 'Коррекция' :
-                           cat === 'refresh' ? 'Обновление' :
-                           cat === 'facial' ? 'Лицо' :
-                           cat === 'remover' ? 'Удаление' :
-                           cat === 'cover_up' ? 'Перекрытие' :
-                           cat === 'lamination' ? 'Ламинирование' :
-                           cat === 'skin' ? 'Кожа' :
-                           cat === 'other' ? 'Другое' : cat}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="procedureType"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Тип процедуры</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Выберите тип" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {procedureTypeEnum.enumValues.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type === 'brows' ? 'Брови' :
-                           type === 'lips' ? 'Губы' :
-                           type === 'eyes' ? 'Глаза' :
-                           type === 'total_look' ? 'Полный образ' :
-                           type === 'correction' ? 'Коррекция' :
-                           type === 'refresh' ? 'Обновление' :
-                           type === 'consultation' ? 'Консультация' :
-                           type === 'remover' ? 'Удаление' :
-                           type === 'cover_up' ? 'Перекрытие' :
-                           type === 'lamination' ? 'Ламинирование' :
-                           type === 'facial' ? 'Лицо' :
-                           type === 'other' ? 'Другое' : type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        </FormSection>
-
-        <FormSection title="Стоимость и время">
-          <FormField
-            control={form.control}
-            name="price"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Стоимость (€)</FormLabel>
-                <FormControl>
-                  <Input type="number" step="0.01" {...field} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
-                </FormControl>
-                <FormDescription>Введите сумму в евро</FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-            <FormField
-              control={form.control}
-              name="durationMinutes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Длительность (минуты)</FormLabel>
-                  <FormControl>
-                    <Input type="number" {...field} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="bufferBeforeMinutes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Буфер до (мин)</FormLabel>
-                    <FormControl>
-                      <Input type="number" {...field} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="bufferAfterMinutes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Буфер после (мин)</FormLabel>
-                    <FormControl>
-                      <Input type="number" {...field} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-        </FormSection>
-
-        <FormSection title="Дополнительно">
-          <FormField
-            control={form.control}
-            name="requiresCorrection"
-            render={({ field }) => (
-              <FormItem className="flex flex-row items-center justify-between rounded-lg border border-borderSoft p-4">
-                <div className="space-y-0.5">
-                  <FormLabel className="text-base">Требуется коррекция</FormLabel>
-                  <FormDescription>
-                    Система напомнит о необходимости записи на коррекцию
-                  </FormDescription>
-                </div>
-                <FormControl>
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                </FormControl>
-              </FormItem>
-            )}
-          />
-
-          {requiresCorrection && (
-            <FormField
-              control={form.control}
-              name="correctionAfterDays"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Коррекция через (дней)</FormLabel>
-                  <FormControl>
-                    <Input type="number" {...field} value={field.value || ""} onChange={(e) => field.onChange(parseInt(e.target.value) || null)} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          )}
-
-          <FormField
-            control={form.control}
-            name="isActive"
-            render={({ field }) => (
-              <FormItem className="flex flex-row items-center justify-between rounded-lg border border-borderSoft p-4">
-                <div className="space-y-0.5">
-                  <FormLabel className="text-base">Активна</FormLabel>
-                  <FormDescription>
-                    Доступна ли услуга для записи
-                  </FormDescription>
-                </div>
-                <FormControl>
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                </FormControl>
-              </FormItem>
-            )}
-          />
-        </FormSection>
-
-        <FormActionBar
-          onSave={form.handleSubmit(onSubmit)}
-          onCancel={() => router.back()}
-          isSubmitting={isPending}
-        >
-          {initialData && !initialData.deletedAt && (
-            <Button
-              type="button"
-              variant="ghost"
-              className="flex-1 md:flex-initial text-danger hover:bg-danger/10 hover:text-danger h-12 md:h-10"
-              onClick={() => setIsConfirmOpen(true)}
-              disabled={isPending}
-            >
-              Архивировать
-            </Button>
-          )}
-          {initialData && initialData.deletedAt && (
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1 md:flex-initial text-success border-success/20 hover:bg-success/10 h-12 md:h-10"
-              onClick={onRestore}
-              disabled={isPending}
-            >
-              Восстановить
-            </Button>
-          )}
-        </FormActionBar>
-
-        <ConfirmDialog
-          open={isConfirmOpen}
-          onOpenChange={setIsConfirmOpen}
-          onConfirm={onArchive}
-          title="Архивировать услугу?"
-          description="Услуга будет скрыта из списка активных. Вы сможете восстановить её позже."
-          variant="destructive"
-          confirmLabel="Архивировать"
-        />
-      </form>
-    </Form>
-  );
+  if (initialData?.supersededById) return <p>Эта запись сохранена как дубль. <Link className="underline" href={`/services/${initialData.supersededById}/edit`}>Открыть основную услугу</Link></p>;
+  return <form className="space-y-6 pb-24" onSubmit={event => { event.preventDefault(); void save(); }}>
+    {initialData?.catalogVersion === 0 && <div className="rounded border p-3"><p>Старая запись: {initialData.name}. Выберите соответствующую услугу и проверьте условия перед сохранением.</p>
+      <p>Сохранённая цена: {initialData.priceCents === null ? "не указана" : `${initialData.priceCents / 100} €`}; длительность: {initialData.durationMinutes ?? "не указана"} мин. Старый ID и история сохранятся.</p></div>}
+    <fieldset disabled={pending || !!initialData?.deletedAt} className="space-y-6">
+      <FormSection title="Услуга">
+        <label htmlFor="catalog-code">Услуга из справочника</label>
+        <select id="catalog-code" className={selectClass} value={values.catalogCode} disabled={!!initialData?.catalogCode} onChange={event => choose(event.target.value)} required>
+          <option value="">Выберите услугу</option>{definitions.map(row => <option key={row.code} value={row.code}>{row.name}</option>)}
+        </select>
+        {definition && <dl className="grid gap-2 text-sm">
+          <div><dt>Категория</dt><dd>{CATALOG_CATEGORIES.find(row => row.code === definition.categoryCode)?.label}</dd></div>
+          <div><dt>Зона</dt><dd>{CATALOG_ZONES.find(row => row.code === definition.zoneCode)?.label}</dd></div>
+          <div><dt>Техника</dt><dd>{CATALOG_TECHNIQUES.find(row => row.code === definition.techniqueCode)?.label}</dd></div>
+          <div><dt>Модель сессий</dt><dd>{SESSION_LABELS[definition.sessionsModel]}</dd></div>
+        </dl>}
+        <label htmlFor="service-description">Описание</label><Textarea id="service-description" value={values.description ?? ""} onChange={event => set("description", event.target.value)} maxLength={4000} />
+      </FormSection>
+      <FormSection title="Базовая стоимость">
+        <label htmlFor="price-mode">Как определяется цена</label>
+        <select id="price-mode" className={selectClass} value={values.priceMode} onChange={event => {
+          const priceMode = event.target.value as ServiceSchema["priceMode"];
+          setValues(before => ({ ...before, priceMode, price: priceMode === "master_quote" ? null : before.price, priceMax: priceMode === "range" ? before.priceMax : null }));
+        }}>
+          <option value="fixed">Фиксированная базовая цена</option><option value="estimate">Ориентир</option><option value="range">Диапазон-ориентир</option><option value="master_quote">Определяется мастером</option>
+        </select>
+        {values.priceMode !== "master_quote" && <><label htmlFor="service-price">Базовая цена / нижняя граница (€)</label>
+          <Input id="service-price" type="number" min="0" step="0.01" value={values.price ?? ""} onChange={event => set("price", event.target.value === "" ? null : Number(event.target.value))} required /></>}
+        {values.priceMode === "range" && <><label htmlFor="service-price-max">Верхняя граница (€)</label>
+          <Input id="service-price-max" type="number" min="0" step="0.01" value={values.priceMax ?? ""} onChange={event => set("priceMax", event.target.value === "" ? null : Number(event.target.value))} required /></>}
+        <p className="text-sm text-muted-foreground">Это условия каталога, а не согласованная цена конкретного клиента. Для Remover цена указана за один сеанс.</p>
+      </FormSection>
+      <FormSection title="Длительность и материалы">
+        <label htmlFor="service-duration">Длительность (минуты)</label>
+        <Input id="service-duration" type="number" min="5" max="1440" step="1" readOnly={definition?.durationMinutes != null} value={values.durationMinutes ?? ""} onChange={event => set("durationMinutes", event.target.value === "" ? null : Number(event.target.value))} />
+        <p className="text-sm text-muted-foreground">Время включает подготовку и уборку; дополнительный буфер — 0. Если длительность не определена, услуга остаётся неактивной.</p>
+        {([['preparationTemplateId', 'Шаблон подготовки', 'preparation'], ['postCareTemplateId', 'Шаблон постухода', 'post_care']] as const).map(([field, label, category]) => <div key={field}>
+          <label htmlFor={field}>{label}</label><select id={field} className={selectClass} value={values[field] ?? ""} onChange={event => set(field, event.target.value || null)}>
+            <option value="">Не назначен</option>{templates.filter(row => row.category === category).map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
+          </select></div>)}
+        <label className="flex gap-3 items-center"><input type="checkbox" checked={values.isActive} onChange={event => set("isActive", event.target.checked)} />Активна</label>
+      </FormSection>
+      <Button type="submit" disabled={pending}>Сохранить</Button>
+    </fieldset>
+    {error && <p role="alert" className="text-red-700">{error}</p>}
+    <div className="flex gap-3 flex-wrap"><Button type="button" variant="outline" onClick={() => router.back()} disabled={pending}>Отмена</Button>
+      {initialData && !initialData.deletedAt && <Button type="button" variant="outline" disabled={pending} onClick={() => setConfirm(true)}>Архивировать</Button>}
+      {initialData?.deletedAt && <Button type="button" disabled={pending} onClick={() => void run(() => restoreServiceAction(initialData.id), "Услуга восстановлена")}>Восстановить</Button>}
+    </div>
+    <ConfirmDialog open={confirm} onOpenChange={setConfirm} title="Архивировать услугу?" description="ID, визиты и история сохраняются." confirmLabel="Архивировать" onConfirm={() => { if (initialData) void run(() => archiveServiceAction(initialData.id), "Услуга архивирована"); }} />
+  </form>;
 }

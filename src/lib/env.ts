@@ -65,6 +65,7 @@ const seedEnvSchema = z.object({
     SEED_STUDIO_ADDRESS: z.string().default(""),
     SEED_STUDIO_WHATSAPP: z.string().default(""),
     SEED_ADMIN_EMAIL: z.string().email(),
+    SEED_PHASE3_CATALOG: z.enum(["true", "false"]).optional(),
     SEED_DEMO_SERVICES: z.enum(["true", "false"]).default("false"),
 });
 
@@ -79,5 +80,6 @@ export function getSeedEnv() {
         SEED_STUDIO_WHATSAPP: process.env.SEED_STUDIO_WHATSAPP,
         SEED_ADMIN_EMAIL: process.env.SEED_ADMIN_EMAIL,
         SEED_DEMO_SERVICES: process.env.SEED_DEMO_SERVICES,
+        SEED_PHASE3_CATALOG: process.env.SEED_PHASE3_CATALOG,
     });
 }

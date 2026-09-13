@@ -1,7 +1,7 @@
 import React from "react";
 import { EntityCard } from "@/components/shared/entity-card";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { formatCents } from "@/lib/money";
+import { servicePriceLabel } from "../price-label";
 import { type services } from "@/db/schema";
 import { Clock } from "lucide-react";
 
@@ -20,19 +20,20 @@ export function ServiceCard({ service, onClick }: ServiceCardProps) {
           <span>•</span>
           <div className="flex items-center gap-1">
             <Clock className="h-3 w-3" />
-            <span>{service.durationMinutes} мин</span>
+            <span>{service.durationMinutes === null ? "Длительность не задана" : `${service.durationMinutes} мин`}</span>
           </div>
         </div>
       }
       description={service.description}
       badges={
         <>
+          {service.catalogVersion === 0 && <StatusBadge label="Требует проверки" variant="muted" />}
           {service.isActive ? (
             <StatusBadge label="Активна" variant="success" />
           ) : (
-            <StatusBadge label="В архиве" variant="muted" />
+            <StatusBadge label={service.deletedAt ? "В архиве" : "Неактивна"} variant="muted" />
           )}
-          <StatusBadge label={formatCents(service.priceCents)} variant="gold" />
+          <StatusBadge label={servicePriceLabel(service)} variant="gold" />
         </>
       }
       onClick={onClick}
