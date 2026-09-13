@@ -1,3 +1,4 @@
+import { registerTestUser } from "../support/browser-auth";
 import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
@@ -12,9 +13,9 @@ test("Owner links a Master and assigns a client; mobile Master cannot open anoth
   const suffix = randomUUID(); const ownerEmail = `owner-${suffix}@example.test`, masterEmail = `master-${suffix}@example.test`;
   let studioId: string | undefined;
   try {
-    const ownerResponse = await page.request.post("/api/auth/sign-up/email", { data: { email: ownerEmail, name: "Synthetic Owner", password: "Synthetic-password-123!" } });
+    const ownerResponse = await registerTestUser(page.request, { data: { email: ownerEmail, name: "Synthetic Owner", password: "Synthetic-password-123!" } });
     expect(ownerResponse.status()).toBe(200); const owner = (await ownerResponse.json()).user;
-    const masterResponse = await request.post("/api/auth/sign-up/email", { data: { email: masterEmail, name: "Synthetic Master", password: "Synthetic-password-123!" } });
+    const masterResponse = await registerTestUser(request, { data: { email: masterEmail, name: "Synthetic Master", password: "Synthetic-password-123!" } });
     expect(masterResponse.status()).toBe(200);
     [studioId] = (await db.insert(s.studios).values(studioFixture()).returning()).map(r => r.id);
     const [ownerRole] = await db.select().from(s.roles).where(eq(s.roles.code, "OWNER"));

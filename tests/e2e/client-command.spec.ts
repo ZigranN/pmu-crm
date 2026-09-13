@@ -1,3 +1,4 @@
+import { registerTestUser } from "../support/browser-auth";
 import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -11,7 +12,7 @@ test("client retry after lost response and reload returns original client; Owner
   const database = await createTestDatabase(), db = database.db;
   const email = `command-${randomUUID()}@example.test`; let studioId: string | undefined;
   try {
-    const response = await page.request.post("/api/auth/sign-up/email", { data: { name: "Synthetic Owner", email, password: "Synthetic-password-123!" } });
+    const response = await registerTestUser(page.request, { data: { name: "Synthetic Owner", email, password: "Synthetic-password-123!" } });
     expect(response.status()).toBe(200); const owner = (await response.json()).user;
     [studioId] = (await db.insert(s.studios).values(studioFixture()).returning()).map(r => r.id);
     const [role] = await db.select().from(s.roles).where(eq(s.roles.code, "OWNER"));
