@@ -1153,6 +1153,7 @@ export const tasks = pgTable(
     "tasks",
     {
         consultationId: uuid("consultation_id").references(() => consultations.id),
+        followUpResultId: uuid("follow_up_result_id").references(() => consultationResults.id),
         id: uuid("id").defaultRandom().primaryKey(),
         studioId: uuid("studio_id")
             .notNull()
@@ -1184,6 +1185,7 @@ export const tasks = pgTable(
     },
     (table) => ({
         consultationUnique: uniqueIndex("tasks_consultation_unique").on(table.consultationId),
+        followUpUnique: uniqueIndex("tasks_follow_up_result_unique").on(table.followUpResultId),
         studioIdIdx: index("tasks_studio_id_idx").on(table.studioId),
         assignedToIdIdx: index("tasks_assigned_to_id_idx").on(table.assignedToId),
         dueAtIdx: index("tasks_due_at_idx").on(table.dueAt),
