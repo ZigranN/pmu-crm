@@ -18,9 +18,10 @@ export async function getConsultationPanel(id:string) {
     const latest=sessions[0]??null;
     const result=latest?(await tx.select().from(consultationResults).where(eq(consultationResults.consultationId,latest.id)))[0]??null:null;
     const task=latest?(await tx.select({id:tasks.id,status:tasks.status,dueAt:tasks.dueAt}).from(tasks).where(eq(tasks.consultationId,latest.id)))[0]??null:null;
+    const followUpTask=result?(await tx.select({id:tasks.id,status:tasks.status,dueAt:tasks.dueAt}).from(tasks).where(and(eq(tasks.followUpResultId,result.id),eq(tasks.studioId,context.studioId))))[0]??null:null;
     const visits=await tx.select({id:appointments.id,endAt:appointments.endAt}).from(appointments).innerJoin(appointmentCycles,and(eq(appointmentCycles.appointmentId,appointments.id),eq(appointmentCycles.cycleId,id),eq(appointmentCycles.studioId,context.studioId),eq(appointmentCycles.visitKind,"consultation"))).where(and(eq(appointments.studioId,context.studioId),eq(appointments.clientId,cycle.clientId),eq(appointments.status,"completed"),isNull(appointments.deletedAt))).orderBy(desc(appointments.endAt)).limit(100);
     const [client]=await tx.select().from(clients).where(eq(clients.id,cycle.clientId));
     const currentQualification=qualification?await evaluateCurrentQualification(tx,cycle,client,new Date()):null;
-    return {currentQualification,id,version:cycle.version,stage:cycle.stage,kind:cycle.kind,suspended:Boolean(cycle.suspendedAt),qualification,latest,result,task,visits,canWrite:await hasPermission(tx,context.userId,context.studioId,"MEDICAL_PROFILE_UPDATE")&&await hasPermission(tx,context.userId,context.studioId,"CLIENT_UPDATE")};
-  }),r=>[r.id,...(r.qualification?[r.qualification.id]:[]),...(r.latest?[r.latest.id]:[]),...(r.result?[r.result.id]:[]),...(r.task?[r.task.id]:[]),...r.visits.map(v=>v.id)]);
+    return {currentQualification,id,version:cycle.version,stage:cycle.stage,kind:cycle.kind,suspended:Boolean(cycle.suspendedAt),qualification,latest,result,task,followUpTask,visits,canWrite:await hasPermission(tx,context.userId,context.studioId,"MEDICAL_PROFILE_UPDATE")&&await hasPermission(tx,context.userId,context.studioId,"CLIENT_UPDATE")};
+  }),r=>[r.id,...(r.qualification?[r.qualification.id]:[]),...(r.latest?[r.latest.id]:[]),...(r.result?[r.result.id]:[]),...(r.task?[r.task.id]:[]),...(r.followUpTask?[r.followUpTask.id]:[]),...r.visits.map(v=>v.id)]);
 }

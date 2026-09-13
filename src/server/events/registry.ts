@@ -1,4 +1,5 @@
 import "server-only";
+import { createFollowUpTask } from "@/features/treatment-cycles/server/followups";
 import { createDecisionTask } from "@/features/consultations/server/decision-job";
 import { canonicalClientId } from "@/features/clients/server/identity";
 import { cycleStageHistory } from "@/db/schema";
@@ -8,6 +9,7 @@ import { PermanentJobError, type Registry } from "./worker";
 // Versioned internal consumer records acceptance in eventInbox. Actual business
 // automations/channel adapters are added in their roadmap phases, not simulated here.
 export const handlers: Registry = Object.freeze({
+  "cycle.follow-up-due.v1":{kind:"transactional",run:createFollowUpTask},
   "consultation.decision-due.v1":{kind:"transactional",run:createDecisionTask},
   "cycle.stage-recorded.v1": {
     kind: "transactional",

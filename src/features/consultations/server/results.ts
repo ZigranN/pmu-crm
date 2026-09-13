@@ -69,7 +69,9 @@ export async function recordConsultationResultAction(input:z.input<typeof result
       const [remover]=await tx.insert(treatmentCycles).values({studioId:context.studioId,clientId:cycle.clientId,zoneCode:cycle.zoneCode,kind:"remover",originCycleId:cycle.id,assignedMasterId:cycle.assignedMasterId}).returning();
       removerCycleId=remover.id;await recordCycleEvidence(tx,context,commandId,null,remover,"Remover создан по решению специалиста","cycle_created");
     }
-    await tx.insert(consultationResults).values({studioId:context.studioId,consultationId:consultation.id,actorId:context.userId,commandId,outcome:data.outcome,reason:data.reason,comment:data.comment,reassessmentAt,followUpAt:data.outcome==="client_thinking"?new Date(now.getTime()+7*86400000):null,removerCycleId});
+    const [decision]=await tx.insert(consultationResults).values({studioId:context.studioId,consultationId:consultation.id,actorId:context.userId,commandId,outcome:data.outcome,reason:data.reason,comment:data.comment,reassessmentAt,followUpAt:data.outcome==="client_thinking"?new Date(now.getTime()+7*86400000):null,removerCycleId}).returning();
+    const followUpDueAt=decision.followUpAt??decision.reassessmentAt;
+    if(followUpDueAt)await enqueue(tx,{studioId:context.studioId,eventKey:decision.id,handler:"cycle.follow-up-due.v1",availableAt:followUpDueAt},{resultId:decision.id});
     const suspended=["removal_required","temporarily_unavailable"].includes(data.outcome);
     let after=await recordCycleChange(tx,context,commandId,cycle,"consultation_result","Результат консультации записан специалистом","consultation_result_recorded",suspended?{suspendedAt:now,suspensionReason:data.outcome}:{});
     if(data.outcome==="client_thinking")after=await recordCycleChange(tx,context,commandId,after,"thinking","Клиент обдумывает предложение");

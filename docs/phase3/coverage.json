@@ -346,8 +346,8 @@
   {
     "section": "44",
     "status": "PARTIAL",
-    "evidence": "Thinking outcome и сохранённый followUpAt +7×24h",
-    "gap": "Реальный follow-up/условия предложения и перенос даты — 3.4",
+    "evidence": "Thinking +7×24h; transactional follow-up task, replay/clock/merge tests и UI статуса",
+    "gap": "Перенос/отмена задач, условия предложения и исходящий контакт — 3.4b–d/10",
     "steps": "3.4,10",
     "title": "CLIENT THINKING"
   },
@@ -362,8 +362,8 @@
   {
     "section": "46",
     "status": "PARTIAL",
-    "evidence": "Human unavailable reason/reassessment/comment, будущая дата и suspension",
-    "gap": "Задачи повторного контакта, перенос и возобновление — 3.4",
+    "evidence": "Human unavailable date/reason/comment; suspended PMU и уникальная задача специалисту в срок",
+    "gap": "Версионированный перенос, повторная оценка и возобновление — 3.4b/c",
     "steps": "3.4",
     "title": "TEMPORARILY UNAVAILABLE"
   },

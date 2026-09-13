@@ -117,3 +117,5 @@ Phase 2.3 administrative client fields, preferred master, strict field boundarie
 Phase 2.4 contact normalization, duplicate review, concurrent creation and migration 0012: [Client deduplication baseline](docs/phase3/CLIENT-DEDUPLICATION-BASELINE.md). Client merge is the next step.
 
 Phase 2.5 atomic client merge, aliases, provenance, preserved medical history and migration 0013: [Client merge baseline](docs/phase3/CLIENT-MERGE-BASELINE.md). Future domain modules must extend the tested merge registry.
+
+Phase 3.4a timed follow-up tasks, live scope checks and migration 0017: [Cycle follow-ups baseline](docs/phase3/CYCLE-FOLLOWUPS-BASELINE.md). Rescheduling and resumption remain 3.4b/c.
