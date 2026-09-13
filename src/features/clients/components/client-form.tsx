@@ -1,6 +1,10 @@
 "use client";
 
 import React from "react";
+import { DuplicateReviewPanel } from "./duplicate-review";
+import { reviewClientDuplicates } from "../server/duplicate-actions";
+import type { DuplicateReview, DuplicateDecision } from "../server/deduplication";
+import { canonicalPhone, canonicalInstagram } from "../contacts";
 import { LANGUAGES, INTEREST_ZONES, CLIENT_KINDS, CLIENT_SOURCES } from "../administrative";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormSection } from "@/components/shared/form-section";
 import { FormActionBar } from "@/components/shared/form-action-bar";
-import { createClientAction, updateClientAction, archiveClientAction } from "../server/actions";
+import { attemptCreateClientAction, updateClientAction, archiveClientAction } from "../server/actions";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -26,6 +30,7 @@ export function ClientForm({ initialData }: ClientFormProps) {
   const [isConfirmOpen, setIsConfirmOpen] = React.useState(false);
   const submitting = React.useRef(false);
   const createRequest = React.useRef<{ key: string; payload: string } | null>(null);
+  const [duplicates, setDuplicates] = React.useState<DuplicateReview | null>(null);
   const [isPending, setIsPending] = React.useState(false);
 
   const form = useForm<ClientSchema>({
@@ -74,11 +79,14 @@ export function ClientForm({ initialData }: ClientFormProps) {
     },
   });
 
-  async function onSubmit(values: ClientSchema) {
+  async function onSubmit(values: ClientSchema, decision?: DuplicateDecision) {
     if (submitting.current) return;
     submitting.current = true;
     setIsPending(true);
     try {
+      if (values.phone !== initialData?.phone && !canonicalPhone(values.phone)) throw new Error("Укажите телефон с кодом страны, например +39 333 123 4567");
+      if (values.whatsapp && values.whatsapp !== initialData?.whatsapp && !canonicalPhone(values.whatsapp)) throw new Error("Укажите WhatsApp с кодом страны");
+      if (values.instagram && values.instagram !== initialData?.instagram && !canonicalInstagram(values.instagram)) throw new Error("Укажите Instagram handle или ссылку на профиль");
       if (initialData) {
         await updateClientAction(initialData.id, values);
         toast.success("Данные клиента обновлены");
@@ -92,7 +100,8 @@ export function ClientForm({ initialData }: ClientFormProps) {
         if (!createRequest.current || createRequest.current.payload !== payload || typeof createRequest.current.key !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(createRequest.current.key)) createRequest.current = { key: crypto.randomUUID(), payload };
         // Retain only a hash/key across reloads after an ambiguous network failure, never form data.
         try { sessionStorage.setItem("pmu-client-create-request", JSON.stringify(createRequest.current)); } catch { /* In-memory retries still retain the key. */ }
-        const newClient = await createClientAction(values, createRequest.current.key);
+        const newClient = await attemptCreateClientAction(values, createRequest.current.key, decision);
+        if (newClient.kind === "review") { setDuplicates(newClient.review); toast.info("Проверьте найденные совпадения"); return; }
         try { sessionStorage.removeItem("pmu-client-create-request"); } catch { /* No personal data is stored here. */ }
         toast.success("Клиент создан");
         router.push(`/clients/${newClient.id}`);
@@ -128,7 +137,7 @@ export function ClientForm({ initialData }: ClientFormProps) {
 
   return (
     <Form {...form}>
-      <form onSubmit={event => void form.handleSubmit(onSubmit)(event)} className="space-y-6 pb-24">
+      <form onSubmit={event => void form.handleSubmit(values => onSubmit(values))(event)} className="space-y-6 pb-24">
         <FormSection title="Личные данные">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField
@@ -167,7 +176,7 @@ export function ClientForm({ initialData }: ClientFormProps) {
                 <FormItem>
                   <FormLabel>Телефон</FormLabel>
                   <FormControl>
-                    <Input placeholder="+7 (999) 000-00-00" {...field} />
+                    <Input placeholder="+39 333 123 4567" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -180,7 +189,7 @@ export function ClientForm({ initialData }: ClientFormProps) {
                 <FormItem>
                   <FormLabel>WhatsApp (если отличается)</FormLabel>
                   <FormControl>
-                    <Input placeholder="+7 (999) 000-00-00" {...field} />
+                    <Input placeholder="+39 333 123 4567" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -444,8 +453,15 @@ export function ClientForm({ initialData }: ClientFormProps) {
           />
         </FormSection>
 
+        {initialData && <Button type="button" variant="outline" disabled={isPending} onClick={async () => {
+          if (!await form.trigger()) return; setIsPending(true);
+          try { setDuplicates(await reviewClientDuplicates(form.getValues(), initialData.id)); }
+          catch (error) { toast.error(error instanceof Error ? error.message : "Не удалось проверить совпадения"); }
+          finally { setIsPending(false); }
+        }}>Проверить совпадения</Button>}
+        {duplicates && <DuplicateReviewPanel key={duplicates.token} review={duplicates} canConfirm={!initialData} pending={isPending} onConfirm={decision => void onSubmit(form.getValues(), decision)} />}
         <FormActionBar
-          onSave={() => void form.handleSubmit(onSubmit)()}
+          onSave={() => void form.handleSubmit(values => onSubmit(values))()}
           onCancel={() => router.back()}
           isSubmitting={isPending}
         >
