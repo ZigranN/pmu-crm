@@ -1,3 +1,4 @@
+import { registerTestUser } from "../support/browser-auth";
 import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
@@ -16,7 +17,7 @@ test("renaming a master in the browser preserves assigned services", async ({ pa
   let studioId: string | undefined, roleId: string | undefined;
   const permissionIds: string[] = [];
   try {
-    const response = await page.request.post("/api/auth/sign-up/email", { data: {
+    const response = await registerTestUser(page.request, { data: {
       name: "Synthetic serviceer user", email, password: "Synthetic-password-123!",
     } });
     expect(response.status()).toBe(200);

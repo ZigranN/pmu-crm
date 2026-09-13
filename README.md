@@ -49,7 +49,7 @@ Seed does not create accounts or print credentials. Repeating it preserves studi
 existing memberships and edited demo services. It adds missing default grants for OWNER/ADMIN/MASTER; AI_SYSTEM has no generic action grants.
 System-role prohibitions cannot be bypassed with personal allow overrides. Master access requires an active profile binding and a client assignment (Phase 1.2). `SEED_DEMO_SERVICES=false` is the default.
 Enable it only for demo data: the three sample prices are not an approved production catalog.
-Migrations through `0007` are required before running this version of the app or seed.
+Migrations through `0008` are required before running this version of the app or seed.
 Seed links the configured account as OWNER only if no membership exists. Existing memberships are preserved.
 Legacy STUDIO_ADMIN/SUPER_ADMIN memberships resolve to OWNER within their studio; ASSISTANT resolves to ADMIN with its existing grants. Auth user.role does not grant studio access.
 
@@ -105,3 +105,5 @@ Migration 0006 fails if legacy profiles contain duplicate `(studio_id, user_id)`
 resolve those explicitly before retrying, without deleting clients or profiles.
 
 Audit/access contracts and migration 0007: [Phase 1.3 baseline](docs/phase3/AUDIT-ACCESS-BASELINE.md). Owner can inspect both journals at `/settings/audit`.
+
+Command receipts, event queue, scheduler activation and migration 0008: [Phase 1.4 baseline](docs/phase3/COMMAND-RELIABILITY-BASELINE.md). Queue recovery is available to Owner at `/settings/jobs`; the worker is disabled until explicitly configured.

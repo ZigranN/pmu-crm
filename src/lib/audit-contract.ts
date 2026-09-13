@@ -1,5 +1,6 @@
 // Pure contract shared by schema and server writers. Extend with domain commands.
 export const AUDIT_ENTITIES = {
+  job_recovered: "outbox_job",
   client_created: "client", client_updated: "client", client_status_changed: "client",
   client_archived: "client", client_restored: "client", client_master_assigned: "client",
   medical_profile_updated: "client_medical_profile", media_uploaded: "media", media_archived: "media",
@@ -10,4 +11,4 @@ export const AUDIT_ENTITIES = {
 } as const;
 export type AuditAction = keyof typeof AUDIT_ENTITIES;
 export const ACCESS_OPERATIONS = ["clients.list", "client.read", "clients.search", "global.search", "medical.read", "activity.read",
-  "media.list", "media.read", "consents.list", "masters.list", "master.read", "appointments.list", "payments.list", "transactions.list", "audit.list", "access.list"] as const;
+  "media.list", "media.read", "consents.list", "masters.list", "master.read", "appointments.list", "payments.list", "transactions.list", "audit.list", "access.list", "jobs.list"] as const;
