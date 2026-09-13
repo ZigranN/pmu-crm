@@ -1,5 +1,8 @@
 # PMU CRM — рабочие документы Phase 3
 
+- [Полный актуальный чек-лист](IMPLEMENTATION-CHECKLIST.md)
+- [ТЗ на весь оставшийся объём](REMAINING-SPECIFICATION.md)
+
 - [Полное ТЗ 1.1](MASTER-SPECIFICATION.md)
 - [План реализации](ROADMAP.md)
 - [Матрица покрытия](COVERAGE.md)
@@ -19,3 +22,5 @@
 - [Цены мастеров и Custom Offer 2.2](PRICING-OFFERS-BASELINE.md)
 
 - [Административная карточка 2.3](CLIENT-ADMINISTRATION-BASELINE.md)
+
+- [Treatment Cycle schema — шаг 3.1](TREATMENT-CYCLE-SCHEMA-BASELINE.md).
