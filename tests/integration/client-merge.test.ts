@@ -74,6 +74,7 @@ test("rich merge retains all relations, financial amounts, document IDs, medical
   expect(Object.values(record.movedRecords).every(ids => ids.length > 0)).toBe(true);
   expect(await db.select().from(s.clientDuplicateDecisions).where(eq(s.clientDuplicateDecisions.clientId, target.id))).toHaveLength(2);
   expect(await queries.getClientMedicalProfile(target.id, studioId)).toMatchObject({ allergies: "Target allergy", mergeReviewRequired: true });
+  expect((await db.query.clients.findFirst({ where: eq(s.clients.id,target.id), with: { medicalProfiles: true } }))?.medicalProfiles).toHaveLength(2);
   expect(await queries.getClientMedicalHistory(source.id, studioId)).toMatchObject([{ allergies: "Source allergy", diabetes: true, clientId: target.id }]);
   await expect(db.update(s.clientMerges).set({ reason: "Rewrite" }).where(eq(s.clientMerges.id,record.id))).rejects.toThrow();
   await expect(db.update(s.customOffers).set({ clientId: source.id }).where(eq(s.customOffers.id,old.offer.id))).rejects.toThrow();

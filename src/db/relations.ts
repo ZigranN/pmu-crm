@@ -59,6 +59,10 @@ export const clientRelations = relations(schema.clients, ({ many }) => ({
   questionnaireResponses: many(schema.questionnaireResponses),
 }));
 
+export const medicalProfileRelations = relations(schema.clientMedicalProfiles, ({ one }) => ({
+  client: one(schema.clients, { fields: [schema.clientMedicalProfiles.clientId], references: [schema.clients.id] }),
+}));
+
 export const masterRelations = relations(schema.masters, ({ many }) => ({
   appointments: many(schema.appointments),
   procedureSessions: many(schema.procedureSessions),
