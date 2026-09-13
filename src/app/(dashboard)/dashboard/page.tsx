@@ -1,6 +1,7 @@
-"use client";
 
-import { authClient } from "@/lib/auth-client";
+import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
+import { db } from "@/db";
+import { getStudioRole } from "@/lib/roles";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Users, Scissors, UserCog, Settings, Calendar } from "lucide-react";
 import Link from "next/link";
@@ -14,8 +15,10 @@ const quickLinks = [
   { title: "Календарь", icon: Calendar, href: "#", color: "text-muted-foreground", badge: "Скоро" },
 ];
 
-export default function DashboardPage() {
-  const { data: session } = authClient.useSession();
+export default async function DashboardPage() {
+  const session = await getSession();
+  const studioId = session ? await getCurrentStudioId(session.user.id) : undefined;
+  const role = session && studioId ? await getStudioRole(db, session.user.id, studioId) : null;
 
   return (
     <>
@@ -57,7 +60,7 @@ export default function DashboardPage() {
               <CardTitle className="text-sm font-medium">Текущая роль</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-taupe">  {(session?.user as any)?.role ?? "No role"}
+              <div className="text-2xl font-bold text-taupe">  {role ?? "Нет роли в студии"}
               </div>
             </CardContent>
           </Card>

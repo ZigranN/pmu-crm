@@ -150,9 +150,9 @@ test("medical deny is enforced even when an unrelated allow was inserted first",
   await expect(queries.getClientMedicalProfile(clientId, studioId)).rejects.toThrow("Permission denied");
 });
 
-test("duplicate conflicting overrides fail closed", async () => {
-  await override("CLIENT_READ", "allow");
+test("duplicate override is rejected and existing deny remains effective", async () => {
   await override("CLIENT_READ", "deny");
+  await expect(override("CLIENT_READ", "allow")).rejects.toThrow();
   await expect(queries.getClients(studioId)).rejects.toThrow("Permission denied");
 });
 

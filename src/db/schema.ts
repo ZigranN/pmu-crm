@@ -438,7 +438,7 @@ export const userCustomPermissions = pgTable("user_custom_permissions", {
     .references(() => permissions.id, { onDelete: "cascade" }),
   effect: permissionEffectEnum("effect").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({ userStudioPermissionUnique: uniqueIndex("user_custom_permissions_identity_unique").on(table.userId, table.studioId, table.permissionId) }));
 
 export const studios = pgTable("studios", {
   id: uuid("id").defaultRandom().primaryKey(),

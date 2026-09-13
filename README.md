@@ -46,10 +46,12 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 5. Sign in at `/login` and open `/dashboard`.
 
 Seed does not create accounts or print credentials. Repeating it preserves studio data,
-existing memberships and edited demo services. It adds missing legacy default role grants;
-the final Phase 1 permission matrix is still pending. `SEED_DEMO_SERVICES=false` is the default.
+existing memberships and edited demo services. It adds missing default grants for OWNER/ADMIN/MASTER; AI_SYSTEM has no generic action grants.
+System-role prohibitions cannot be bypassed with personal allow overrides. Master resource scoping is the next step (1.2). `SEED_DEMO_SERVICES=false` is the default.
 Enable it only for demo data: the three sample prices are not an approved production catalog.
-Migration `0004` is required before running this version of the app or seed.
+Migrations through `0005` are required before running this version of the app or seed.
+Seed links the configured account as OWNER only if no membership exists. Existing memberships are preserved.
+Legacy STUDIO_ADMIN/SUPER_ADMIN memberships resolve to OWNER within their studio; ASSISTANT resolves to ADMIN with its existing grants. Auth user.role does not grant studio access.
 
 ## Automated checks (Phase 0.2)
 

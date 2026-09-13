@@ -1,4 +1,8 @@
+// Auth metadata, never a substitute for a studio membership.
 export type AppUserRole =
+    | "OWNER"
+    | "ADMIN"
+    | "AI_SYSTEM"
     | "SUPER_ADMIN"
     | "STUDIO_ADMIN"
     | "MASTER"
