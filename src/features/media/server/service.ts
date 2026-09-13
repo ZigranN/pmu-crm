@@ -1,7 +1,10 @@
+import { writeActivity } from "@/server/services/activity.service";
+import { sensitiveRead, recordIds, optionalRecordId } from "@/server/services/access-log.service";
+import { writeAudit } from "@/server/services/audit-log.service";
 import "server-only";
 import { resourceScope } from "@/server/auth/scopes";
 import { db } from "@/db";
-import { media, auditLogs, consents, activityEvents, mediaTypeEnum } from "@/db/schema";
+import { media, consents, mediaTypeEnum } from "@/db/schema";
 import { eq, and, isNull, ne, sql } from "drizzle-orm";
 import { uploadToCloudinary, deleteFromCloudinary } from "@/lib/cloudinary";
 import { requireStudioPermission } from "@/server/auth/context";
@@ -32,8 +35,8 @@ export async function withMediaUpload<T>(file: File, input: CreateMediaInput,
     return await db.transaction(async (tx) => {
       await validateMediaLinks(tx, input);
       const [record] = await tx.insert(media).values({ ...input, type, url, publicId: publicId || null }).returning();
-      await tx.insert(auditLogs).values({ studioId: input.studioId, userId: context.userId, action: "media_uploaded",
-        entityType: "media", entityId: record.id, metadata: { type, clientId: input.clientId } });
+      await writeAudit(tx, { studioId: input.studioId, userId: context.userId, action: "media_uploaded",
+        entityType: "media", entityId: record.id, before: null, after: { type, clientId: input.clientId, publicId: record.publicId, appointmentId: record.appointmentId, procedureSessionId: record.procedureSessionId }, reason: "command:media_uploaded" });
       return persist(tx, record);
     });
   } catch (error) {
@@ -63,34 +66,37 @@ export const mediaService = {
       const [archived] = await tx.update(media).set({ deletedAt: new Date(), deletedById: userId })
         .where(and(eq(media.id, mediaId), eq(media.studioId, studioId), eq(media.clientId, record.clientId), isNull(media.deletedAt))).returning();
       if (!archived) throw new Error("Media not found");
-      await tx.insert(auditLogs).values({ studioId, userId, action: "media_archived", entityType: "media", entityId: mediaId,
-        metadata: { type: record.type, clientId: record.clientId } });
+      await writeAudit(tx, { studioId, userId, action: "media_archived", entityType: "media", entityId: mediaId,
+        before: { deletedAt: record.deletedAt, deletedById: record.deletedById }, after: { deletedAt: archived.deletedAt, deletedById: archived.deletedById }, reason: "command:media_archived", metadata: { type: record.type, clientId: record.clientId } });
       if (record.type === "consent") {
         const documents = await tx.select().from(consents).where(and(eq(consents.mediaId, mediaId), eq(consents.studioId, studioId), eq(consents.clientId, record.clientId)));
         for (const document of documents) {
-          await tx.insert(auditLogs).values({ studioId, userId, action: "consent_archived", entityType: "consent", entityId: document.id });
+          await writeAudit(tx, { studioId, userId, action: "consent_archived", entityType: "consent", entityId: document.id, before: { mediaDeletedAt: record.deletedAt }, after: { mediaDeletedAt: archived.deletedAt }, reason: "command:consent_archived", metadata: { mediaId } });
         }
-        await tx.insert(activityEvents).values({ studioId, clientId: record.clientId, userId, type: "consent_archived",
+        await writeActivity(tx, { studioId, clientId: record.clientId, userId, type: "consent_archived",
           title: "Согласие архивировано", description: "Исходный файл и история сохранены" });
       }
     });
   },
 
   async getClientMedia(clientId: string, studioId: string, kind: "media" | "consent" = "media") {
-    const context = await requireStudioPermission(kind === "consent" ? "CONSENT_READ" : "MEDIA_READ", studioId);
-    const scope = await resourceScope(context);
-    return db.query.media.findMany({
-      where: and(scope.clientReference(sql`${media.clientId}`), eq(media.clientId, clientId), eq(media.studioId, studioId), isNull(media.deletedAt),
-        kind === "consent" ? eq(media.type, "consent") : ne(media.type, "consent")),
-      orderBy: (media, { desc }) => [desc(media.createdAt)],
-    });
+    return sensitiveRead(kind === "consent" ? "CONSENT_READ" : "MEDIA_READ", studioId, { operation: "media.list", targetId: clientId }, async (context) => {
+      const scope = await resourceScope(context);
+      return db.query.media.findMany({
+        where: and(scope.clientReference(sql`${media.clientId}`), eq(media.clientId, clientId), eq(media.studioId, studioId), isNull(media.deletedAt),
+          kind === "consent" ? eq(media.type, "consent") : ne(media.type, "consent")),
+        orderBy: (media, { desc }) => [desc(media.createdAt)],
+      });
+    }, recordIds);
   },
 
   async getMediaById(mediaId: string, studioId: string, intent: "read" | "archive" = "read") {
-    const record = await db.query.media.findFirst({ where: and(eq(media.id, mediaId), eq(media.studioId, studioId), isNull(media.deletedAt)) });
-    if (!record) return undefined;
-    const context = await requireStudioPermission(record.type === "consent" ? (intent === "archive" ? "CONSENT_UPLOAD" : "CONSENT_READ") : (intent === "archive" ? "MEDIA_CREATE" : "MEDIA_READ"), studioId);
-    const scope = await resourceScope(context);
-    return db.query.media.findFirst({ where: and(eq(media.id, record.id), eq(media.studioId, studioId), isNull(media.deletedAt), scope.clientReference(sql`${media.clientId}`)) });
+    return sensitiveRead(null, studioId, { operation: "media.read", targetId: mediaId }, async () => {
+      const record = await db.query.media.findFirst({ where: and(eq(media.id, mediaId), eq(media.studioId, studioId), isNull(media.deletedAt)) });
+      if (!record) return undefined;
+      const context = await requireStudioPermission(record.type === "consent" ? (intent === "archive" ? "CONSENT_UPLOAD" : "CONSENT_READ") : (intent === "archive" ? "MEDIA_CREATE" : "MEDIA_READ"), studioId);
+      const scope = await resourceScope(context);
+      return db.query.media.findFirst({ where: and(eq(media.id, record.id), eq(media.studioId, studioId), isNull(media.deletedAt), scope.clientReference(sql`${media.clientId}`)) });
+    }, optionalRecordId);
   },
 };

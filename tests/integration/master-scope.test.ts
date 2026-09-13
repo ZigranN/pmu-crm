@@ -185,3 +185,83 @@ test("studio-wide mutations remain Owner-only and use the same transaction bound
   expect(logs.some(e => e.action === "studio_settings_updated")).toBe(true);
   expect(logs.some(e => e.action === "service_updated")).toBe(true);
 });
+
+test("sensitive reads record only identifiers and outcomes, including filtered and denied reads", async () => {
+  await database.db.delete(s.accessLogs).where(eq(s.accessLogs.studioId, studioId));
+  await clients.getClientMedicalProfile(ca, studioId);
+  await media.mediaService.getMediaById(mediaA, studioId);
+  await clients.getClientById(cb, studioId);
+  session.id = admin;
+  await database.db.update(s.studioMembers).set({ roleId: roleIds.get("AI_SYSTEM")! }).where(eq(s.studioMembers.userId, admin));
+  try { await expect(clients.getClientMedicalProfile(ca, studioId)).rejects.toThrow("Permission denied"); }
+  finally { await database.db.update(s.studioMembers).set({ roleId: roleIds.get("ADMIN")! }).where(eq(s.studioMembers.userId, admin)); }
+  const logs = await database.db.select().from(s.accessLogs).where(eq(s.accessLogs.studioId, studioId));
+  expect(logs).toEqual(expect.arrayContaining([
+    expect.objectContaining({ actorId: a, operation: "medical.read", result: "returned", recordCount: 1 }),
+    expect.objectContaining({ actorId: a, operation: "media.read", result: "returned", recordIds: [mediaA] }),
+    expect.objectContaining({ actorId: a, operation: "client.read", targetId: cb, result: "not_returned", recordIds: [] }),
+    expect.objectContaining({ actorId: admin, operation: "medical.read", result: "denied", recordIds: [] }),
+  ]));
+  expect(JSON.stringify(logs)).not.toMatch(/Own medical|https:|Synthetic|example.test/);
+});
+
+test("access log failure prevents a successful personal-data response", async () => {
+  await database.db.execute(sql`create or replace function test_reject_access() returns trigger language plpgsql as $$ begin raise exception 'injected access failure'; end $$`);
+  await database.db.execute(sql`create trigger test_reject_access before insert on access_logs for each row execute function test_reject_access()`);
+  try {
+    await expect(clients.getClientById(ca, studioId)).rejects.toThrow("Access logging unavailable");
+    await expect(media.mediaService.getMediaById(mediaA, studioId)).rejects.toThrow("Access logging unavailable");
+  } finally {
+    await database.db.execute(sql`drop trigger test_reject_access on access_logs`);
+    await database.db.execute(sql`drop function test_reject_access()`);
+  }
+});
+
+test("foreign studio and unverified actor cannot create journal entries", async () => {
+  const before = await database.db.select().from(s.accessLogs).where(eq(s.accessLogs.studioId, foreignStudio));
+  await expect(clients.getClients(foreignStudio)).rejects.toThrow("Permission denied");
+  session.id = randomUUID();
+  await expect(clients.getClients(studioId)).rejects.toThrow("Permission denied");
+  expect(await database.db.select().from(s.accessLogs).where(eq(s.accessLogs.studioId, foreignStudio))).toEqual(before);
+});
+
+test("mutation snapshots contain actual old/new state, actor and reason; status has a typed event", async () => {
+  session.id = owner;
+  await database.db.update(s.clients).set({ clientStatus: "new_lead" }).where(eq(s.clients.id, ca));
+  await actions.updateClientAction(ca, { firstName: "Updated", phone: "+390000000000", clientStatus: "contacted" });
+  const logs = await database.db.select().from(s.auditLogs).where(eq(s.auditLogs.entityId, ca));
+  expect(logs).toEqual(expect.arrayContaining([expect.objectContaining({ action: "client_status_changed", contractVersion: 1,
+    userId: owner, oldValues: { status: "new_lead" }, newValues: { status: "contacted" }, reason: "command:client_status_changed", reasonSource: "command" })]));
+  expect(logs.findLast(log => log.action === "client_updated")).toMatchObject({ oldValues: { clientStatus: "new_lead" }, newValues: { firstName: "Updated", clientStatus: "contacted" } });
+  expect(await database.db.select().from(s.activityEvents).where(eq(s.activityEvents.clientId, ca))).toEqual(expect.arrayContaining([expect.objectContaining({ type: "client_status_changed" })]));
+});
+
+test("audit contract rejects mismatched events and rolls back surrounding writes", async () => {
+  const { writeAudit } = await import("@/server/services/audit-log.service");
+  const { db } = await import("@/db"); // Same mocked adapter; application transaction type.
+  const input = { studioId, userId: owner, action: "client_updated" as const, entityType: "client" as const, entityId: ca, before: {}, after: {}, reason: "test" };
+  const before = await database.db.select().from(s.clients).where(eq(s.clients.id, ca));
+  await expect(db.transaction(async tx => {
+    await tx.update(s.clients).set({ firstName: "Must roll back" }).where(eq(s.clients.id, ca));
+    await writeAudit(tx, { ...input, entityType: "master" });
+  })).rejects.toThrow("Invalid audit event contract");
+  expect(await database.db.select().from(s.clients).where(eq(s.clients.id, ca))).toEqual(before);
+  await expect(db.transaction(tx => writeAudit(tx, { ...input, reason: " " }))).rejects.toThrow();
+  await expect(database.db.execute(sql`insert into audit_logs (studio_id,user_id,action,entity_type,entity_id,old_values,new_values,reason)
+    values (${studioId},${owner},'client_updated','client',${ca},'{}','{}','test')`)).rejects.toThrow();
+});
+
+test("journal reader is tenant-scoped, Owner-only, paginated and itself logged", async () => {
+  const { getJournal } = await import("@/features/audit/server/queries");
+  await expect(getJournal(studioId, "audit")).rejects.toThrow("Permission denied");
+  session.id = admin;
+  await expect(getJournal(studioId, "audit")).rejects.toThrow("Permission denied");
+  session.id = owner;
+  const rows = await getJournal(studioId, "audit");
+  expect(rows.length).toBeLessThanOrEqual(50);
+  expect(rows.every(row => row.studioId === studioId)).toBe(true);
+  await expect(getJournal(foreignStudio, "audit")).rejects.toThrow("Permission denied");
+  await expect(getJournal(studioId, "audit", 0)).rejects.toThrow();
+  const logs = await getJournal(studioId, "access");
+  expect(logs).toEqual(expect.arrayContaining([expect.objectContaining({ actorId: owner, operation: "audit.list", result: "returned" })]));
+});

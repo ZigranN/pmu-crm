@@ -1,4 +1,5 @@
 import "server-only";
+import { sensitiveRead, recordIds, } from "@/server/services/access-log.service";
 import { db } from "@/db";
 import { payments, clients, paymentTransactions } from "@/db/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
@@ -17,18 +18,22 @@ async function paymentVisibility(clientId: string, studioId: string) {
       and (${payments.appointmentId} is null or ${ownAppointment}) and (${payments.procedureSessionId} is null or ${ownProcedure})` : undefined);
 }
 export async function getClientPayments(clientId: string, studioId: string) {
-  const visible = await paymentVisibility(clientId, studioId);
-  const rows = await db.select({ payment: payments }).from(payments).innerJoin(clients,
-    and(eq(clients.id, payments.clientId), eq(clients.studioId, payments.studioId))).where(visible);
-  return rows.map(r => r.payment);
+  return sensitiveRead("PAYMENT_READ", studioId, { operation: "payments.list", targetId: clientId }, async () => {
+    const visible = await paymentVisibility(clientId, studioId);
+    const rows = await db.select({ payment: payments }).from(payments).innerJoin(clients,
+      and(eq(clients.id, payments.clientId), eq(clients.studioId, payments.studioId))).where(visible);
+    return rows.map(r => r.payment);
+  }, recordIds);
 }
 export async function getClientPaymentTransactions(clientId: string, studioId: string) {
-  const visible = await paymentVisibility(clientId, studioId);
-  const rows = await db.select({ transaction: paymentTransactions }).from(paymentTransactions)
-    .innerJoin(payments, and(eq(payments.id, paymentTransactions.paymentId), eq(payments.clientId, paymentTransactions.clientId), eq(payments.studioId, paymentTransactions.studioId)))
-    .innerJoin(clients, and(eq(clients.id, payments.clientId), eq(clients.studioId, payments.studioId)))
-    .where(and(visible, isNull(paymentTransactions.deletedAt),
-      sql`(${paymentTransactions.appointmentId} is null or ${paymentTransactions.appointmentId} = ${payments.appointmentId})`,
-      sql`(${paymentTransactions.procedureSessionId} is null or ${paymentTransactions.procedureSessionId} = ${payments.procedureSessionId})`));
-  return rows.map(r => r.transaction);
+  return sensitiveRead("PAYMENT_READ", studioId, { operation: "transactions.list", targetId: clientId }, async () => {
+    const visible = await paymentVisibility(clientId, studioId);
+    const rows = await db.select({ transaction: paymentTransactions }).from(paymentTransactions)
+      .innerJoin(payments, and(eq(payments.id, paymentTransactions.paymentId), eq(payments.clientId, paymentTransactions.clientId), eq(payments.studioId, paymentTransactions.studioId)))
+      .innerJoin(clients, and(eq(clients.id, payments.clientId), eq(clients.studioId, payments.studioId)))
+      .where(and(visible, isNull(paymentTransactions.deletedAt),
+        sql`(${paymentTransactions.appointmentId} is null or ${paymentTransactions.appointmentId} = ${payments.appointmentId})`,
+        sql`(${paymentTransactions.procedureSessionId} is null or ${paymentTransactions.procedureSessionId} = ${payments.procedureSessionId})`));
+    return rows.map(r => r.transaction);
+  }, recordIds);
 }
