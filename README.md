@@ -119,3 +119,5 @@ Phase 2.4 contact normalization, duplicate review, concurrent creation and migra
 Phase 2.5 atomic client merge, aliases, provenance, preserved medical history and migration 0013: [Client merge baseline](docs/phase3/CLIENT-MERGE-BASELINE.md). Future domain modules must extend the tested merge registry.
 
 Phase 3.4a timed follow-up tasks, live scope checks and migration 0017: [Cycle follow-ups baseline](docs/phase3/CYCLE-FOLLOWUPS-BASELINE.md). Rescheduling and resumption remain 3.4b/c.
+
+Phase 3.4b immutable follow-up rescheduling, stale timer protection and migration 0018: [Rescheduling baseline](docs/phase3/FOLLOWUP-RESCHEDULING-BASELINE.md). Clinical reassessment/resumption remain 3.4c.

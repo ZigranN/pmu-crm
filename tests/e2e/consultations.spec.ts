@@ -5,7 +5,7 @@ import { registerTestUser } from "../support/browser-auth";
 import { createTestDatabase } from "../support/database";
 import { studioFixture,clientFixture } from "../fixtures/studio";
 import * as s from "../../src/db/schema";
-for(const outcome of ["removal_required","client_thinking"] as const)test(`Specialist qualifies a returning client and records ${outcome} on mobile`,async({page})=>{
+for(const outcome of ["removal_required","client_thinking","temporarily_unavailable"] as const)test(`Specialist qualifies a returning client and records ${outcome} on mobile`,async({page})=>{
  test.skip(!process.env.TEST_DATABASE_URL&&!process.env.CI,"Requires disposable PostgreSQL");if(!process.env.TEST_DATABASE_URL)throw new Error("CI requires TEST_DATABASE_URL");
  const database=await createTestDatabase(),db=database.db,email=`consultation-${randomUUID()}@example.test`;let studioId:string|undefined;
  try{
@@ -18,20 +18,36 @@ for(const outcome of ["removal_required","client_thinking"] as const)test(`Speci
   const [cycle]=await db.insert(s.treatmentCycles).values({studioId,clientId:client.id,assignedMasterId:master.id,kind:"pmu",zoneCode:"brows",stage:"consultation_confirmed"}).returning();const [service]=await db.insert(s.services).values({studioId,name:"Synthetic consultation",category:"consultation",procedureType:"consultation"}).returning();
   const [visit]=await db.insert(s.appointments).values({studioId,clientId:client.id,masterId:master.id,serviceId:service.id,startAt:new Date(Date.now()-7200000),endAt:new Date(Date.now()-3600000),status:"completed",source:"phone",createdById:owner.id,serviceSnapshot:{},clientSnapshot:{},masterSnapshot:{},priceSnapshotCents:0,durationSnapshotMinutes:60}).returning();await db.insert(s.appointmentCycles).values({studioId,clientId:client.id,cycleId:cycle.id,appointmentId:visit.id,visitKind:"consultation",serviceSnapshot:{}});
   await page.goto(`/deals/${cycle.id}`);await page.getByLabel("Завершённый визит",{exact:true}).selectOption(visit.id);await page.getByLabel("Основание завершения").fill("Actual consultation completed");await page.getByRole("button",{name:"Зафиксировать завершение консультации",exact:true}).click();
-  await page.getByLabel("Результат консультации",{exact:true}).selectOption(outcome);await page.getByLabel("Причина решения").fill("Specialist requires removal evaluation");await page.getByLabel("Комментарий специалиста").fill("Discuss approved next steps");await page.getByRole("button",{name:"Сохранить решение",exact:true}).click();
+  await page.getByLabel("Результат консультации",{exact:true}).selectOption(outcome);await page.getByLabel("Причина решения").fill("Specialist requires removal evaluation");await page.getByLabel("Комментарий специалиста").fill("Discuss approved next steps");if(outcome==="temporarily_unavailable")await page.getByLabel("Повторная оценка (время вашего устройства)",{exact:true}).fill(new Date(Date.now()+10*86400000).toISOString().slice(0,16));await page.getByRole("button",{name:"Сохранить решение",exact:true}).click();
   if(outcome==="removal_required")await expect(page.getByRole("link",{name:"Связанный Remover-цикл",exact:true})).toBeVisible();
-  else await expect(page.getByText(/Следующий контакт:/)).toBeVisible();
+  else await expect(page.getByText(/Актуальная дата контакта:/)).toBeVisible();
   const [result]=await db.select().from(s.consultationResults).where(eq(s.consultationResults.studioId,studioId));
   if(outcome==="removal_required"){
    await expect(page.getByRole("link",{name:"Связанный Remover-цикл",exact:true})).toBeVisible();
    const [remover]=await db.select().from(s.treatmentCycles).where(eq(s.treatmentCycles.id,result.removerCycleId!));expect(remover).toMatchObject({clientId:client.id,originCycleId:cycle.id,zoneCode:"brows",kind:"remover"});
    await page.reload();await expect(page.getByRole("link",{name:"Связанный Remover-цикл",exact:true})).toBeVisible();
   }else{
-   await expect(page.getByText(/Следующий контакт:/)).toBeVisible();
-   const jobs=await db.select().from(s.outboxJobs).where(eq(s.outboxJobs.eventKey,result.id));expect(jobs).toHaveLength(1);expect(jobs[0].availableAt).toEqual(result.followUpAt);
+   await expect(page.getByText(/Актуальная дата контакта:/)).toBeVisible();
+   const jobs=await db.select().from(s.outboxJobs).where(eq(s.outboxJobs.eventKey,result.id));expect(jobs).toHaveLength(1);expect(jobs[0].availableAt).toEqual(result.followUpAt??result.reassessmentAt);
    // Task display fixture; the real timed worker is exercised in integration tests.
-   await db.insert(s.tasks).values({studioId,clientId:client.id,appointmentId:visit.id,followUpResultId:result.id,assignedToId:owner.id,title:"Повторный контакт с клиентом",type:"custom",dueAt:result.followUpAt});
+   await db.insert(s.tasks).values({studioId,clientId:client.id,appointmentId:visit.id,followUpResultId:result.id,assignedToId:owner.id,title:"Повторный контакт с клиентом",type:"custom",dueAt:result.followUpAt??result.reassessmentAt});
    await page.reload();await expect(page.getByRole("status").filter({hasText:"Задача повторного контакта: ожидает выполнения"})).toBeVisible();
+   const newDate=new Date(Date.now()+20*86400000).toISOString().slice(0,16);
+   await page.getByLabel("Новая дата контакта (время вашего устройства)",{exact:true}).fill(newDate);
+   await page.getByLabel("Причина переноса",{exact:true}).fill("Specialist agreed a later review");
+   await page.getByLabel("Комментарий к переносу",{exact:true}).fill("Preserve original consultation evidence");
+   // Commit the command, then lose its response. Identical retry must reuse the key.
+   let lost=false;
+   await page.route(`**/deals/${cycle.id}`,async route=>{
+    if(!lost&&route.request().method()==="POST"&&route.request().headers()["next-action"]){lost=true;await route.fetch();await route.abort("failed");}else await route.continue();
+   });
+   await page.getByRole("button",{name:"Перенести повторный контакт",exact:true}).click();await expect(page.getByRole("alert")).toBeVisible();
+   await page.getByRole("button",{name:"Перенести повторный контакт",exact:true}).click();await expect(page.getByText("История переноса дат",{exact:true})).toBeVisible();
+   await page.reload();await page.getByText("История переноса дат",{exact:true}).click();await expect(page.getByText("Specialist agreed a later review",{exact:true})).toBeVisible();
+   const revisions=await db.select().from(s.followUpRevisions).where(eq(s.followUpRevisions.resultId,result.id));expect(revisions).toHaveLength(1);
+   expect((await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,result.id)))[0].status).toBe("cancelled");
+   expect(await db.select().from(s.consultationResults).where(eq(s.consultationResults.id,result.id))).toEqual([result]);
+
   }
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(await db.select().from(s.consultationResults).where(eq(s.consultationResults.studioId,studioId))).toHaveLength(1);

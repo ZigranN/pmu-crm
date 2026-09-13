@@ -7,3 +7,5 @@ export const resultSchema=z.object({id:z.string().uuid(),expectedVersion:z.numbe
   if(value.outcome==="temporarily_unavailable"&&(!value.reassessmentAt||!value.comment))ctx.addIssue({code:"custom",message:"Нужны дата повторной оценки и комментарий"});
   if(value.outcome!=="temporarily_unavailable"&&value.reassessmentAt)ctx.addIssue({code:"custom",message:"Дата повторной оценки относится только к временной недоступности"});
 });
+
+export const rescheduleFollowUpSchema=z.object({id:z.string().uuid(),resultId:z.string().uuid(),expectedVersion:z.number().int().positive(),dueAt:z.string().datetime({offset:true}),reason:z.string().trim().min(3).max(1000),comment:z.string().trim().min(1).max(2000)}).strict();

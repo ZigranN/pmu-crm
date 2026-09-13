@@ -53,9 +53,9 @@ PARTIAL — требование выполнено частично; FOUNDATION
 | 41 | КВАЛИФИКАЦИЯ | PARTIAL | Административные поля + specialist qualification с immutable risk/evidence | AI administrative extraction и Calendar booking интеграция ещё не приняты | 5,11 |
 | 42 | СУЩЕСТВУЮЩИЙ КЛИЕНТ | PARTIAL | Live same-zone ≤2 calendar years, completed procedure, master и исключения; boundary tests | Booking command должна потреблять актуальную оценку; Calendar отсутствует | 5 |
 | 43 | РЕЗУЛЬТАТ КОНСУЛЬТАЦИИ | PARTIAL (domain ready) | Все пять результатов, specialist role, reason/version/receipt/audit, реальный overdue decision task | Реальные calendar prerequisites и scheduler rollout не приняты | 5,10 |
-| 44 | CLIENT THINKING | PARTIAL | Thinking +7×24h; transactional follow-up task, replay/clock/merge tests и UI статуса | Перенос/отмена задач, условия предложения и исходящий контакт — 3.4b–d/10 | 3.4,10 |
+| 44 | CLIENT THINKING | PARTIAL | Thinking +7×24h; durable task, immutable rescheduling, отмена прежней задачи и история UI | Возобновление/Lost, lifecycle cancellation, условия предложения и исходящий контакт — 3.4c/d/10 | 3.4,10 |
 | 45 | REMOVAL REQUIRED | PARTIAL | Human removal_required создаёт linked Remover и приостанавливает исходный PMU; replay/merge tests | Remover appointments/review/ready_for_pmu restoration ещё отсутствуют | 8.3 |
-| 46 | TEMPORARILY UNAVAILABLE | PARTIAL | Human unavailable date/reason/comment; suspended PMU и уникальная задача специалисту в срок | Версионированный перенос, повторная оценка и возобновление — 3.4b/c | 3.4 |
+| 46 | TEMPORARILY UNAVAILABLE | PARTIAL | Human unavailable date/reason/comment; suspended PMU; задачи и версионированный перенос специалистом | Фактическая повторная оценка и возобновление — 3.4c | 3.4 |
 | 47 | REFRESH | MISSING | Refresh enum без cycle/jobs | Нет350,last same-zone PMU,year offer,monthly6 stop | 10.5 |
 | 48 | AI AGENT — ОСНОВНЫЕ ПРАВИЛА | MISSING | Нет AI agent/tools | AI runtime/orchestrator/context builder/registry/KB-RAG/memory/execution trace отсутствуют | 11.1,11.2,11.3,11.5,11.6,11.9,11.10 |
 | 49 | AI НЕ МОЖЕТ | PARTIAL (запрет generic actions) | AI_SYSTEM не имеет доступа к существующим generic actions даже через allow override | Нет работающего AI runtime, зарегистрированных tools, server output policy и adversarial acceptance | 11.3,11.4,11.10 |

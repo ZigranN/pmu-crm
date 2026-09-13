@@ -1154,6 +1154,7 @@ export const tasks = pgTable(
     {
         consultationId: uuid("consultation_id").references(() => consultations.id),
         followUpResultId: uuid("follow_up_result_id").references(() => consultationResults.id),
+        followUpRevisionId: uuid("follow_up_revision_id").references(() => followUpRevisions.id),
         id: uuid("id").defaultRandom().primaryKey(),
         studioId: uuid("studio_id")
             .notNull()
@@ -1185,7 +1186,8 @@ export const tasks = pgTable(
     },
     (table) => ({
         consultationUnique: uniqueIndex("tasks_consultation_unique").on(table.consultationId),
-        followUpUnique: uniqueIndex("tasks_follow_up_result_unique").on(table.followUpResultId),
+        followUpUnique: uniqueIndex("tasks_follow_up_result_unique").on(table.followUpResultId).where(sql`${table.followUpRevisionId} is null`),
+        followUpRevisionUnique: uniqueIndex("tasks_follow_up_revision_unique").on(table.followUpRevisionId),
         studioIdIdx: index("tasks_studio_id_idx").on(table.studioId),
         assignedToIdIdx: index("tasks_assigned_to_id_idx").on(table.assignedToId),
         dueAtIdx: index("tasks_due_at_idx").on(table.dueAt),
@@ -1643,3 +1645,16 @@ export const consultationResults = pgTable("consultation_results", {
  and (${t.outcome}!='temporarily_unavailable' or (${t.reassessmentAt} is not null and length(trim(${t.comment}))>0))
  and ((${t.outcome}='client_thinking' and ${t.followUpAt} is not null) or (${t.outcome}!='client_thinking' and ${t.followUpAt} is null))
  and ((${t.outcome}='removal_required' and ${t.removerCycleId} is not null) or (${t.outcome}!='removal_required' and ${t.removerCycleId} is null))`)}));
+
+export const followUpRevisions = pgTable("follow_up_revisions", {
+  id:uuid("id").defaultRandom().primaryKey(),
+  studioId:uuid("studio_id").notNull().references(()=>studios.id,{onDelete:"cascade"}),
+  resultId:uuid("result_id").notNull().references(()=>consultationResults.id),
+  sequence:integer("sequence").notNull(),
+  dueAt:timestamp("due_at",{withTimezone:true}).notNull(),
+  actorId:text("actor_id").notNull(),commandId:uuid("command_id").notNull(),
+  reason:text("reason").notNull(),comment:text("comment").notNull(),
+  createdAt:timestamp("created_at",{withTimezone:true}).defaultNow().notNull(),
+},t=>({sequence:uniqueIndex("follow_up_revision_sequence").on(t.resultId,t.sequence),
+ command:uniqueIndex("follow_up_revision_command").on(t.commandId),
+ contract:check("follow_up_revision_contract",sql`${t.sequence}>0 and length(trim(${t.reason})) between 3 and 1000 and length(trim(${t.comment})) between 1 and 2000`)}));
