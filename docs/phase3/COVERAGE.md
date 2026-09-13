@@ -1,6 +1,6 @@
 # Матрица покрытия — 80 разделов
 
-Рабочая редакция ТЗ 1.1. Аудит основан на commit `6ed762f`; последующее восстановление миграций описано в [MIGRATION-BASELINE.md](MIGRATION-BASELINE.md). Локальные исправления доступа 0.3 описаны в ACCESS-BASELINE.md. Строки 6–10 обновлены по веткам Phase 2.1/2.2 (см. baseline); это не означает rollout в Neon. Остальная таблица сохраняет исходный аудит. Расширение требований AI не означает их реализацию.
+Рабочая редакция ТЗ 1.1. Аудит основан на commit `6ed762f`; последующее восстановление миграций описано в [MIGRATION-BASELINE.md](MIGRATION-BASELINE.md). Локальные исправления доступа 0.3 описаны в ACCESS-BASELINE.md. Строки 4, 6–10 обновлены по веткам Phase 2.1–2.3 (см. baseline); это не означает rollout в Neon. Остальная таблица сохраняет исходный аудит. Расширение требований AI не означает их реализацию.
 
 PARTIAL — часть функции; FOUNDATION — схема без workflow; CONFLICT — противоречие; MISSING — отсутствует; DEFERRED — P2; NOT ACCEPTED — готовность не доказана. Пути относятся к src/, если не указано иное.
 
@@ -9,7 +9,7 @@ PARTIAL — часть функции; FOUNDATION — схема без workflow
 | 1 | ЦЕЛЬ ЭТАПА | MISSING | Дерево routes; dashboard/page.tsx | Сквозной путь не существует | 15.2 |
 | 2 | ОСНОВНЫЕ ПРИНЦИПЫ АРХИТЕКТУРЫ | MISSING | server/services; нет command/outbox/worker | Audit не event-driven; нет business idempotency | 1.3,1.4 |
 | 3 | ОСНОВНЫЕ СУЩНОСТИ | PARTIAL | db/schema.ts:39 таблиц | Нет cycles/packages/conversations, multi-cycle visit; остальные сущности частичны | 3.1,6.1,9.1 |
-| 4 | КАРТОЧКА КЛИЕНТА | PARTIAL/CONFLICT | clients medical form/actions; scoped reads (0.3), scoped transactional writes (0.4) | Нет clearance/language/assignment; полная медицинская модель остаётся в Phase 4 | 0.3,1.1,2.3,4.1 |
+| 4 | КАРТОЧКА КЛИЕНТА | PARTIAL | CLIENT-ADMINISTRATION-BASELINE.md: language, interested zones, kind, reported PMU, assigned/preferred master и strict allowlists | Полная medical/clearance модель — Phase 4; consultation slot — Calendar Phase 5; AI tools — Phase 11 | 2.3,4.1,5.1,11.3 |
 | 5 | CLIENT DEDUPLICATION | MISSING | clients actions; phone.ts; неуникальные индексы | Нет exact/possible/merge/provenance, create дублируется | 2.4,2.5 |
 | 6 | СПРАВОЧНИК УСЛУГ | PARTIAL | SERVICE-CATALOG-BASELINE.md; нормализованный каталог, FK, sessions, templates | Legacy требует ручного разбора; Calendar Engine подключается в Phase 5 | 2.1,5.1 |
 | 7 | МОДЕЛЬ КОЛИЧЕСТВА СЕССИЙ | PARTIAL | serviceDefinitions + services sessionsModel, DB constraints | Session workflow ещё не реализован | 2.1,7.1 |

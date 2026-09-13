@@ -111,3 +111,5 @@ Command receipts, event queue, scheduler activation and migration 0008: [Phase 1
 Phase 2.1 service catalog, legacy cleanup, optional seed and migration 0009: [Service catalog baseline](docs/phase3/SERVICE-CATALOG-BASELINE.md). Apply migrations before running this branch. No remote database migration is performed automatically.
 
 Phase 2.2 pricing, immutable custom offer revisions, access rules and migration 0010: [Pricing and offers baseline](docs/phase3/PRICING-OFFERS-BASELINE.md).
+
+Phase 2.3 administrative client fields, preferred master, strict field boundaries and migration 0011: [Client administration baseline](docs/phase3/CLIENT-ADMINISTRATION-BASELINE.md).

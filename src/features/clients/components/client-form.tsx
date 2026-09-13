@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { LANGUAGES, INTEREST_ZONES, CLIENT_KINDS, CLIENT_SOURCES } from "../administrative";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { clientSchema, type ClientSchema } from "../schemas/client.schema";
@@ -30,7 +31,14 @@ export function ClientForm({ initialData }: ClientFormProps) {
   const form = useForm<ClientSchema>({
     resolver: zodResolver(clientSchema),
     defaultValues: initialData ? {
-      ...initialData,
+      firstName: initialData.firstName,
+      phone: initialData.phone,
+      clientStatus: initialData.clientStatus,
+      leadStatus: initialData.leadStatus ?? "",
+      language: initialData.language ?? null,
+      interestedZones: initialData.interestedZones ?? null,
+      clientKind: initialData.clientKind ?? null,
+      reportedPreviousPmu: initialData.reportedPreviousPmu ?? null,
       birthDate: initialData.birthDate ? new Date(initialData.birthDate) : null,
       lastName: initialData.lastName || "",
       whatsapp: initialData.whatsapp || "",
@@ -41,11 +49,11 @@ export function ClientForm({ initialData }: ClientFormProps) {
       tags: initialData.tags || "",
       referredByName: initialData.referredByName || "",
       interest: initialData.interest || "",
-      treatmentZone: initialData.treatmentZone || "",
       nextContactAt: initialData.nextContactAt ? new Date(initialData.nextContactAt) : null,
       campaignTag: initialData.campaignTag || "",
       serviceTag: initialData.serviceTag || "",
     } : {
+      language: null, interestedZones: null, clientKind: null, reportedPreviousPmu: null,
       firstName: "",
       lastName: "",
       phone: "",
@@ -60,7 +68,6 @@ export function ClientForm({ initialData }: ClientFormProps) {
       tags: "",
       referredByName: "",
       interest: "",
-      treatmentZone: "",
       nextContactAt: null,
       campaignTag: "",
       serviceTag: "",
@@ -229,6 +236,26 @@ export function ClientForm({ initialData }: ClientFormProps) {
           />
         </FormSection>
 
+        <FormSection title="Административные данные">
+          <p className="text-sm text-muted-foreground">Сведения со слов клиента. Они не заменяют медицинскую оценку мастера.</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField control={form.control} name="language" render={({ field }) => <FormItem><FormLabel>Язык общения</FormLabel><FormControl>
+              <select className="border rounded p-2 w-full" value={field.value ?? ""} onChange={event => field.onChange(event.target.value || null)}><option value="">Не уточнён</option>{Object.entries(LANGUAGES).map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select>
+            </FormControl><FormMessage /></FormItem>} />
+            <FormField control={form.control} name="clientKind" render={({ field }) => <FormItem><FormLabel>Тип клиента</FormLabel><FormControl>
+              <select className="border rounded p-2 w-full" value={field.value ?? ""} onChange={event => field.onChange(event.target.value || null)}><option value="">Не уточнён</option>{Object.entries(CLIENT_KINDS).map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select>
+            </FormControl><FormMessage /></FormItem>} />
+            <FormField control={form.control} name="reportedPreviousPmu" render={({ field }) => <FormItem><FormLabel>Предыдущий PMU со слов клиента</FormLabel><FormControl>
+              <select className="border rounded p-2 w-full" value={field.value == null ? "unknown" : field.value ? "yes" : "no"} onChange={event => field.onChange(event.target.value === "unknown" ? null : event.target.value === "yes")}><option value="unknown">Не уточнено</option><option value="yes">Да</option><option value="no">Нет</option></select>
+            </FormControl><FormMessage /></FormItem>} />
+          </div>
+          <FormField control={form.control} name="interestedZones" render={({ field }) => <FormItem><FormLabel>Интересующие зоны</FormLabel>
+            <div className="flex flex-wrap gap-4">{Object.entries(INTEREST_ZONES).map(([code, label]) => <label key={code} className="flex gap-2 items-center"><input type="checkbox" checked={field.value?.includes(code as keyof typeof INTEREST_ZONES) ?? false} onChange={event => field.onChange(event.target.checked ? [...(field.value ?? []), code] : (field.value ?? []).filter(zone => zone !== code))} />{label}</label>)}</div>
+            <p className="text-sm text-muted-foreground">{field.value === null ? "Интерес пока не уточнён" : field.value?.length === 0 ? "Зоны не выбраны" : "Можно выбрать несколько зон"}</p>
+            <Button type="button" variant="ghost" onClick={() => field.onChange(null)}>Отметить интерес как неуточнённый</Button><FormMessage />
+          </FormItem>} />
+        </FormSection>
+
         <FormSection title="ПМ Учет">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField
@@ -260,19 +287,7 @@ export function ClientForm({ initialData }: ClientFormProps) {
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormField
-              control={form.control}
-              name="treatmentZone"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Зона процедуры</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Брови, губы, глаза" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {initialData?.treatmentZone && <p className="text-sm">Зона из старой карточки: {initialData.treatmentZone}. Уточните интересующие зоны в административных данных.</p>}
             <FormField
               control={form.control}
               name="nextContactAt"
@@ -371,6 +386,7 @@ export function ClientForm({ initialData }: ClientFormProps) {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
+                      {field.value && !Object.hasOwn(CLIENT_SOURCES, field.value) && <SelectItem value={field.value}>{field.value} (из старой карточки)</SelectItem>}
                       <SelectItem value="instagram">Instagram</SelectItem>
                       <SelectItem value="whatsapp">WhatsApp</SelectItem>
                       <SelectItem value="referral">Рекомендация</SelectItem>
@@ -406,7 +422,7 @@ export function ClientForm({ initialData }: ClientFormProps) {
               <FormItem>
                 <FormLabel>Теги</FormLabel>
                 <FormControl>
-                  <Input placeholder="VIP, Скидка, Проблемная кожа (через запятую)" {...field} />
+                  <Input placeholder="VIP, Рекомендация (через запятую)" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -420,7 +436,7 @@ export function ClientForm({ initialData }: ClientFormProps) {
               <FormItem>
                 <FormLabel>Заметки</FormLabel>
                 <FormControl>
-                  <Textarea placeholder="Важная информация о клиенте..." {...field} value={field.value ?? ""} />
+                  <Textarea placeholder="Административные заметки; медицинские сведения — в мед. карте" {...field} value={field.value ?? ""} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

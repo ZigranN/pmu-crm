@@ -17,3 +17,5 @@
 
 - [Каталог услуг 2.1](SERVICE-CATALOG-BASELINE.md)
 - [Цены мастеров и Custom Offer 2.2](PRICING-OFFERS-BASELINE.md)
+
+- [Административная карточка 2.3](CLIENT-ADMINISTRATION-BASELINE.md)
