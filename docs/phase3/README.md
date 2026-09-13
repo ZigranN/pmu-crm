@@ -14,3 +14,6 @@
 - [Проверки и исправления доступа 0.3](ACCESS-BASELINE.md)
 
 - [Целостность изменений 0.4](MUTATION-BASELINE.md)
+
+- [Каталог услуг 2.1](SERVICE-CATALOG-BASELINE.md)
+- [Цены мастеров и Custom Offer 2.2](PRICING-OFFERS-BASELINE.md)
