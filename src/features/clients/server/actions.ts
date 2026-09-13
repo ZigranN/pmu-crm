@@ -2,12 +2,13 @@
 import { writeActivity } from "@/server/services/activity.service";
 import { writeAudit } from "@/server/services/audit-log.service";
 import { db } from "@/db";
+import { idempotentCommand, type Json } from "@/server/commands/idempotency";
+import { enqueue } from "@/server/events/outbox";
 import { clients, clientStatusHistory } from "@/db/schema";
 import { clientSchema, type ClientSchema } from "../schemas/client.schema";
 import { requireStudioPermission } from "@/server/auth/context";
-import { lockStudioAccess, resourceScope } from "@/server/auth/scopes";
+import { resourceScope } from "@/server/auth/scopes";
 import { lockClient } from "@/server/commands/ownership";
-import { hasPermission } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/phone";
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
@@ -20,17 +21,19 @@ function parseClient(input: ClientSchema) {
     clientStatus: validated.clientStatus as typeof clients.$inferInsert.clientStatus,
     tags: Array.isArray(validated.tags) ? validated.tags.join(",") : validated.tags };
 }
-export async function createClientAction(input: ClientSchema) {
+export async function createClientAction(input: ClientSchema, requestKey: string) {
   const context = await requireStudioPermission("CLIENT_CREATE");
   const data = parseClient(input);
-  const result = await db.transaction(async tx => {
-    await lockStudioAccess(tx, context);
-    if (!await hasPermission(tx, context.userId, context.studioId, "CLIENT_CREATE")) throw new Error("Permission denied");
-    const [created] = await tx.insert(clients).values({ ...data, studioId: context.studioId }).returning();
-    await writeActivity(tx, { ...context, clientId: created.id, type: "client_created", title: "Клиент создан" });
-    await writeAudit(tx, { ...context, action: "client_created", entityType: "client", entityId: created.id, before: null, after: created, reason: "command:client_created" });
-    return created;
-  });
+  // Persist only a result reference; replay never returns an old personal-data snapshot.
+  const result = await idempotentCommand(context, "CLIENT_CREATE", "client.create.v1", requestKey,
+    JSON.parse(JSON.stringify(data)) as Json, async (tx, commandId) => {
+      const [created] = await tx.insert(clients).values({ ...data, studioId: context.studioId }).returning();
+      await writeActivity(tx, { ...context, clientId: created.id, type: "client_created", title: "Клиент создан" });
+      await writeAudit(tx, { ...context, action: "client_created", entityType: "client", entityId: created.id,
+        before: null, after: created, reason: "command:client_created", metadata: { commandId } });
+      await enqueue(tx, { studioId: context.studioId, eventKey: commandId, handler: "client.created.v1" }, { clientId: created.id });
+      return { id: created.id };
+    }, async (tx, result) => { await lockClient(tx, result.id, context.studioId, context.userId, true, "CLIENT_CREATE"); });
   revalidatePath("/clients");
   return result;
 }

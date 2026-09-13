@@ -1336,3 +1336,64 @@ export const accessLogs = pgTable("access_logs", {
   resultCheck: check("access_logs_result_check", sql`${table.result} in ('returned', 'not_returned', 'denied', 'error')`),
   countCheck: check("access_logs_count_check", sql`${table.recordCount} >= 0 and jsonb_typeof(${table.recordIds}) = 'array' and jsonb_array_length(${table.recordIds}) = ${table.recordCount}`),
 }));
+
+// Command receipts are committed only together with the domain mutation.
+export const commandReceipts = pgTable("command_receipts", {
+  id: uuid("id").primaryKey(),
+  studioId: uuid("studio_id").notNull().references(() => studios.id, { onDelete: "cascade" }),
+  actorId: text("actor_id").notNull(),
+  command: text("command").notNull(),
+  requestKey: uuid("request_key").notNull(),
+  payloadHash: text("payload_hash").notNull(),
+  result: jsonb("result").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => ({ key: uniqueIndex("command_receipts_key_idx").on(table.studioId, table.actorId, table.command, table.requestKey) }));
+
+export const eventInbox = pgTable("event_inbox", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id").notNull().references(() => studios.id, { onDelete: "cascade" }),
+  consumer: text("consumer").notNull(),
+  eventKey: text("event_key").notNull(),
+  payloadHash: text("payload_hash").notNull(),
+  result: jsonb("result").notNull(),
+  processedAt: timestamp("processed_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => ({ key: uniqueIndex("event_inbox_key_idx").on(table.studioId, table.consumer, table.eventKey) }));
+
+export const outboxJobs = pgTable("outbox_jobs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id").notNull().references(() => studios.id, { onDelete: "cascade" }),
+  eventKey: text("event_key").notNull(),
+  handler: text("handler").notNull(),
+  effectType: text("effect_type").notNull().default("transactional"),
+  payload: jsonb("payload").notNull(),
+  payloadHash: text("payload_hash").notNull(),
+  state: text("state").notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(8),
+  availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
+  leaseToken: uuid("lease_token"),
+  leaseUntil: timestamp("lease_until", { withTimezone: true }),
+  externalId: text("external_id"),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  key: uniqueIndex("outbox_jobs_key_idx").on(table.studioId, table.handler, table.eventKey),
+  ready: index("outbox_jobs_ready_idx").on(table.state, table.availableAt, table.leaseUntil),
+  studio: index("outbox_jobs_studio_idx").on(table.studioId, table.createdAt),
+  effectCheck: check("outbox_jobs_effect_check", sql`${table.effectType} in ('transactional','external')`),
+  stateCheck: check("outbox_jobs_state_check", sql`${table.state} in ('pending','processing','reconciling','completed','dead','uncertain')`),
+  attemptCheck: check("outbox_jobs_attempt_check", sql`${table.attempts} >= 0 and ${table.maxAttempts} between 1 and 20`),
+  leaseCheck: check("outbox_jobs_lease_check", sql`(${table.state} in ('processing','reconciling') and ${table.leaseToken} is not null and ${table.leaseUntil} is not null)
+    or (${table.state} not in ('processing','reconciling') and ${table.leaseToken} is null and ${table.leaseUntil} is null)`),
+}));
+
+export const jobAttempts = pgTable("job_attempts", {
+  id: uuid("id").primaryKey(), // Lease token also fences late results.
+  jobId: uuid("job_id").notNull().references(() => outboxJobs.id, { onDelete: "cascade" }),
+  mode: text("mode").notNull(),
+  outcome: text("outcome").notNull().default("started"),
+  errorCode: text("error_code"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+}, table => ({ job: index("job_attempts_job_idx").on(table.jobId, table.startedAt) }));

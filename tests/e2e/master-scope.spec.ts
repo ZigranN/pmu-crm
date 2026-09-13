@@ -57,6 +57,8 @@ test("Owner links a Master and assigns a client; mobile Master cannot open anoth
     await expect(page).toHaveURL(/\/dashboard$/);
     await page.goto("/settings/audit");
     await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/settings/jobs");
+    await expect(page).toHaveURL(/\/dashboard$/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   } finally {
     try {
