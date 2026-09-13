@@ -1,5 +1,7 @@
 # Полный чек-лист PMU CRM — состояние на 13.09.2026
 
+Дополнение шага 3.1: ветка `codex/phase-3-cycle-schema`; [объём и проверки](TREATMENT-CYCLE-SCHEMA-BASELINE.md). Исторические сведения о PR №1–12 ниже относятся к предыдущему срезу; применение 0014 в Neon не выполнялось.
+
 ## Что означает «выполнено»
 
 - [x] **Код шага реализован и проверен** — ограниченный объём конкретного шага присутствует в ветке `codex/phase-2-client-merge`, commit `eceed9c`.
@@ -70,7 +72,7 @@
 
 ### Phase 3 — treatment cycles и pipeline (§3,40–46)
 
-- [ ] **3.1 Схема циклов** — см. [ТЗ шага 3.1](REMAINING-SPECIFICATION.md#step-3-1).
+- [x] **3.1 Схема циклов — foundation** — см. [ТЗ шага 3.1](REMAINING-SPECIFICATION.md#step-3-1).
 - [ ] **3.2 21 стадия** — см. [ТЗ шага 3.2](REMAINING-SPECIFICATION.md#step-3-2).
 - [ ] **3.3 Qualification / консультация** — см. [ТЗ шага 3.3](REMAINING-SPECIFICATION.md#step-3-3).
 - [ ] **3.4 Thinking / unavailable / lost** — см. [ТЗ шага 3.4](REMAINING-SPECIFICATION.md#step-3-4).
@@ -179,15 +181,15 @@
 |---|---|---|---|---|
 | 1 | ЦЕЛЬ ЭТАПА | NOT ACCEPTED | Единый путь Lead → Refresh отсутствует | 3–15 |
 | 2 | ОСНОВНЫЕ ПРИНЦИПЫ АРХИТЕКТУРЫ | PARTIAL | Framework работает; бизнес-события будущих модулей, реальные adapters и общий E2E ещё не подключены | 3–12,15 |
-| 3 | ОСНОВНЫЕ СУЩНОСТИ | PARTIAL | Нет полноценной модели cycles/packages/conversations/ledger allocations; schema сама по себе не workflow | 3.1,6.1,8,9.1 |
+| 3 | ОСНОВНЫЕ СУЩНОСТИ | PARTIAL | Схема готова; команды и UI циклов, conversations и ledger allocations ещё отсутствуют | 3.2–3.4,6.1,8,9.1 |
 | 4 | КАРТОЧКА КЛИЕНТА | PARTIAL | Полная medical/clearance модель — Phase 4; consultation slot — Calendar Phase 5; AI tools — Phase 11 | 2.3,4.1,5.1,11.3 |
-| 5 | CLIENT DEDUPLICATION | PARTIAL (текущая схема реализована) | Будущие cycles/packages/conversations/ledger расширяют merge registry; поиск имён ограничен; update предлагает ручную проверку | 3,6,7,9,15.1 |
+| 5 | CLIENT DEDUPLICATION | PARTIAL (текущая схема реализована) | Будущие conversations/ledger расширяют merge registry; ограничения поиска сохраняются | 6,7,9,15.1 |
 | 6 | СПРАВОЧНИК УСЛУГ | PARTIAL | Legacy требует ручного разбора; Calendar Engine подключается в Phase 5 | 2.1,5.1 |
 | 7 | МОДЕЛЬ КОЛИЧЕСТВА СЕССИЙ | PARTIAL | Session workflow ещё не реализован | 2.1,7.1 |
 | 8 | ЦЕНЫ И УСЛУГИ | PARTIAL | Требуется отдельный rollout; legacy не переписываются автоматически | 2.1,2.2 |
 | 9 | MASTER-SPECIFIC PRICING | PARTIAL | Effective price реализован; будущий booking должен использовать общий resolver | 2.2,5.1 |
-| 10 | CUSTOM OFFER | PARTIAL | Client-level offer реализован; ссылки cycle/ledger подключаются в своих фазах | 2.2,3.1,6.1 |
-| 11 | TOTAL FACE | MISSING | Нет3 cycles,1400,500/400/500,deadline/extension | 8.1,8.2 |
+| 10 | CUSTOM OFFER | PARTIAL | Команды применения offer к cycle и ledger ещё не реализованы | 3.2,6.1 |
+| 11 | TOTAL FACE | PARTIAL (schema foundation) | Нет atomic создания Total Face,1400,500/400/500,deadline/extension | 8.1,8.2 |
 | 12 | REMOVER | MISSING | Нет variable sessions,100/visit,review30–45,outcomes | 8.3,8.4 |
 | 13 | КАЛЕНДАРЬ | FOUNDATION | Нет slot engine/DST/holiday/vacation/override | 5.1 |
 | 14 | ПРЕДПОЧТИТЕЛЬНЫЕ СЛОТЫ | MISSING | Нет preferred PMU/consultation slots | 5.1 |
@@ -216,12 +218,12 @@
 | 37 | ФОТОГРАФИИ | PARTIAL | Нет требуемых stage guards/healed_result/pre-consult rules | 4.2,4.3 |
 | 38 | WHATSAPP MEDIA | MISSING | Нет inbound images и human verification классификации | 9.2,4.2 |
 | 39 | CONSENT | PARTIAL/CONFLICT | Нет multi-zone signature/PDF/versions/review2y и restore UI; hard delete заменён архивированием | 4.4,4.5 |
-| 40 | ВОРОНКА PMU | CONFLICT | Нет21-stage per-zone pipeline; stages человека не цикл | 3.1,3.2 |
+| 40 | ВОРОНКА PMU | PARTIAL (legacy UI conflict) | Нет transition guards/history/board; legacy Select пока не заменён | 3.2 |
 | 41 | КВАЛИФИКАЦИЯ | PARTIAL | Нет формализованного консультационного решения и правила returning client | 3.3 |
 | 42 | СУЩЕСТВУЮЩИЙ КЛИЕНТ | MISSING | Нет same-zone≤2yr shortcut и исключений | 3.3 |
 | 43 | РЕЗУЛЬТАТ КОНСУЛЬТАЦИИ | MISSING | Нет5 результатов решения мастера | 3.3 |
 | 44 | CLIENT THINKING | MISSING | Нет thinking7d и offer validity handling | 3.4 |
-| 45 | REMOVAL REQUIRED | MISSING | Remover не связан с сохранённым PMU | 3.1,8.3 |
+| 45 | REMOVAL REQUIRED | PARTIAL (schema foundation) | Нет human-result suspension/restoration workflows | 8.3 |
 | 46 | TEMPORARILY UNAVAILABLE | MISSING | Нет reason/reassessment/comment мастера | 3.4 |
 | 47 | REFRESH | MISSING | Нет350,last same-zone PMU,year offer,monthly6 stop | 10.5 |
 | 48 | AI AGENT — ОСНОВНЫЕ ПРАВИЛА | MISSING | AI runtime/orchestrator/context builder/registry/KB-RAG/memory/execution trace отсутствуют | 11.1,11.2,11.3,11.5,11.6,11.9,11.10 |
@@ -262,4 +264,4 @@
 
 [Реестр §§76–79](ACCEPTANCE.md) содержит **125 требований**: 50 technical, 48 main/AI E2E, 15 Total Face, 12 Remover. Это не количество существующих тестов. Отдельные integrity/RBAC/retry/merge случаи уже покрыты, но весь реестр не закрыт как релизная приёмка; текущие 150+4+13 тестов не подменяют эти 125 требований.
 
-Следующий шаг разработки: **3.1 — схема Treatment Cycles**, затем 3.2–3.4. Merge PR, миграции Neon и rollout идут отдельным контролируемым процессом, описанным в оставшемся ТЗ. Их выполнение данным отчётом не разрешается и не заявляется.
+Следующий шаг разработки: **3.2 — переходы 21 стадии Treatment Cycle**, затем 3.3–3.4. Merge PR, миграции Neon и rollout идут отдельным контролируемым процессом, описанным в оставшемся ТЗ. Их выполнение данным отчётом не разрешается и не заявляется.

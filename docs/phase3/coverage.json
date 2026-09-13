@@ -18,9 +18,9 @@
   {
     "section": "3",
     "status": "PARTIAL",
-    "evidence": "db/schema.ts; clients/masters/services/appointments/procedureSessions/payments/media/consents; aliases и merge evidence",
-    "gap": "Нет полноценной модели cycles/packages/conversations/ledger allocations; schema сама по себе не workflow",
-    "steps": "3.1,6.1,8,9.1",
+    "evidence": "Treatment cycles/packages/appointment_cycles, origin links, snapshots/version и nullable procedure cycle FK; TREATMENT-CYCLE-SCHEMA-BASELINE.md",
+    "gap": "Схема готова; команды и UI циклов, conversations и ledger allocations ещё отсутствуют",
+    "steps": "3.2–3.4,6.1,8,9.1",
     "title": "ОСНОВНЫЕ СУЩНОСТИ"
   },
   {
@@ -34,9 +34,9 @@
   {
     "section": "5",
     "status": "PARTIAL (текущая схема реализована)",
-    "evidence": "canonical keys, scoped exact/possible review, atomic create и merge, aliases, provenance, retained medical history; CLIENT-DEDUPLICATION-BASELINE.md, CLIENT-MERGE-BASELINE.md",
-    "gap": "Будущие cycles/packages/conversations/ledger расширяют merge registry; поиск имён ограничен; update предлагает ручную проверку",
-    "steps": "3,6,7,9,15.1",
+    "evidence": "Canonical dedup/merge; registry включает cycles/packages/appointment_cycles с сохранением IDs и snapshots",
+    "gap": "Будущие conversations/ledger расширяют merge registry; ограничения поиска сохраняются",
+    "steps": "6,7,9,15.1",
     "title": "CLIENT DEDUPLICATION"
   },
   {
@@ -74,16 +74,16 @@
   {
     "section": "10",
     "status": "PARTIAL",
-    "evidence": "offers UI/commands, immutable revisions, reason/approval/audit",
-    "gap": "Client-level offer реализован; ссылки cycle/ledger подключаются в своих фазах",
-    "steps": "2.2,3.1,6.1",
+    "evidence": "Immutable offer revisions и nullable cycle.offerRevisionId с проверкой клиента",
+    "gap": "Команды применения offer к cycle и ledger ещё не реализованы",
+    "steps": "3.2,6.1",
     "title": "CUSTOM OFFER"
   },
   {
     "section": "11",
-    "status": "MISSING",
-    "evidence": "Enum total_look, нет package",
-    "gap": "Нет3 cycles,1400,500/400/500,deadline/extension",
+    "status": "PARTIAL (schema foundation)",
+    "evidence": "Package shell и три уникальные PMU-зоны; multi-cycle visit",
+    "gap": "Нет atomic создания Total Face,1400,500/400/500,deadline/extension",
     "steps": "8.1,8.2",
     "title": "TOTAL FACE"
   },
@@ -313,10 +313,10 @@
   },
   {
     "section": "40",
-    "status": "CONFLICT",
-    "evidence": "clients.clientStatus и ручной Select",
-    "gap": "Нет21-stage per-zone pipeline; stages человека не цикл",
-    "steps": "3.1,3.2",
+    "status": "PARTIAL (legacy UI conflict)",
+    "evidence": "21 stage names на cycle; clientStatus сохранён отдельно",
+    "gap": "Нет transition guards/history/board; legacy Select пока не заменён",
+    "steps": "3.2",
     "title": "ВОРОНКА PMU"
   },
   {
@@ -353,10 +353,10 @@
   },
   {
     "section": "45",
-    "status": "MISSING",
-    "evidence": "Нет linked cycles",
-    "gap": "Remover не связан с сохранённым PMU",
-    "steps": "3.1,8.3",
+    "status": "PARTIAL (schema foundation)",
+    "evidence": "originCycleId сохраняет связь Remover с исходным PMU той же зоны/клиента",
+    "gap": "Нет human-result suspension/restoration workflows",
+    "steps": "8.3",
     "title": "REMOVAL REQUIRED"
   },
   {

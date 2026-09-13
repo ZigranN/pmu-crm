@@ -42,7 +42,7 @@
 
 #### 3.1 Схема циклов
 
-**Статус:** не завершён; обязательный остаток Phase 3. **Основание:** §3,40–46.
+**Статус:** foundation реализован в `codex/phase-3-cycle-schema`; см. [baseline](TREATMENT-CYCLE-SCHEMA-BASELINE.md). Историческое задание ниже сохранено как критерий шага. Backfill выполняется только после ручного разбора, commands/workflow — 3.2. **Основание:** §3,40–46.
 
 **Файлы/модули:** `src/db/schema.ts`; `src/db/relations.ts`; +src/features/treatment-cycles/schemas/cycle.schema.ts.
 

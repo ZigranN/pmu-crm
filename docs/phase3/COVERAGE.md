@@ -1,5 +1,7 @@
 # Матрица покрытия — 80 разделов
 
+Дополнение шага 3.1: ветка `codex/phase-3-cycle-schema`; [объём и проверки](TREATMENT-CYCLE-SCHEMA-BASELINE.md). Исторические сведения о PR №1–12 ниже относятся к предыдущему срезу; применение 0014 в Neon не выполнялось.
+
 Актуализировано 13.09.2026 по коду `eceed9cdbb6a8110c24c983818fc7422570d69af` и рабочему ТЗ 1.1 (исходная версия 1.0 + согласованное расширение AI). Это заменяет устаревшие статусы исходного аудита `6ed762f`; история изменений остаётся в Git и baseline-документах.
 
 Статусы описывают реализацию в текущей ветке, а не rollout. На момент проверки PR №1–6 MERGED; №7–12 OPEN/DRAFT. Применение миграций Neon и состояние Vercel не проверялись. CI окончательного кода: [успешный прогон](https://github.com/ZigranN/pmu-crm/actions/runs/34758447526).
@@ -10,15 +12,15 @@ PARTIAL — требование выполнено частично; FOUNDATION
 |---|---|---|---|---|---|
 | 1 | ЦЕЛЬ ЭТАПА | NOT ACCEPTED | Реализованы основы и текущие client/service workflows | Единый путь Lead → Refresh отсутствует | 3–15 |
 | 2 | ОСНОВНЫЕ ПРИНЦИПЫ АРХИТЕКТУРЫ | PARTIAL | server/commands/idempotency.ts; server/events/{outbox,worker,registry}.ts; transactional audit | Framework работает; бизнес-события будущих модулей, реальные adapters и общий E2E ещё не подключены | 3–12,15 |
-| 3 | ОСНОВНЫЕ СУЩНОСТИ | PARTIAL | db/schema.ts; clients/masters/services/appointments/procedureSessions/payments/media/consents; aliases и merge evidence | Нет полноценной модели cycles/packages/conversations/ledger allocations; schema сама по себе не workflow | 3.1,6.1,8,9.1 |
+| 3 | ОСНОВНЫЕ СУЩНОСТИ | PARTIAL | Treatment cycles/packages/appointment_cycles, origin links, snapshots/version и nullable procedure cycle FK; TREATMENT-CYCLE-SCHEMA-BASELINE.md | Схема готова; команды и UI циклов, conversations и ledger allocations ещё отсутствуют | 3.2–3.4,6.1,8,9.1 |
 | 4 | КАРТОЧКА КЛИЕНТА | PARTIAL | CLIENT-ADMINISTRATION-BASELINE.md: language, interested zones, kind, reported PMU, assigned/preferred master и strict allowlists | Полная medical/clearance модель — Phase 4; consultation slot — Calendar Phase 5; AI tools — Phase 11 | 2.3,4.1,5.1,11.3 |
-| 5 | CLIENT DEDUPLICATION | PARTIAL (текущая схема реализована) | canonical keys, scoped exact/possible review, atomic create и merge, aliases, provenance, retained medical history; CLIENT-DEDUPLICATION-BASELINE.md, CLIENT-MERGE-BASELINE.md | Будущие cycles/packages/conversations/ledger расширяют merge registry; поиск имён ограничен; update предлагает ручную проверку | 3,6,7,9,15.1 |
+| 5 | CLIENT DEDUPLICATION | PARTIAL (текущая схема реализована) | Canonical dedup/merge; registry включает cycles/packages/appointment_cycles с сохранением IDs и snapshots | Будущие conversations/ledger расширяют merge registry; ограничения поиска сохраняются | 6,7,9,15.1 |
 | 6 | СПРАВОЧНИК УСЛУГ | PARTIAL | SERVICE-CATALOG-BASELINE.md; нормализованный каталог, FK, sessions, templates | Legacy требует ручного разбора; Calendar Engine подключается в Phase 5 | 2.1,5.1 |
 | 7 | МОДЕЛЬ КОЛИЧЕСТВА СЕССИЙ | PARTIAL | serviceDefinitions + services sessionsModel, DB constraints | Session workflow ещё не реализован | 2.1,7.1 |
 | 8 | ЦЕНЫ И УСЛУГИ | PARTIAL | 13 определений §8, повторяемый import; quote/estimate/range | Требуется отдельный rollout; legacy не переписываются автоматически | 2.1,2.2 |
 | 9 | MASTER-SPECIFIC PRICING | PARTIAL | PRICING-OFFERS-BASELINE.md; resolvePrice + immutable overrides | Effective price реализован; будущий booking должен использовать общий resolver | 2.2,5.1 |
-| 10 | CUSTOM OFFER | PARTIAL | offers UI/commands, immutable revisions, reason/approval/audit | Client-level offer реализован; ссылки cycle/ledger подключаются в своих фазах | 2.2,3.1,6.1 |
-| 11 | TOTAL FACE | MISSING | Enum total_look, нет package | Нет3 cycles,1400,500/400/500,deadline/extension | 8.1,8.2 |
+| 10 | CUSTOM OFFER | PARTIAL | Immutable offer revisions и nullable cycle.offerRevisionId с проверкой клиента | Команды применения offer к cycle и ledger ещё не реализованы | 3.2,6.1 |
+| 11 | TOTAL FACE | PARTIAL (schema foundation) | Package shell и три уникальные PMU-зоны; multi-cycle visit | Нет atomic создания Total Face,1400,500/400/500,deadline/extension | 8.1,8.2 |
 | 12 | REMOVER | MISSING | Enum remover, нет workflow | Нет variable sessions,100/visit,review30–45,outcomes | 8.3,8.4 |
 | 13 | КАЛЕНДАРЬ | FOUNDATION | availability/breaks/blockedTimes; schedule заглушка | Нет slot engine/DST/holiday/vacation/override | 5.1 |
 | 14 | ПРЕДПОЧТИТЕЛЬНЫЕ СЛОТЫ | MISSING | Нет slot generator | Нет preferred PMU/consultation slots | 5.1 |
@@ -47,12 +49,12 @@ PARTIAL — требование выполнено частично; FOUNDATION
 | 37 | ФОТОГРАФИИ | PARTIAL | media types before/after; галерея | Нет требуемых stage guards/healed_result/pre-consult rules | 4.2,4.3 |
 | 38 | WHATSAPP MEDIA | MISSING | wa.me helper не intake | Нет inbound images и human verification классификации | 9.2,4.2 |
 | 39 | CONSENT | PARTIAL/CONFLICT | consents schema/service; upload transaction и archive сохраняют evidence (0.4); UI пока пишет media | Нет multi-zone signature/PDF/versions/review2y и restore UI; hard delete заменён архивированием | 4.4,4.5 |
-| 40 | ВОРОНКА PMU | CONFLICT | clients.clientStatus и ручной Select | Нет21-stage per-zone pipeline; stages человека не цикл | 3.1,3.2 |
+| 40 | ВОРОНКА PMU | PARTIAL (legacy UI conflict) | 21 stage names на cycle; clientStatus сохранён отдельно | Нет transition guards/history/board; legacy Select пока не заменён | 3.2 |
 | 41 | КВАЛИФИКАЦИЯ | PARTIAL | Административные поля, язык, источник, зоны, previous PMU со слов клиента; assigned/preferred master | Нет формализованного консультационного решения и правила returning client | 3.3 |
 | 42 | СУЩЕСТВУЮЩИЙ КЛИЕНТ | MISSING | Нет qualification history rules | Нет same-zone≤2yr shortcut и исключений | 3.3 |
 | 43 | РЕЗУЛЬТАТ КОНСУЛЬТАЦИИ | MISSING | Нет consultations module | Нет5 результатов решения мастера | 3.3 |
 | 44 | CLIENT THINKING | MISSING | nextContactAt только поле | Нет thinking7d и offer validity handling | 3.4 |
-| 45 | REMOVAL REQUIRED | MISSING | Нет linked cycles | Remover не связан с сохранённым PMU | 3.1,8.3 |
+| 45 | REMOVAL REQUIRED | PARTIAL (schema foundation) | originCycleId сохраняет связь Remover с исходным PMU той же зоны/клиента | Нет human-result suspension/restoration workflows | 8.3 |
 | 46 | TEMPORARILY UNAVAILABLE | MISSING | Нет unavailable state | Нет reason/reassessment/comment мастера | 3.4 |
 | 47 | REFRESH | MISSING | Refresh enum без cycle/jobs | Нет350,last same-zone PMU,year offer,monthly6 stop | 10.5 |
 | 48 | AI AGENT — ОСНОВНЫЕ ПРАВИЛА | MISSING | Нет AI agent/tools | AI runtime/orchestrator/context builder/registry/KB-RAG/memory/execution trace отсутствуют | 11.1,11.2,11.3,11.5,11.6,11.9,11.10 |

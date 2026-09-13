@@ -22,3 +22,5 @@
 - [Цены мастеров и Custom Offer 2.2](PRICING-OFFERS-BASELINE.md)
 
 - [Административная карточка 2.3](CLIENT-ADMINISTRATION-BASELINE.md)
+
+- [Treatment Cycle schema — шаг 3.1](TREATMENT-CYCLE-SCHEMA-BASELINE.md).

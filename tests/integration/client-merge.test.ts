@@ -37,7 +37,10 @@ async function rich() {
   const [service] = await db.insert(s.services).values({ studioId, name: "Legacy brows", category: "brows", procedureType: "brows" }).returning();
   const common = { studioId, clientId: source.id };
   const [appointment] = await db.insert(s.appointments).values({ ...common, masterId: master.id, serviceId: service.id, startAt: new Date("2026-01-01T10:00:00Z"), endAt: new Date("2026-01-01T11:00:00Z"), source: "phone", createdById: actor, serviceSnapshot: { historic: true }, clientSnapshot: { name: "Original booking" }, masterSnapshot: {}, priceSnapshotCents: 10000, durationSnapshotMinutes: 60 }).returning();
-  const [procedure] = await db.insert(s.procedureSessions).values({ ...common, appointmentId: appointment.id, masterId: master.id, serviceId: service.id, procedureArea: "brows", procedureType: "brows", sessionType: "primary_session" }).returning();
+  const [pkg] = await db.insert(s.treatmentPackages).values({ ...common, commercialSnapshot: { original: true } }).returning();
+  const cycles = await db.insert(s.treatmentCycles).values((["brows", "eyes", "lips"] as const).map(zoneCode => ({ ...common, zoneCode, kind: "pmu", packageId: pkg.id, serviceSnapshot: { original: zoneCode } }))).returning();
+  const links = await db.insert(s.appointmentCycles).values(cycles.map(cycle => ({ ...common, appointmentId: appointment.id, cycleId: cycle.id, visitKind: "session_1", serviceSnapshot: { zone: cycle.zoneCode } }))).returning();
+  const [procedure] = await db.insert(s.procedureSessions).values({ ...common, appointmentId: appointment.id, cycleId: cycles[0].id, masterId: master.id, serviceId: service.id, procedureArea: "brows", procedureType: "brows", sessionType: "primary_session" }).returning();
   const linked = { ...common, appointmentId: appointment.id, procedureSessionId: procedure.id };
   const [media] = await db.insert(s.media).values({ ...linked, type: "consent", url: "https://example.test/private-document", publicId: "retained", createdById: actor, deletedAt: new Date() }).returning();
   const [consent] = await db.insert(s.consents).values({ ...common, procedureSessionId: procedure.id, mediaId: media.id, consentType: "brows", signedAt: new Date() }).returning();
@@ -54,7 +57,7 @@ async function rich() {
   const [offer] = await db.insert(s.customOffers).values(common).returning();
   await db.insert(s.clientDuplicateDecisions).values([source,target].map(row => ({ studioId, clientId: row.id, actorId: actor, reason: "Prior decision", reviewToken: "a".repeat(64), matches: [] })));
   await db.insert(s.clientMedicalProfiles).values([{ clientId: source.id, allergies: "Source allergy", diabetes: true }, { clientId: target.id, allergies: "Target allergy" }]);
-  return { appointment, procedure, media, consent, payment, transaction, offer };
+  return { appointment, procedure, media, consent, payment, transaction, offer, pkg, cycles, links };
 }
 test("every direct client FK is classified in the merge registry", async () => {
   const registry = await import("@/features/clients/server/merge-registry");
@@ -66,9 +69,11 @@ test("rich merge retains all relations, financial amounts, document IDs, medical
   const result = await actions.mergeClientsAction(data, randomUUID()); expect(result.kind).toBe("merged");
   expect(await client(target.id)).toMatchObject({ notes: "Source note", ltvCents: 300, visitCount: 5 });
   expect(await client(source.id)).toMatchObject({ mergedIntoId: target.id, phone: source.phone, notes: source.notes });
-  for (const [table, before] of [[s.appointments,old.appointment],[s.procedureSessions,old.procedure],[s.media,old.media],[s.consents,old.consent],[s.payments,old.payment],[s.paymentTransactions,old.transaction],[s.customOffers,old.offer]] as const) {
+  for (const [table, before] of [[s.appointments,old.appointment],[s.procedureSessions,old.procedure],[s.media,old.media],[s.consents,old.consent],[s.payments,old.payment],[s.paymentTransactions,old.transaction],[s.customOffers,old.offer],[s.treatmentPackages,old.pkg]] as const) {
     expect((await db.select().from(table).where(eq(table.id,before.id)))[0]).toEqual({ ...before, clientId: target.id });
   }
+  for (const before of old.cycles) expect((await db.select().from(s.treatmentCycles).where(eq(s.treatmentCycles.id, before.id)))[0]).toEqual({ ...before, clientId: target.id });
+  for (const before of old.links) expect((await db.select().from(s.appointmentCycles).where(eq(s.appointmentCycles.id, before.id)))[0]).toEqual({ ...before, clientId: target.id });
   const [record] = await db.select().from(s.clientMerges).where(eq(s.clientMerges.sourceId, source.id));
   expect(record.provenance.notes).toBe(source.id); expect(record.sourceSnapshot).toMatchObject({ notes: source.notes });
   expect(Object.values(record.movedRecords).every(ids => ids.length > 0)).toBe(true);

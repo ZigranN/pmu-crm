@@ -1,3 +1,4 @@
+import { CYCLE_STAGES, CYCLE_KINDS } from "@/features/treatment-cycles/schemas/cycle.schema";
 import {
     pgTable,
     text,
@@ -866,6 +867,7 @@ export const appointments = pgTable(
         deletedById: text("deleted_by_id"),
     },
     (table) => ({
+        clientIdentity: uniqueIndex("appointments_id_studio_client_unique").on(table.id, table.studioId, table.clientId),
         studioIdIdx: index("appointments_studio_id_idx").on(table.studioId),
         masterIdIdx: index("appointments_master_id_idx").on(table.masterId),
         clientIdIdx: index("appointments_client_id_idx").on(table.clientId),
@@ -913,6 +915,7 @@ export const procedureSessions = pgTable(
         studioId: uuid("studio_id")
             .notNull()
             .references(() => studios.id, { onDelete: "cascade" }),
+        cycleId: uuid("cycle_id"),
         clientId: uuid("client_id")
             .notNull()
             .references(() => clients.id, { onDelete: "cascade" }),
@@ -948,6 +951,9 @@ export const procedureSessions = pgTable(
         deletedById: text("deleted_by_id"),
     },
     (table) => ({
+        cycle: foreignKey({ name: "procedure_cycle_client_fk", columns: [table.cycleId,table.studioId,table.clientId], foreignColumns: [treatmentCycles.id,treatmentCycles.studioId,treatmentCycles.clientId] }),
+        visitCycle: foreignKey({ name: "procedure_appointment_cycle_fk", columns: [table.appointmentId,table.cycleId,table.studioId,table.clientId], foreignColumns: [appointmentCycles.appointmentId,appointmentCycles.cycleId,appointmentCycles.studioId,appointmentCycles.clientId] }),
+        cycleIdx: index("procedure_sessions_cycle_idx").on(table.studioId,table.cycleId),
         clientIdIdx: index("procedure_sessions_client_id_idx").on(table.clientId),
         masterIdIdx: index("procedure_sessions_master_id_idx").on(table.masterId),
         painLevelCheck: check(
@@ -1535,4 +1541,62 @@ export const clientMerges = pgTable("client_merges", {
   target: foreignKey({ columns: [table.targetId, table.studioId], foreignColumns: [clients.id, clients.studioId] }),
   sourceUnique: uniqueIndex("client_merges_source_unique").on(table.sourceId),
   contract: check("client_merges_check", sql`${table.sourceId} != ${table.targetId} and length(trim(${table.reason})) >= 3`),
+}));
+
+// Phase 3.1 foundation. No migration invents cycles from clientStatus or legacy visits.
+export const treatmentPackages = pgTable("treatment_packages", {
+  id: uuid("id").defaultRandom().primaryKey(), studioId: uuid("studio_id").notNull().references(() => studios.id, {onDelete:"cascade"}),
+  clientId: uuid("client_id").notNull(), kind: text("kind").notNull().default("total_face"),
+  version: integer("version").notNull().default(1), commercialSnapshot: jsonb("commercial_snapshot"),
+  createdAt: timestamp("created_at", {withTimezone:true}).notNull().defaultNow(), updatedAt: timestamp("updated_at", {withTimezone:true}).notNull().defaultNow(),
+  archivedAt: timestamp("archived_at", {withTimezone:true}),
+}, table => ({
+  identity: uniqueIndex("treatment_packages_identity").on(table.id,table.studioId,table.clientId),
+  client: foreignKey({name:"treatment_packages_client_fk",columns:[table.clientId,table.studioId],foreignColumns:[clients.id,clients.studioId]}),
+  contract: check("treatment_packages_contract", sql`${table.kind} = 'total_face' and ${table.version} > 0 and (${table.commercialSnapshot} is null or jsonb_typeof(${table.commercialSnapshot}) = 'object')`),
+}));
+export const treatmentCycles = pgTable("treatment_cycles", {
+  id: uuid("id").defaultRandom().primaryKey(), studioId: uuid("studio_id").notNull().references(() => studios.id, {onDelete:"cascade"}),
+  clientId: uuid("client_id").notNull(), zoneCode: text("zone_code").notNull().references(() => catalogZones.code),
+  kind: text("kind").notNull(), stage: text("stage").notNull().default("new_lead"), version: integer("version").notNull().default(1),
+  serviceId: uuid("service_id"), assignedMasterId: uuid("assigned_master_id"), packageId: uuid("package_id"), originCycleId: uuid("origin_cycle_id"),
+  offerRevisionId: uuid("offer_revision_id"), serviceSnapshot: jsonb("service_snapshot"), commercialSnapshot: jsonb("commercial_snapshot"),
+  firstSessionAt: timestamp("first_session_at", {withTimezone:true}), secondSessionAt: timestamp("second_session_at", {withTimezone:true}),
+  completedAt: timestamp("completed_at", {withTimezone:true}), lastPerformedPmuAt: timestamp("last_performed_pmu_at", {withTimezone:true}),
+  suspendedAt: timestamp("suspended_at", {withTimezone:true}), suspensionReason: text("suspension_reason"),
+  createdAt: timestamp("created_at", {withTimezone:true}).notNull().defaultNow(), updatedAt: timestamp("updated_at", {withTimezone:true}).notNull().defaultNow(), archivedAt: timestamp("archived_at", {withTimezone:true}),
+}, table => ({
+  identity: uniqueIndex("treatment_cycles_identity").on(table.id,table.studioId,table.clientId),
+  zoneIdentity: uniqueIndex("treatment_cycles_zone_identity").on(table.id,table.studioId,table.clientId,table.zoneCode),
+  packageZone: uniqueIndex("treatment_cycles_package_zone_unique").on(table.packageId,table.zoneCode),
+  clientIdx: index("treatment_cycles_client_idx").on(table.studioId,table.clientId),
+  masterIdx: index("treatment_cycles_master_idx").on(table.studioId,table.assignedMasterId),
+  client: foreignKey({name:"treatment_cycles_client_fk",columns:[table.clientId,table.studioId],foreignColumns:[clients.id,clients.studioId]}),
+  service: foreignKey({name:"treatment_cycles_service_fk",columns:[table.serviceId,table.studioId],foreignColumns:[services.id,services.studioId]}),
+  master: foreignKey({name:"treatment_cycles_master_fk",columns:[table.assignedMasterId,table.studioId],foreignColumns:[masters.id,masters.studioId]}),
+  package: foreignKey({name:"treatment_cycles_package_fk",columns:[table.packageId,table.studioId,table.clientId],foreignColumns:[treatmentPackages.id,treatmentPackages.studioId,treatmentPackages.clientId]}),
+  origin: foreignKey({name:"treatment_cycles_origin_fk",columns:[table.originCycleId,table.studioId,table.clientId,table.zoneCode],foreignColumns:[table.id,table.studioId,table.clientId,table.zoneCode]}),
+  offer: foreignKey({name:"treatment_cycles_offer_fk",columns:[table.offerRevisionId,table.studioId],foreignColumns:[offerRevisions.id,offerRevisions.studioId]}),
+  contract: check("treatment_cycles_contract", sql`${table.kind} in (${sql.join(CYCLE_KINDS.map(value => sql.raw("'"+value+"'")),sql`,`)})
+    and ${table.stage} in (${sql.join(CYCLE_STAGES.map(value => sql.raw("'"+value+"'")),sql`,`)}) and ${table.version} > 0
+    and ${table.zoneCode} in ('brows','eyes','lips','lashes','skin') and (${table.kind} = 'non_pmu' or ${table.zoneCode} in ('brows','eyes','lips'))
+    and (${table.originCycleId} is null or ${table.originCycleId} != ${table.id})
+    and (${table.kind} not in ('refresh','paid_correction','free_correction') or ${table.originCycleId} is not null)
+    and (${table.packageId} is null or ${table.kind} = 'pmu')
+    and (${table.serviceSnapshot} is null or jsonb_typeof(${table.serviceSnapshot}) = 'object')
+    and (${table.commercialSnapshot} is null or jsonb_typeof(${table.commercialSnapshot}) = 'object')
+    and ((${table.suspendedAt} is null and ${table.suspensionReason} is null) or (${table.suspendedAt} is not null and ${table.suspensionReason} is not null and length(trim(${table.suspensionReason})) > 0))
+    and (${table.secondSessionAt} is null or (${table.firstSessionAt} is not null and ${table.secondSessionAt} >= ${table.firstSessionAt}))`),
+}));
+export const appointmentCycles = pgTable("appointment_cycles", {
+  id: uuid("id").defaultRandom().primaryKey(), studioId: uuid("studio_id").notNull().references(() => studios.id,{onDelete:"cascade"}), clientId: uuid("client_id").notNull(),
+  appointmentId: uuid("appointment_id").notNull(), cycleId: uuid("cycle_id").notNull(), visitKind: text("visit_kind").notNull(),
+  serviceSnapshot: jsonb("service_snapshot").notNull(), commercialSnapshot: jsonb("commercial_snapshot"), createdAt: timestamp("created_at", {withTimezone:true}).notNull().defaultNow(),
+}, table => ({
+  identity: uniqueIndex("appointment_cycles_identity").on(table.appointmentId,table.cycleId,table.studioId,table.clientId),
+  pair: uniqueIndex("appointment_cycles_pair_unique").on(table.appointmentId,table.cycleId),
+  client: foreignKey({name:"appointment_cycles_client_fk",columns:[table.clientId,table.studioId],foreignColumns:[clients.id,clients.studioId]}),
+  appointment: foreignKey({name:"appointment_cycles_appointment_fk",columns:[table.appointmentId,table.studioId,table.clientId],foreignColumns:[appointments.id,appointments.studioId,appointments.clientId]}),
+  cycle: foreignKey({name:"appointment_cycles_cycle_fk",columns:[table.cycleId,table.studioId,table.clientId],foreignColumns:[treatmentCycles.id,treatmentCycles.studioId,treatmentCycles.clientId]}),
+  contract: check("appointment_cycles_contract",sql`${table.visitKind} in ('consultation','session_1','session_2','control','correction','refresh','remover','single_session') and jsonb_typeof(${table.serviceSnapshot}) = 'object' and (${table.commercialSnapshot} is null or jsonb_typeof(${table.commercialSnapshot}) = 'object')`),
 }));
