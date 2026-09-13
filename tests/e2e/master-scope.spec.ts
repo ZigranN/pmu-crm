@@ -35,8 +35,12 @@ test("Owner links a Master and assigns a client; mobile Master cannot open anoth
     await page.getByRole("button", { name: "Сохранить назначение" }).click();
     await expect(page.getByLabel("Причина назначения")).toHaveValue("");
     expect((await db.select().from(s.clients).where(eq(s.clients.id, client.id)))[0].assignedMasterId).toBe(master.id);
-    const login = await page.request.post("/api/auth/sign-in/email", { data: { email: masterEmail, password: "Synthetic-password-123!" } });
-    expect(login.status()).toBe(200);
+    await page.getByRole("button", { name: "Выйти", exact: true }).click();
+    await expect(page).toHaveURL(/\/login$/);
+    await page.getByLabel("Email", { exact: true }).fill(masterEmail);
+    await page.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!");
+    await page.getByRole("button", { name: "Войти", exact: true }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
     await page.goto("/clients");
     await expect(page.getByText("Assigned client", { exact: true })).toBeVisible();
     await expect(page.getByText("Private other client", { exact: true })).toHaveCount(0);
