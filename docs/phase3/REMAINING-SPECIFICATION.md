@@ -58,7 +58,7 @@
 
 #### 3.2 21 стадия
 
-**Статус:** не завершён; обязательный остаток Phase 3. **Основание:** §3,40–46.
+**Статус:** частично реализован — command engine, 21-stage matrix, ранние переходы, история, guards и UI. [Baseline](CYCLE-TRANSITIONS-BASELINE.md). Остаток: подключить authoritative consultation/calendar/ledger/procedure/refresh commands в 3.3/5–7/10; полный путь ещё не принят. **Основание:** §3,40–46.
 
 **Файлы/модули:** +src/features/treatment-cycles/server/transitions.ts; +server/actions.ts; +components/cycle-board.tsx; +src/app/(dashboard)/deals/page.tsx.
 

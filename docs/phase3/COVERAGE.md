@@ -12,7 +12,7 @@ PARTIAL — требование выполнено частично; FOUNDATION
 |---|---|---|---|---|---|
 | 1 | ЦЕЛЬ ЭТАПА | NOT ACCEPTED | Реализованы основы и текущие client/service workflows | Единый путь Lead → Refresh отсутствует | 3–15 |
 | 2 | ОСНОВНЫЕ ПРИНЦИПЫ АРХИТЕКТУРЫ | PARTIAL | server/commands/idempotency.ts; server/events/{outbox,worker,registry}.ts; transactional audit | Framework работает; бизнес-события будущих модулей, реальные adapters и общий E2E ещё не подключены | 3–12,15 |
-| 3 | ОСНОВНЫЕ СУЩНОСТИ | PARTIAL | Treatment cycles/packages/appointment_cycles, origin links, snapshots/version и nullable procedure cycle FK; TREATMENT-CYCLE-SCHEMA-BASELINE.md | Схема готова; команды и UI циклов, conversations и ledger allocations ещё отсутствуют | 3.2–3.4,6.1,8,9.1 |
+| 3 | ОСНОВНЫЕ СУЩНОСТИ | PARTIAL | Cycle schema + create/transition commands, board/timeline; package shells | Полный cycle workflow, conversations и ledger allocations ещё не приняты | 3.3–3.4,5–10 |
 | 4 | КАРТОЧКА КЛИЕНТА | PARTIAL | CLIENT-ADMINISTRATION-BASELINE.md: language, interested zones, kind, reported PMU, assigned/preferred master и strict allowlists | Полная medical/clearance модель — Phase 4; consultation slot — Calendar Phase 5; AI tools — Phase 11 | 2.3,4.1,5.1,11.3 |
 | 5 | CLIENT DEDUPLICATION | PARTIAL (текущая схема реализована) | Canonical dedup/merge; registry включает cycles/packages/appointment_cycles с сохранением IDs и snapshots | Будущие conversations/ledger расширяют merge registry; ограничения поиска сохраняются | 6,7,9,15.1 |
 | 6 | СПРАВОЧНИК УСЛУГ | PARTIAL | SERVICE-CATALOG-BASELINE.md; нормализованный каталог, FK, sessions, templates | Legacy требует ручного разбора; Calendar Engine подключается в Phase 5 | 2.1,5.1 |
@@ -49,7 +49,7 @@ PARTIAL — требование выполнено частично; FOUNDATION
 | 37 | ФОТОГРАФИИ | PARTIAL | media types before/after; галерея | Нет требуемых stage guards/healed_result/pre-consult rules | 4.2,4.3 |
 | 38 | WHATSAPP MEDIA | MISSING | wa.me helper не intake | Нет inbound images и human verification классификации | 9.2,4.2 |
 | 39 | CONSENT | PARTIAL/CONFLICT | consents schema/service; upload transaction и archive сохраняют evidence (0.4); UI пока пишет media | Нет multi-zone signature/PDF/versions/review2y и restore UI; hard delete заменён архивированием | 4.4,4.5 |
-| 40 | ВОРОНКА PMU | PARTIAL (legacy UI conflict) | 21 stage names на cycle; clientStatus сохранён отдельно | Нет transition guards/history/board; legacy Select пока не заменён | 3.2 |
+| 40 | ВОРОНКА PMU | PARTIAL (command foundation) | 21-stage matrix, early commands, optimistic version/idempotency, immutable history, scoped board/timeline | Authoritative consultation/booking/payment/procedure/refresh transitions заблокированы до соответствующих модулей; legacy clientStatus отдельно | 3.3,5–7,10 |
 | 41 | КВАЛИФИКАЦИЯ | PARTIAL | Административные поля, язык, источник, зоны, previous PMU со слов клиента; assigned/preferred master | Нет формализованного консультационного решения и правила returning client | 3.3 |
 | 42 | СУЩЕСТВУЮЩИЙ КЛИЕНТ | MISSING | Нет qualification history rules | Нет same-zone≤2yr shortcut и исключений | 3.3 |
 | 43 | РЕЗУЛЬТАТ КОНСУЛЬТАЦИИ | MISSING | Нет consultations module | Нет5 результатов решения мастера | 3.3 |
