@@ -7,6 +7,7 @@ export function transitionBlock(cycle:typeof treatmentCycles.$inferSelect,to:Cyc
   const edges=TRANSITIONS[cycle.stage as CycleStage];
   if(!edges?.includes(to)) return "Переход между этими стадиями запрещён";
   if(to==="lost" && !["new_lead","qualification","consultation_needed","consultation_offered"].includes(cycle.stage)) return "Сначала требуется отмена записи или решение по консультации и оплатам";
+  if(cycle.stage==="consultation_needed"&&to==="qualification")return "Требуется повторная квалификация специалистом";
   if(REQUIRED_COMMAND[to]) return `Требуется: ${REQUIRED_COMMAND[to]}`;
   if(to==="consultation_needed" && (!client.language || !client.clientKind || client.reportedPreviousPmu===null || !client.interestedZones?.includes(cycle.zoneCode) || !(cycle.assignedMasterId??client.assignedMasterId))) return "Заполните язык, тип клиента, предыдущий PMU, интересующую зону и назначьте мастера";
   return null;

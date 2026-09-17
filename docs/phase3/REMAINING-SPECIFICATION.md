@@ -74,7 +74,7 @@
 
 #### 3.3 Qualification / консультация
 
-**Статус:** не завершён; обязательный остаток Phase 3. **Основание:** §3,40–46.
+**Статус:** domain logic/UI реализованы в `codex/phase-3-consultation-decisions`; [baseline](CONSULTATION-DECISIONS-BASELINE.md). Проверка по настоящему booking path и production scheduler остаётся до Phase 5/10; срок decision task перед rollout согласуется со студией. **Основание:** §3,40–46.
 
 **Файлы/модули:** +src/features/consultations/server/qualification.ts; +server/results.ts; +components/result-form.tsx.
 
