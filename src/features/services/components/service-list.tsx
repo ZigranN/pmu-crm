@@ -1,5 +1,6 @@
 "use client";
 
+import { CatalogImport } from "./catalog-tools";
 import React, { useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
@@ -12,10 +13,12 @@ import { type services } from "@/db/schema";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface ServiceListProps {
+  canImport?: boolean;
+  canCreate?: boolean;
   initialServices: (typeof services.$inferSelect)[];
 }
 
-export function ServiceList({ initialServices }: ServiceListProps) {
+export function ServiceList({ initialServices, canImport, canCreate }: ServiceListProps) {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("active");
   const router = useRouter();
@@ -29,15 +32,16 @@ export function ServiceList({ initialServices }: ServiceListProps) {
   return (
     <div className="space-y-6">
       <PageHeader title="Услуги" description="Управление списком услуг студии">
-        <Button
+        {canCreate && <Button
           onClick={() => router.push("/services/new")}
           className="bg-taupe hover:bg-espresso text-ivory h-11"
         >
           <Plus className="mr-2 h-4 w-4" />
           Добавить
-        </Button>
+        </Button>}
       </PageHeader>
 
+      {canImport && <CatalogImport />}
       <div className="flex flex-col gap-4">
         <SearchInput
           value={search}
@@ -48,7 +52,7 @@ export function ServiceList({ initialServices }: ServiceListProps) {
         <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2 bg-sand/50">
             <TabsTrigger value="active">Активные</TabsTrigger>
-            <TabsTrigger value="archived">Архив</TabsTrigger>
+            <TabsTrigger value="archived">Неактивные</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -72,7 +76,7 @@ export function ServiceList({ initialServices }: ServiceListProps) {
               ? "Попробуйте изменить параметры поиска"
               : "Создайте свою первую услугу, чтобы начать работу"
           }
-          actionLabel={!search ? "Добавить услугу" : undefined}
+          actionLabel={!search && canCreate ? "Добавить услугу" : undefined}
           onAction={() => router.push("/services/new")}
         />
       )}

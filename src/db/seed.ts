@@ -12,6 +12,7 @@ async function main() {
     const result = await seedDatabase(settings);
     console.log("Seed completed.");
     console.log(result.adminLinked ? "Configured account found; membership initialized or preserved." : "Configured admin account not found. Register it first, then rerun seed.");
+    if (result.catalogEnabled) console.log("Phase 3 catalog initialized; existing entries preserved.");
     console.log(result.demoEnabled ? "Demo catalog initialized." : "Demo catalog disabled.");
   } finally { await databaseClient.end(); }
 }

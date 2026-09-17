@@ -1,5 +1,6 @@
 // Pure contract shared by schema and server writers. Extend with domain commands.
 export const AUDIT_ENTITIES = {
+  service_consolidated: "service",
   job_recovered: "outbox_job",
   client_created: "client", client_updated: "client", client_status_changed: "client",
   client_archived: "client", client_restored: "client", client_master_assigned: "client",

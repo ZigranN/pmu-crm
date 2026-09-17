@@ -129,9 +129,19 @@ test("fresh install, upgrade with data, and repeated migrate converge", async (t
     values ('override-test', ${studio.id}, ${permission.id}, 'allow'),
     ('override-test', ${studio.id}, ${permission.id}, 'deny'),
     ('override-test', ${studio.id}, ${permission.id}, 'deny')`;
+  const [legacyService] = await upgraded`insert into services (studio_id,name,category,procedure_type,price_cents,duration_minutes,buffer_before_minutes)
+    values (${studio.id},'Legacy service','brows','brows',77777,150,15) returning *`;
+  const [legacyMaster] = await upgraded`insert into masters (studio_id,display_name) values (${studio.id},'Migration master') returning id`;
+  const [legacyVisit] = await upgraded`insert into appointments (studio_id,client_id,master_id,service_id,start_at,end_at,source,created_by_id,service_snapshot,client_snapshot,master_snapshot,price_snapshot_cents,duration_snapshot_minutes)
+    values (${studio.id},${client.id},${legacyMaster.id},${legacyService.id},'2026-10-10 10:00','2026-10-10 12:30','other','override-test','{"legacy":true}','{}','{}',77777,150) returning *`;
   const [legacyAudit] = await upgraded`insert into audit_logs (studio_id, action, entity_type, entity_id, metadata)
     values (${studio.id}, 'legacy_custom_event', 'client', ${client.id}, '{"preserve":true}') returning *`;
   await migrate(drizzle(upgradedDatabase.engine), { migrationsFolder });
+  const [preservedService] = await upgraded`select * from services where id = ${legacyService.id}`;
+  for (const [key, value] of Object.entries(legacyService)) assert.deepEqual(preservedService[key], value);
+  assert.equal(preservedService.catalog_version, 0);
+  assert.equal(preservedService.catalog_code, null);
+  assert.deepEqual(await upgraded`select * from appointments where id = ${legacyVisit.id}`, [legacyVisit]);
   const [preservedAudit] = await upgraded`select * from audit_logs where id = ${legacyAudit.id}`;
   for (const [key, value] of Object.entries(legacyAudit)) assert.deepEqual(preservedAudit[key], value);
   assert.equal(preservedAudit.contract_version, 0);

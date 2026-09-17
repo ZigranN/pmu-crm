@@ -1,3 +1,4 @@
+import { getStudioRole } from "@/lib/roles";
 import { hasPermission } from "@/lib/permissions";
 import { db } from "@/db";
 import { getServices } from "@/features/services/server/queries";
@@ -19,5 +20,5 @@ export default async function ServicesPage() {
       throw error;
     });
 
-  return <ServiceList initialServices={services} />;
+  return <ServiceList initialServices={services} canCreate={await hasPermission(db, session.user.id, studioId, "SERVICE_CREATE")} canImport={await getStudioRole(db, session.user.id, studioId) === "OWNER"} />;
 }

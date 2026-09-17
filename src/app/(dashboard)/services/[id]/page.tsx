@@ -1,6 +1,8 @@
+import { servicePriceLabel } from "@/features/services/price-label";
+import { SESSION_LABELS, CATALOG_ZONES, CATALOG_TECHNIQUES } from "@/features/services/catalog";
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/db";
-import { getServiceById } from "@/features/services/server/queries";
+import { getServiceById, getCatalogOptions } from "@/features/services/server/queries";
 import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
@@ -34,8 +36,11 @@ export default async function ServiceDetailPage({
 
   if (!service) notFound();
 
+  const options = await getCatalogOptions(studioId);
+  const definition = options.definitions.find(row => row.code === service.catalogCode);
+  const canEdit = await hasPermission(db, session.user.id, studioId, "SERVICE_UPDATE");
   const isArchived = !!service.deletedAt;
-  const price = service.priceCents ? (service.priceCents / 100).toFixed(2) : "0.00";
+  const price = servicePriceLabel(service);
 
   return (
     <div className="container max-w-4xl py-6 space-y-6">
@@ -61,12 +66,12 @@ export default async function ServiceDetailPage({
           {!isArchived && !service.isActive && (
             <Badge variant="secondary">Неактивна</Badge>
           )}
-          <Link href={`/services/${service.id}/edit`}>
+          {canEdit && <Link href={`/services/${service.id}/edit`}>
             <Button>
               <Edit className="mr-2 h-4 w-4" />
               Редактировать
             </Button>
-          </Link>
+          </Link>}
         </div>
       </div>
 
@@ -79,6 +84,8 @@ export default async function ServiceDetailPage({
             <label className="text-sm font-medium text-textMuted">Название</label>
             <p className="text-base">{service.name}</p>
           </div>
+          {service.supersededById && <p>Дубль архивирован. <Link className="underline" href={`/services/${service.supersededById}`}>Основная услуга</Link></p>}
+          {definition && <p>Зона: {CATALOG_ZONES.find(row => row.code === definition.zoneCode)?.label} · Техника: {CATALOG_TECHNIQUES.find(row => row.code === definition.techniqueCode)?.label}</p>}
           {service.description && (
             <div>
               <label className="text-sm font-medium text-textMuted">Описание</label>
@@ -106,11 +113,11 @@ export default async function ServiceDetailPage({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium text-textMuted">Стоимость</label>
-              <p className="text-base">€{price}</p>
+              <p className="text-base">{price}</p>
             </div>
             <div>
               <label className="text-sm font-medium text-textMuted">Длительность</label>
-              <p className="text-base">{service.durationMinutes} минут</p>
+              <p className="text-base">{service.durationMinutes === null ? "Не задана" : `${service.durationMinutes} минут`}</p>
             </div>
             <div>
               <label className="text-sm font-medium text-textMuted">Буфер до</label>
@@ -126,13 +133,14 @@ export default async function ServiceDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Дополнительно</CardTitle>
+          <CardTitle>Модель сессий</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-textMuted">Требуется коррекция</label>
-            <p className="text-base">{service.requiresCorrection ? "Да" : "Нет"}</p>
+            <p className="text-base">{service.sessionsModel ? SESSION_LABELS[service.sessionsModel] : "Требует проверки"}</p>
           </div>
+          <p>Подготовка: {options.templates.find(row => row.id === service.preparationTemplateId)?.name ?? "Не назначен / недоступен"}</p>
+          <p>Постуход: {options.templates.find(row => row.id === service.postCareTemplateId)?.name ?? "Не назначен / недоступен"}</p>
           {service.requiresCorrection && service.correctionAfterDays && (
             <div>
               <label className="text-sm font-medium text-textMuted">Коррекция через</label>
