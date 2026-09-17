@@ -18,9 +18,9 @@
   {
     "section": "3",
     "status": "PARTIAL",
-    "evidence": "Treatment cycles/packages/appointment_cycles, origin links, snapshots/version и nullable procedure cycle FK; TREATMENT-CYCLE-SCHEMA-BASELINE.md",
-    "gap": "Схема готова; команды и UI циклов, conversations и ledger allocations ещё отсутствуют",
-    "steps": "3.2–3.4,6.1,8,9.1",
+    "evidence": "Cycle schema + create/transition commands, board/timeline; package shells",
+    "gap": "Полный cycle workflow, conversations и ledger allocations ещё не приняты",
+    "steps": "3.3–3.4,5–10",
     "title": "ОСНОВНЫЕ СУЩНОСТИ"
   },
   {
@@ -313,10 +313,10 @@
   },
   {
     "section": "40",
-    "status": "PARTIAL (legacy UI conflict)",
-    "evidence": "21 stage names на cycle; clientStatus сохранён отдельно",
-    "gap": "Нет transition guards/history/board; legacy Select пока не заменён",
-    "steps": "3.2",
+    "status": "PARTIAL (command foundation)",
+    "evidence": "21-stage matrix, early commands, optimistic version/idempotency, immutable history, scoped board/timeline",
+    "gap": "Authoritative consultation/booking/payment/procedure/refresh transitions заблокированы до соответствующих модулей; legacy clientStatus отдельно",
+    "steps": "3.3,5–7,10",
     "title": "ВОРОНКА PMU"
   },
   {

@@ -1567,6 +1567,7 @@ export const treatmentCycles = pgTable("treatment_cycles", {
   createdAt: timestamp("created_at", {withTimezone:true}).notNull().defaultNow(), updatedAt: timestamp("updated_at", {withTimezone:true}).notNull().defaultNow(), archivedAt: timestamp("archived_at", {withTimezone:true}),
 }, table => ({
   identity: uniqueIndex("treatment_cycles_identity").on(table.id,table.studioId,table.clientId),
+  studioIdentity: uniqueIndex("treatment_cycles_studio_identity").on(table.id,table.studioId),
   zoneIdentity: uniqueIndex("treatment_cycles_zone_identity").on(table.id,table.studioId,table.clientId,table.zoneCode),
   packageZone: uniqueIndex("treatment_cycles_package_zone_unique").on(table.packageId,table.zoneCode),
   clientIdx: index("treatment_cycles_client_idx").on(table.studioId,table.clientId),
@@ -1599,4 +1600,21 @@ export const appointmentCycles = pgTable("appointment_cycles", {
   appointment: foreignKey({name:"appointment_cycles_appointment_fk",columns:[table.appointmentId,table.studioId,table.clientId],foreignColumns:[appointments.id,appointments.studioId,appointments.clientId]}),
   cycle: foreignKey({name:"appointment_cycles_cycle_fk",columns:[table.cycleId,table.studioId,table.clientId],foreignColumns:[treatmentCycles.id,treatmentCycles.studioId,treatmentCycles.clientId]}),
   contract: check("appointment_cycles_contract",sql`${table.visitKind} in ('consultation','session_1','session_2','control','correction','refresh','remover','single_session') and jsonb_typeof(${table.serviceSnapshot}) = 'object' and (${table.commercialSnapshot} is null or jsonb_typeof(${table.commercialSnapshot}) = 'object')`),
+}));
+
+export const cycleStageHistory = pgTable("cycle_stage_history", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id").notNull().references(() => studios.id,{onDelete:"cascade"}),
+  cycleId: uuid("cycle_id").notNull(), commandId: uuid("command_id").notNull(),
+  actorId: text("actor_id").notNull(), fromStage: text("from_stage"), toStage: text("to_stage").notNull(),
+  version: integer("version").notNull(), reason: text("reason").notNull(),
+  createdAt: timestamp("created_at",{withTimezone:true}).notNull().defaultNow(),
+}, table => ({
+  cycle: foreignKey({name:"cycle_stage_history_cycle_fk",columns:[table.cycleId,table.studioId],foreignColumns:[treatmentCycles.id,treatmentCycles.studioId]}),
+  command: foreignKey({name:"cycle_stage_history_command_fk",columns:[table.commandId],foreignColumns:[commandReceipts.id]}),
+  version: uniqueIndex("cycle_stage_history_version_unique").on(table.cycleId,table.version),
+  commandUnique: uniqueIndex("cycle_stage_history_command_unique").on(table.commandId),
+  contract: check("cycle_stage_history_contract",sql`${table.version} > 0 and length(trim(${table.reason})) between 3 and 1000
+    and ${table.toStage} in (${sql.join(CYCLE_STAGES.map(value=>sql.raw("'"+value+"'")),sql`,`)})
+    and (${table.fromStage} is null or ${table.fromStage} in (${sql.join(CYCLE_STAGES.map(value=>sql.raw("'"+value+"'")),sql`,`)}))`),
 }));
