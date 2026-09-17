@@ -23,6 +23,8 @@ interface ClientFormProps {
 export function ClientForm({ initialData }: ClientFormProps) {
   const router = useRouter();
   const [isConfirmOpen, setIsConfirmOpen] = React.useState(false);
+  const submitting = React.useRef(false);
+  const createRequest = React.useRef<{ key: string; payload: string } | null>(null);
   const [isPending, setIsPending] = React.useState(false);
 
   const form = useForm<ClientSchema>({
@@ -66,13 +68,25 @@ export function ClientForm({ initialData }: ClientFormProps) {
   });
 
   async function onSubmit(values: ClientSchema) {
+    if (submitting.current) return;
+    submitting.current = true;
     setIsPending(true);
     try {
       if (initialData) {
         await updateClientAction(initialData.id, values);
         toast.success("Данные клиента обновлены");
       } else {
-        const newClient = await createClientAction(values);
+        const encoded = new TextEncoder().encode(JSON.stringify(values));
+        const digest = await crypto.subtle.digest("SHA-256", encoded);
+        const payload = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+        if (!createRequest.current) {
+          try { createRequest.current = JSON.parse(sessionStorage.getItem("pmu-client-create-request") ?? "null"); } catch { /* Storage may be disabled. */ }
+        }
+        if (!createRequest.current || createRequest.current.payload !== payload || typeof createRequest.current.key !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(createRequest.current.key)) createRequest.current = { key: crypto.randomUUID(), payload };
+        // Retain only a hash/key across reloads after an ambiguous network failure, never form data.
+        try { sessionStorage.setItem("pmu-client-create-request", JSON.stringify(createRequest.current)); } catch { /* In-memory retries still retain the key. */ }
+        const newClient = await createClientAction(values, createRequest.current.key);
+        try { sessionStorage.removeItem("pmu-client-create-request"); } catch { /* No personal data is stored here. */ }
         toast.success("Клиент создан");
         router.push(`/clients/${newClient.id}`);
         return;
@@ -82,11 +96,14 @@ export function ClientForm({ initialData }: ClientFormProps) {
     } catch (error: any) {
       toast.error(error.message || "Ошибка при сохранении");
     } finally {
+      submitting.current = false;
       setIsPending(false);
     }
   }
 
   async function onArchive() {
+    if (submitting.current) return;
+    submitting.current = true;
     setIsPending(true);
     try {
       await archiveClientAction(initialData.id);
@@ -96,6 +113,7 @@ export function ClientForm({ initialData }: ClientFormProps) {
     } catch (error: any) {
       toast.error(error.message || "Ошибка при архивации");
     } finally {
+      submitting.current = false;
       setIsPending(false);
       setIsConfirmOpen(false);
     }
@@ -103,7 +121,7 @@ export function ClientForm({ initialData }: ClientFormProps) {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pb-24">
+      <form onSubmit={event => void form.handleSubmit(onSubmit)(event)} className="space-y-6 pb-24">
         <FormSection title="Личные данные">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField
@@ -411,7 +429,7 @@ export function ClientForm({ initialData }: ClientFormProps) {
         </FormSection>
 
         <FormActionBar
-          onSave={form.handleSubmit(onSubmit)}
+          onSave={() => void form.handleSubmit(onSubmit)()}
           onCancel={() => router.back()}
           isSubmitting={isPending}
         >
