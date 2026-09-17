@@ -1,4 +1,5 @@
 import "server-only";
+import { canonicalClientId } from "./identity";
 import { alias } from "drizzle-orm/pg-core";
 import { sensitiveRead, recordIds, optionalRecordId } from "@/server/services/access-log.service";
 import { resourceScope } from "@/server/auth/scopes";
@@ -43,6 +44,7 @@ export async function getClients(studioId: string, filters?: { search?: string, 
 export async function getClientById(id: string, studioId: string) {
   return sensitiveRead("CLIENT_READ", studioId, { operation: "client.read", targetId: id }, async (context) => {
     const scope = await resourceScope(context);
+    id = await canonicalClientId(id, studioId);
     // Note: Simplified to avoid Drizzle relations issues
     // Medical profile and activity events fetched separately if needed
     const row = await db.query.clients.findFirst({
@@ -61,7 +63,7 @@ export async function getClientMedicalProfile(id: string, studioId: string) {
     const scope = await resourceScope(context);
     const client = await getClientById(id, studioId);
     if (!client) return undefined;
-    return db.query.clientMedicalProfiles.findFirst({ where: and(eq(clientMedicalProfiles.clientId, client.id), scope.clientReference(sql`${clientMedicalProfiles.clientId}`)) });
+    return db.query.clientMedicalProfiles.findFirst({ where: and(eq(clientMedicalProfiles.clientId, client.id), isNull(clientMedicalProfiles.supersededAt), scope.clientReference(sql`${clientMedicalProfiles.clientId}`)) });
   }, optionalRecordId);
 }
 
@@ -82,10 +84,19 @@ export async function getClientActivity(id: string, studioId: string) {
 // Only display names attached to an already authorized client, not other masters' profiles.
 export async function getClientMasterLabels(id: string, studioId: string) {
   return sensitiveRead("CLIENT_READ", studioId, { operation: "client.read", targetId: id }, async context => {
+    id = await canonicalClientId(id, studioId);
     const scope = await resourceScope(context), assigned = alias(masters, "assigned"), preferred = alias(masters, "preferred");
     return (await db.select({ id: clients.id, assignedName: assigned.displayName, preferredName: preferred.displayName }).from(clients)
       .leftJoin(assigned, and(eq(assigned.id, clients.assignedMasterId), eq(assigned.studioId, clients.studioId)))
       .leftJoin(preferred, and(eq(preferred.id, clients.preferredMasterId), eq(preferred.studioId, clients.studioId)))
       .where(and(eq(clients.id, id), scope.client, isNull(clients.deletedAt))))[0];
   }, optionalRecordId);
+}
+
+export async function getClientMedicalHistory(id: string, studioId: string) {
+  return sensitiveRead("MEDICAL_PROFILE_READ", studioId, { operation: "medical.read", targetId: id }, async context => {
+    const client = await getClientById(id, studioId); if (!client) return [];
+    const scope = await resourceScope(context);
+    return db.select().from(clientMedicalProfiles).where(and(eq(clientMedicalProfiles.clientId, client.id), sql`${clientMedicalProfiles.supersededAt} is not null`, scope.clientReference(sql`${clientMedicalProfiles.clientId}`))).orderBy(desc(clientMedicalProfiles.supersededAt));
+  }, recordIds);
 }

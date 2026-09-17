@@ -47,11 +47,8 @@ export const rolePermissionsRelations = relations(schema.rolePermissions, ({ one
   }),
 }));
 
-export const clientRelations = relations(schema.clients, ({ one, many }) => ({
-  medicalProfile: one(schema.clientMedicalProfiles, {
-    fields: [schema.clients.id],
-    references: [schema.clientMedicalProfiles.clientId],
-  }),
+export const clientRelations = relations(schema.clients, ({ many }) => ({
+  medicalProfiles: many(schema.clientMedicalProfiles),
   appointments: many(schema.appointments),
   procedureSessions: many(schema.procedureSessions),
   payments: many(schema.payments),
@@ -60,6 +57,10 @@ export const clientRelations = relations(schema.clients, ({ one, many }) => ({
   reviews: many(schema.reviews),
   activityEvents: many(schema.activityEvents),
   questionnaireResponses: many(schema.questionnaireResponses),
+}));
+
+export const medicalProfileRelations = relations(schema.clientMedicalProfiles, ({ one }) => ({
+  client: one(schema.clients, { fields: [schema.clientMedicalProfiles.clientId], references: [schema.clients.id] }),
 }));
 
 export const masterRelations = relations(schema.masters, ({ many }) => ({

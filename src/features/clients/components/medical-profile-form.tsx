@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FormActionBar } from "@/components/shared/form-action-bar";
 
@@ -27,6 +28,7 @@ interface MedicalProfileFormProps {
 }
 
 export function MedicalProfileForm({ clientId, initialData, readonly = false }: MedicalProfileFormProps) {
+  const router = useRouter();
   const [isPending, setIsPending] = useState(false);
 
   const form = useForm<MedicalProfileSchema>({
@@ -62,6 +64,7 @@ export function MedicalProfileForm({ clientId, initialData, readonly = false }: 
     try {
       await updateMedicalProfileAction(clientId, values);
       toast.success("Медицинский профиль обновлен");
+      router.refresh();
     } catch (error: any) {
       toast.error(error.message || "Ошибка при обновлении профиля");
     } finally {
