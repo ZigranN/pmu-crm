@@ -1,12 +1,12 @@
 # ТЗ на невыполненный объём PMU CRM Phase 3
 
-Дата: 13.09.2026. База реализации: `eceed9c` (шаги 0.1–2.5). Этот документ выделяет остаток рабочего [Master Specification 1.1](MASTER-SPECIFICATION.md) и [ROADMAP](ROADMAP.md); не отменяет их бизнес-правила. В конфликте сверяться с Master Specification, а неоднозначность фиксировать до зависимой реализации.
+Дата: **15.09.2026**. База: `d9553dc1d71d09a77135e5bb185de3b07750c160`, шаги 0–2 и 3.1/3.3/3.4a–c реализованы в ограниченном описанном объёме; 3.2 интеграционно PARTIAL. [Аудит и доказательства](FULL-AUDIT-2026-09-15.md). Документ выделяет остаток [Master Specification 1.1](MASTER-SPECIFICATION.md); не отменяет его бизнес-правила.
 
 ## 1. Цель и границы
 
 Довести систему до проверяемого пути Lead → Consultation → Master decision → Treatment Cycle → Acconto → Session 1 → Payment → Post-care → Check-in → Session 2 → Control → Completed → Refresh, с отдельным AI-operated вариантом, Total Face и Remover. Сохранить уже реализованные данные, права, историю, snapshots и поведение.
 
-Не начинать заново auth, клиенты, роли, audit, каталог, prices/offers, dedup или merge. Расширять существующие модули. Оставшийся объём включает Phase 3–15; Phase 16 — отдельно от P0. Наличие legacy таблицы не снимает требования реализовать бизнес-сервис, интерфейс и тесты.
+Не начинать заново auth, клиенты, роли, audit, каталог, prices/offers, dedup или merge. Расширять существующие модули. Оставшийся объём включает S0 security hardening, 3.4d и интеграционные остатки Phase 3, Phase 4–15; Phase 16 — отдельно от P0. Наличие legacy таблицы не снимает требования реализовать бизнес-сервис, интерфейс и тесты.
 
 ## 2. Общие обязательные требования к каждому шагу
 
@@ -25,7 +25,7 @@
 
 ## 3. Подключение уже готового кода к рабочей среде — ещё не подтверждено
 
-- [ ] Проверить актуальные head/base и CI каждого PR №7–12; подготовить итоговый review цепочки. Наличие MERGED у №1–6 не доказывает применение соответствующей SQL-цепочки.
+- [ ] Проверить актуальные head/base и CI каждого PR №7–18; подготовить итоговый review цепочки. Наличие MERGED у №1–6 не доказывает применение соответствующей SQL-цепочки.
 - [ ] До реального rollout определить среду, проверить текущую миграционную историю read-only, выполнить backup и rehearsal на копии. Затем согласовать порядок миграций/версий приложения, остановку несовместимых writes при необходимости и recovery plan.
 - [ ] Настроить раздельные development/preview/production URLs, auth callbacks и server secrets; убрать конфликтующие значения конфигурации. Проверить актуальность зависимостей через audit и разобрать findings; старые числа уязвимостей не считать текущим отчётом. Ранее опубликованные в переписке рабочие секреты заменить до публичного запуска, не включать их в документы или Git.
 - [ ] Включить worker scheduler только после готовности схемы, секрета и соответствующих handlers; проверить pending/retry/dead-letter/recovery на тестовом контуре.
@@ -36,72 +36,83 @@
 ## 4. Детальное ТЗ по оставшимся шагам
 
 
-### Phase 3 — treatment cycles и pipeline (§3,40–46)
+### S0 — выявленные аудитом обязательные исправления
+
+Эти задачи дополняют исходный roadmap. Они не закрыты успешным функциональным CI. Не менять данные/секреты production в рамках разработки.
+
+<a id="step-s0-1"></a>
+#### S0.1 Зависимости и security gate
+
+**Приоритет:** до публичного запуска; выполнить перед наращиванием нового runtime. **Файлы:** `package.json`, `package-lock.json`, `.github/workflows/ci.yml`, +`docs/phase3/DEPENDENCY-REVIEW.md`.
+
+**Сделать:** разобрать свежие npm advisories, отделить runtime/tooling и реально используемые конфигурации; подобрать совместимые исправленные версии, удалить ненужные runtime tooling dependencies; обновлять ограниченными наборами без blind `--force`. Для оставшихся findings зафиксировать advisory, applicability, компенсирующее ограничение, owner и срок пересмотра. Добавить воспроизводимый CI gate с явной, ограниченной по сроку политикой исключений.
+
+**Приёмка:** нет незакрытых применимых critical/high; нет безусловного ignore ошибок audit; все прежние сценарии работают. Исправленная версия подтверждается источником advisory и новым audit, не предположением.
+
+**Тесты:** чистый npm ci, audit full/runtime, typecheck/lint/build, все integration/browser tests, login/session/registration и Server Actions. Сохранить lockfile и доказательства на точный commit.
+
+<a id="step-s0-2"></a>
+#### S0.2 Единая авторизация и валидация upload
+
+**Приоритет:** P1, до внешнего использования. **Файлы:** `src/app/api/upload/image/route.ts`, `src/app/api/media/upload/route.ts`, `src/features/media/server/service.ts`, `src/features/media/server/actions.ts`, `src/features/consent/server/actions.ts`, +`src/features/media/server/upload-policy.ts`, `tests/integration/`, `tests/e2e/`.
+
+**Сделать:** общий server validator File/size/allowed MIME/фактическое содержимое; проверка active membership, capability, client/master scope до provider I/O и повторно перед DB effect. Generic avatars отделить от медицинских вложений по policy, но не разрешать anonymous/non-member/AI произвольную загрузку. Studio folder определяется сервером. Все входы, включая прямой server action, применяют один contract. Ошибки клиенту — безопасные коды/описания, журнал без provider secrets/медицинского текста. Добавить ограничение частоты/квоты с явной policy. Сбой DB не оставляет неучтённый файл: compensation/recovery evidence.
+
+**Приёмка:** нет обходного upload endpoint; отсутствие прав не вызывает Cloudinary; неподходящие/слишком большие файлы отклоняются сервером; потеря прав во время upload предотвращает запись и ставит cleanup.
+
+**Тесты:** anonymous, session без membership, inactive studio, forbidden role, foreign client, spoofed MIME, empty/oversize, прямой action в обход UI, permission revoked during upload, provider/DB/cleanup failure, безопасный HTTP error, сохранение разрешённых avatar/media/consent flows.
+
+<a id="step-s0-3"></a>
+#### S0.3 Private media contract
+
+**Приоритет:** блокирует реальные клиентские фото/документы. **Файлы:** `src/lib/cloudinary.ts`, media/consent services и delivery route, +`src/features/media/server/delivery.ts`, `src/db/schema.ts`, новые additive migrations, tests.
+
+**Сделать:** выполнить private delivery часть 4.2: approved storage mode, scoped краткоживущие ссылки, resource type, asset identity, повторная проверка permissions, access log. Существующие публичные assets только инвентаризировать до согласованного плана перевода; не удалять originals или evidence автоматически. Не считать HTTPS URL авторизацией.
+
+**Приёмка/тесты:** unauthorized и cross-tenant URL/direct provider access не раскрывают закрытые assets; expired/revoked links, audit failure, архив, cleanup retry и сохранность consent originals проверены. Cloud account настройки отдельно подтверждаются в sandbox. Не дублировать эту реализацию в 4.2 — тот шаг завершает cycle/zone/classification.
+
+### Phase 3 — обязательные остатки и интеграционная приёмка
 
 <a id="step-3-1"></a>
+#### 3.1 Schema foundation — реализовано, rollout/backfill остаётся
 
-#### 3.1 Схема циклов
-
-**Статус:** foundation реализован в `codex/phase-3-cycle-schema`; см. [baseline](TREATMENT-CYCLE-SCHEMA-BASELINE.md). Историческое задание ниже сохранено как критерий шага. Backfill выполняется только после ручного разбора, commands/workflow — 3.2. **Основание:** §3,40–46.
-
-**Файлы/модули:** `src/db/schema.ts`; `src/db/relations.ts`; +src/features/treatment-cycles/schemas/cycle.schema.ts.
-
-**Требуется реализовать:** Cycle одной зоны; linked prior/remover/correction; package shell; appointment_cycles; snapshots, version; legacy clientStatus остаётся отдельно до backfill.
-
-**Критерий готовности:** Независимые зоны, multi-cycle visit, исторические IDs сохранены.
-
-**Обязательные тесты:** Multi-zone fixture; FK/studio checks; backfill; incompatible legacy record report.
-
-**Зависимости:** Phase 0–2; запись в календарь и финансы подключаются по мере Phase 5–6.
+[Реализованный объём](TREATMENT-CYCLE-SCHEMA-BASELINE.md). Не строить таблицы повторно. Дополнить `src/features/treatment-cycles/server/legacy-report.ts` пагинацией/экспортом; согласовать mapping исторических курсов; подготовить replay-safe backfill с preview counts, source IDs и rollback/reconciliation. Не угадывать зону/цикл/цену по неоднозначным legacy полям. Выполнение на Neon требует отдельного разрешения.
 
 <a id="step-3-2"></a>
+#### 3.2 Полный путь 21 стадии — интеграционный остаток
 
-#### 3.2 21 стадия
+**Файлы:** `src/features/treatment-cycles/stages.ts`, `server/transitions.ts`, `server/mutation.ts`, `server/actions.ts`; доменные services Phase 5–10; `tests/integration/cycle-commands.test.ts`, +`tests/e2e/pmu-cycle.spec.ts`.
 
-**Статус:** частично реализован — command engine, 21-stage matrix, ранние переходы, история, guards и UI. [Baseline](CYCLE-TRANSITIONS-BASELINE.md). Остаток: подключить authoritative consultation/calendar/ledger/procedure/refresh commands в 3.3/5–7/10; полный путь ещё не принят. **Основание:** §3,40–46.
+**Сделать:** подключать поздние переходы только из владельцев booking/payment/procedure/control/refresh. Нельзя ослаблять общий guard ради прохождения UI. Уточнять version, receipt, audit, task closure и актуальность queued jobs в каждой команде. При новых client links расширять merge registry.
 
-**Файлы/модули:** +src/features/treatment-cycles/server/transitions.ts; +server/actions.ts; +components/cycle-board.tsx; +src/app/(dashboard)/deals/page.tsx.
+**Приёмка:** 21 стадия имеет реальные trigger/evidence; матрица проверяет разрешённый путь и отказ в обходе. Дата визита, платёж и medical decision не создаются сменой строки stage. Клиент проходит сквозной путь с согласованным DB/event/UI состоянием.
 
-**Требуется реализовать:** Все стадии §40; allowed transitions/guards; triggers/events; human decisions; timeline цикла.
-
-**Критерий готовности:** Смена стадии работает через command; запрещённый переход ничего не пишет.
-
-**Обязательные тесты:** Transition matrix, replay, stale version, cross-master access.
-
-**Зависимости:** Phase 0–2; запись в календарь и финансы подключаются по мере Phase 5–6.
+**Тесты:** real PostgreSQL concurrent booking/payment/transition, version conflicts, repeated events, отмена/перенос, отрицательные role/scope checks, PMU Human/AI E2E после реализации зависимостей.
 
 <a id="step-3-3"></a>
+#### 3.3 Consultation — реализация есть, реальная booking-интеграция остаётся
 
-#### 3.3 Qualification / консультация
-
-**Статус:** domain logic/UI реализованы в `codex/phase-3-consultation-decisions`; [baseline](CONSULTATION-DECISIONS-BASELINE.md). Проверка по настоящему booking path и production scheduler остаётся до Phase 5/10; срок decision task перед rollout согласуется со студией. **Основание:** §3,40–46.
-
-**Файлы/модули:** +src/features/consultations/server/qualification.ts; +server/results.ts; +components/result-form.tsx.
-
-**Требуется реализовать:** Same-zone ≤2 years допускает без консультации при отсутствии исключений §42; 5 outcomes §43; overdue decision task.
-
-**Критерий готовности:** Returning client не обходит необходимые оценки; removal/thinking/unavailable имеют собственные ветки.
-
-**Обязательные тесты:** 2-year boundary; previous other-master PMU; all five outcomes; decision missing.
-
-**Зависимости:** Phase 0–2; запись в календарь и финансы подключаются по мере Phase 5–6.
+[Baseline](CONSULTATION-DECISIONS-BASELINE.md). Пройти сценарий 5.1 availability → 5.2 booking → подтверждение/attendance → completion command → human result без прямой подготовки appointment в БД. Проверить обязательные фото 4.3, medical/consent guards и production scheduler отдельно. Default 24h для overdue decision task согласовать со студией до rollout. Не объявлять существующий fixture E2E реальным booking.
 
 <a id="step-3-4"></a>
+#### 3.4a–c — реализовано; остаётся 3.4d
 
-#### 3.4 Thinking / unavailable / lost
+[Задачи](CYCLE-FOLLOWUPS-BASELINE.md), [перенос](FOLLOWUP-RESCHEDULING-BASELINE.md), [повторная оценка/Lost](CYCLE-REASSESSMENT-BASELINE.md). Новые lifecycle commands должны использовать permanent closure hook; самостоятельная cycle archive command и пагинация полной истории добавляются в 13/14. Исторические client archives до 0019 подлежат сверке перед rollout.
 
-**Статус:** PARTIAL — 3.4a реализован: [задачи повторного контакта](CYCLE-FOLLOWUPS-BASELINE.md). 3.4b перенос реализован: [baseline](FOLLOWUP-RESCHEDULING-BASELINE.md). 3.4c повторная оценка/Lost/closure реализованы: [baseline](CYCLE-REASSESSMENT-BASELINE.md). Остаток: 3.4d срок и условия предложения; production integration/rollout — Phase 4–10/15. **Основание:** §3,40–46.
+<a id="step-3-4d"></a>
+#### 3.4d Срок и условия предложения
 
-**Файлы/модули:** +src/features/treatment-cycles/server/followups.ts; src/server/events/worker.ts.
+**Основание:** §§9–10,44. **Файлы:** `src/features/offers/schema.ts`, `server/service.ts`, `server/actions.ts`, `server/queries.ts`, `components/offer-form.tsx`; +`src/features/treatment-cycles/server/commercial-terms.ts`; `components/cycle-timeline.tsx` или отдельная панель; `src/db/schema.ts`, новая migration, audit contract; +`tests/integration/cycle-offer-terms.test.ts`, +`tests/e2e/cycle-offer-terms.spec.ts`.
 
-**Требуется реализовать:** Thinking +7 дней; условия около недели без самовольного пересчёта; unavailable reason/reassessment/comment от мастера; lost history.
+**Сделать:** хранить confirmed terms, source price/offer revision, actor/reason, confirmedAt и явную дату review/действия условий. «Ориентировочно неделя» не превращать в молчаливое правило изменения цены: предложить настройку/решение владельца и зафиксировать его. Дата контакта из Thinking хранится отдельно. Обычное предложение одной зоны не проталкивать в существующий multi-zone Custom Offer contract на 2–3 зоны; определить отдельный подтверждённый snapshot одной зоны. Для Custom Offer сохранять связь с подходящими item/zone/revision, не приписывать всю сумму пакета каждому циклу.
 
-**Критерий готовности:** Нет бесконечных одинаковых задач; reassessment не назначается AI; исходный PMU при removal сохраняется.
+**Команды:** Owner/Admin подтверждает/продлевает/заменяет условия с reason, version и idempotency key. Проверять same studio/client/zone, текущую approved revision и источник цены. Master может читать разрешённые условия; AI не озвучивает и не меняет цену. Исторические snapshots и payment records не переписывать. Просрочка помечает необходимость human review; не отменяет appointment/hold, не списывает деньги, не создаёт скидку и не меняет agreed amount. Применение новых условий после проведённых операций идёт через будущий ledger correction contract, а не overwrite.
 
-**Обязательные тесты:** Fake clock; rescheduled reassessment; reason required; linked remover idempotency.
+**Приёмка:** UI отдельно показывает актуальные/исторические условия и дату следующего контакта; после переноса Thinking условия не продлеваются автоматически. Human reconfirm создаёт историю. Ошибка audit/outbox/конкурентного обновления не оставляет частичное согласование. Финансовый source of truth остаётся в Phase 6, а не в этой панели.
 
-**Зависимости:** Phase 0–2; запись в календарь и финансы подключаются по мере Phase 5–6.
+**Тесты:** boundary срока с controlled clock/Europe-Rome display; overdue без auto-reprice; продление с причиной; stale offer/price version; single-zone и multi-zone без double count; wrong client/zone; denied AI/Master write; replay/конкурентные reconfirm; неизменность предыдущего snapshot; future ledger integration; mobile lost-response retry.
 
+**Зависимости:** текущие цены/offers, cycles, roles/audit/commands. Утверждение конкретной политики срока до включения в рабочую среду. Интеграция snapshot с booking/ledger закрывается в 5/6, не считается выполненной заранее.
 
 ### Phase 4 — medical, media и подписанные документы (§4,36–39,72)
 
@@ -1046,7 +1057,7 @@
 ## 5. Решения владельца до зависимых шагов
 
 
-Полное ТЗ и расширение AI получены; продолжение больше не требуется. Но в самом тексте есть несколько неоднозначностей. Они не блокируют Phase 0–2; перед зависимым шагом решение должно быть зафиксировано в policy и тесте.
+Полное ТЗ и расширение AI получены; продолжение больше не требуется. Но в самом тексте есть несколько неоднозначностей. Phase 0–2 уже реализованы; перед зависимым шагом решение должно быть зафиксировано в policy и тесте.
 
 1. §32 Owner создаёт paid correction после 60 дней; §34 Master выбирает Paid correction; §70 Master может создавать correction. Предлагаемый контракт: Master выбирает клиническую необходимость; именно Owner создаёт/оценивает paid correction после 60 дней; free correction одобряет Master. Не расширять права молча.
 2. §35 «45 дней после второй процедуры / контрольного решения» содержит два возможных anchor. Хранить оба timestamps и явно выбранный anchor; не превращать ориентир в жёсткий автоматический отказ без решения.
@@ -1073,4 +1084,4 @@
 - [ ] Подтверждены private access, role scopes, безопасный экспорт, retention/anonymisation и восстановление backup.
 - [ ] Зафиксирован staged release rehearsal и выполнена приёмка владельцем. Зелёный build или наличие enum не заменяет критерии выше.
 
-Порядок реализации: 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15, затем P2. Указанные взаимные зависимости (например hold/credit и AI/Google) означают совместную интеграционную приёмку, а не два источника бизнес-логики.
+Порядок реализации: S0 → 3.4d → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15, затем P2. Указанные взаимные зависимости (например hold/credit и AI/Google) означают совместную интеграционную приёмку, а не два источника бизнес-логики.

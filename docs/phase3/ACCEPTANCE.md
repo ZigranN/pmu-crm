@@ -2,7 +2,7 @@
 
 Источник: [Master Specification 1.1](MASTER-SPECIFICATION.md). Всего 125 требований: §76 — 50, §77 — 48, §78 — 15, §79 — 12. Исходные 79 пунктов сохранены; добавлены 46 AI-проверок.
 
-Все строки NOT_RUN: это контракт будущей приёмки. Пути тестов запланированы и могут ещё отсутствовать. Проверки миграций не закрывают эти требования.
+На 15.09.2026 строки остаются NOT_RUN в рамках полного release acceptance: это контракт будущей сквозной приёмки. 225 unit/integration и 18 Chromium tests существующих модулей подтверждают отдельные свойства, но не автоматически закрывают будущие appointment/AI/finance сценарии этого реестра. Пути тестов запланированы и могут ещё отсутствовать. Проверки миграций не закрывают эти требования.
 
 Для AI-прогона сохраняются executionId, conversationId, clientId, model, promptVersion, policyVersion, knowledgeVersion, retrievedChunkIds, requestedTool, toolArguments, toolResult, outboundText, escalationReason, auditEventId. Аргументы и результаты редактируются по политике защиты данных; секреты не попадают в trace.
 

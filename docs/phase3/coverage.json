@@ -18,9 +18,9 @@
   {
     "section": "3",
     "status": "PARTIAL",
-    "evidence": "Cycle schema + create/transition commands, board/timeline; package shells",
+    "evidence": "Cycle schema, versioned commands, consultation/reassessment/Lost/follow-up closures, package shells",
     "gap": "Полный cycle workflow, conversations и ledger allocations ещё не приняты",
-    "steps": "3.3–3.4,5–10",
+    "steps": "3.4d,4–10",
     "title": "ОСНОВНЫЕ СУЩНОСТИ"
   },
   {
@@ -89,9 +89,9 @@
   },
   {
     "section": "12",
-    "status": "MISSING",
-    "evidence": "Enum remover, нет workflow",
-    "gap": "Нет variable sessions,100/visit,review30–45,outcomes",
+    "status": "PARTIAL (linked cycle)",
+    "evidence": "removal_required создаёт linked Remover cycle; original PMU сохраняется и защищён от обхода",
+    "gap": "Нет variable sessions, 100/visit, review30–45 и Repeat/Ready/Wait/Stop",
     "steps": "8.3,8.4",
     "title": "REMOVER"
   },
@@ -291,8 +291,8 @@
     "section": "37",
     "status": "PARTIAL",
     "evidence": "media types before/after; галерея",
-    "gap": "Нет требуемых stage guards/healed_result/pre-consult rules",
-    "steps": "4.2,4.3",
+    "gap": "Upload authorization/validation/private delivery gaps S0; stage/healed/pre-consult rules отсутствуют",
+    "steps": "S0.2,S0.3,4.2,4.3",
     "title": "ФОТОГРАФИИ"
   },
   {
@@ -555,24 +555,24 @@
     "section": "70",
     "status": "PARTIAL (текущий scope реализован)",
     "evidence": "server/auth/scopes.ts; master-scope tests; назначенные клиенты, ограниченные medical/media/finance reads",
-    "gap": "Новые cycles/booking/ledger commands должны сохранить этот scope; полный Master E2E отсутствует",
-    "steps": "3–7,15",
+    "gap": "Booking/ledger/AI должны сохранить текущий scope; полный Master E2E отсутствует",
+    "steps": "5–7,11,15",
     "title": "MASTER"
   },
   {
     "section": "71",
     "status": "PARTIAL (текущие boundaries реализованы)",
     "evidence": "writeAudit(tx), sensitiveRead; old/new/reason/actor; audit/access UI; ошибка audit откатывает мутацию",
-    "gap": "Расширить event contracts на новые модули; retention/экспорт и эксплуатационная защита журналов отдельно",
-    "steps": "3–12,14,15",
+    "gap": "Generic upload не проходит полный audit boundary; новые события, retention/export и эксплуатация отдельно",
+    "steps": "S0.2,4–12,14,15",
     "title": "AUDIT LOG"
   },
   {
     "section": "72",
     "status": "PARTIAL",
     "evidence": "Auth/RBAC, tenant/master scopes, access logs, archive preservation, merge provenance",
-    "gap": "Нет полного private delivery, retention/anonymisation/export и доказанного backup restore",
-    "steps": "4.2,14.1–14.3",
+    "gap": "Upload gap и vulnerable dependencies S0; private delivery, retention/anonymisation/export и backup restore не приняты",
+    "steps": "S0,4.2,14.1–14.3",
     "title": "DATA PROTECTION"
   },
   {
@@ -602,7 +602,7 @@
   {
     "section": "76",
     "status": "PARTIAL (итоговая приёмка открыта)",
-    "evidence": "150 unit/integration + 4 migration + 13 browser tests на eceed9c; покрыты отдельные integrity/roles/retry/merge случаи",
+    "evidence": "225 unit/integration + 4 migration + 18 Chromium на d9553dc; проверены свойства существующих commands, не полный release acceptance",
     "gap": "Все 50 technical acceptance scenarios должны быть привязаны к исполняемым тестам и проверены на готовой системе",
     "steps": "15.1,11.10",
     "title": "ОБЯЗАТЕЛЬНЫЕ TECHNICAL TESTS"
@@ -634,7 +634,7 @@
   {
     "section": "80",
     "status": "NOT ACCEPTED",
-    "evidence": "CI eceed9c зелёный, текущие workflows проверены на PostgreSQL 17/Chromium",
+    "evidence": "CI d9553dc success; текущие workflows проверены PostgreSQL 17/Chromium, полный PMU/AI путь отсутствует",
     "gap": "Нет итоговой приёмки всех P0, реальных integrations/restore/release rehearsal; сборка не равна готовности всей CRM",
     "steps": "15.1–15.4,11.10",
     "title": "КРИТЕРИЙ ГОТОВНОСТИ"
