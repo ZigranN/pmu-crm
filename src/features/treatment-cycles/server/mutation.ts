@@ -1,4 +1,5 @@
 import "server-only";
+import { closeCycleFollowUps } from "./close-followups";
 import { eq, and } from "drizzle-orm";
 import { treatmentCycles, cycleStageHistory } from "@/db/schema";
 import type { Transaction } from "@/server/commands/ownership";
@@ -11,6 +12,7 @@ import { enqueue } from "@/server/events/outbox";
 export async function recordCycleChange(tx:Transaction,context:CycleContext,commandId:string,before:typeof treatmentCycles.$inferSelect,to:CycleStage,reason:string,action:AuditAction="cycle_stage_changed",patch:Partial<Pick<typeof treatmentCycles.$inferInsert,"assignedMasterId"|"suspendedAt"|"suspensionReason">>={},reasonSource:"user"|"command"="command") {
   const [after]=await tx.update(treatmentCycles).set({...patch,stage:to,version:before.version+1,updatedAt:new Date()}).where(and(eq(treatmentCycles.id,before.id),eq(treatmentCycles.version,before.version))).returning();
   if(!after)throw new Error("Цикл изменён");
+  if((before.stage==="thinking"&&after.stage!=="thinking")||(before.suspensionReason==="temporarily_unavailable"&&(after.stage==="lost"||!after.suspendedAt)))await closeCycleFollowUps(tx,context,before.id,"cycle_left_branch");
   await recordCycleEvidence(tx,context,commandId,before,after,reason,action,reasonSource);return after;
 }
 export async function recordCycleEvidence(tx:Transaction,context:CycleContext,commandId:string,before:typeof treatmentCycles.$inferSelect|null,after:typeof treatmentCycles.$inferSelect,reason:string,action:AuditAction,reasonSource:"user"|"command"="command") {

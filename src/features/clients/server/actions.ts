@@ -1,4 +1,5 @@
 "use server";
+import { closeClientFollowUps } from "@/features/treatment-cycles/server/close-followups";
 import { canonicalClientId } from "./identity";
 import { writeActivity } from "@/server/services/activity.service";
 import { writeAudit } from "@/server/services/audit-log.service";
@@ -92,6 +93,7 @@ async function archiveState(id: string, archived: boolean) {
   await db.transaction(async tx => {
     const before = await lockClient(tx, id, context.studioId, context.userId, !archived, permission);
     const [after] = await tx.update(clients).set({ deletedAt: archived ? new Date() : null, deletedById: archived ? context.userId : null, updatedAt: new Date() }).where(eq(clients.id, before.id)).returning();
+    if(archived)await closeClientFollowUps(tx,context,id);
     await writeActivity(tx, { ...context, clientId: id, type: archived ? "client_archived" : "client_restored", title: archived ? "Клиент архивирован" : "Клиент восстановлен" });
     await writeAudit(tx, { ...context, action: archived ? "client_archived" : "client_restored", entityType: "client", entityId: id, before, after, reason: archived ? "command:client_archived" : "command:client_restored" });
   });

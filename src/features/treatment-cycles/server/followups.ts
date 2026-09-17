@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { clients, followUpRevisions, consultationResults, consultations, masters, tasks, treatmentCycles } from "@/db/schema";
+import { clients, followUpRevisions, consultationResults, followUpClosures, consultations, masters, tasks, treatmentCycles } from "@/db/schema";
 import { cycleScope } from "./scope";
 import { hasPermission } from "@/lib/permissions";
 import type { Transaction } from "@/server/commands/ownership";
@@ -20,6 +20,8 @@ export async function createFollowUpTask(tx: Transaction, job: Job): Promise<Jso
     )).where(and(eq(consultationResults.id, resultId), eq(consultationResults.studioId, job.studioId)));
   if (!source) throw new PermanentJobError();
   const { result, consultation } = source;
+  const [closed]=await tx.select({id:followUpClosures.id}).from(followUpClosures).where(eq(followUpClosures.resultId,resultId));
+  if(closed)return {resultId,skipped:"follow_up_closed"};
   const thinking = result.outcome === "client_thinking";
   const reassessment = result.outcome === "temporarily_unavailable";
   const [revision]=await tx.select().from(followUpRevisions).where(and(eq(followUpRevisions.resultId,resultId),eq(followUpRevisions.studioId,job.studioId))).orderBy(desc(followUpRevisions.sequence)).limit(1);
