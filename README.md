@@ -109,3 +109,5 @@ Audit/access contracts and migration 0007: [Phase 1.3 baseline](docs/phase3/AUDI
 Command receipts, event queue, scheduler activation and migration 0008: [Phase 1.4 baseline](docs/phase3/COMMAND-RELIABILITY-BASELINE.md). Queue recovery is available to Owner at `/settings/jobs`; the worker is disabled until explicitly configured.
 
 Phase 2.1 service catalog, legacy cleanup, optional seed and migration 0009: [Service catalog baseline](docs/phase3/SERVICE-CATALOG-BASELINE.md). Apply migrations before running this branch. No remote database migration is performed automatically.
+
+Phase 2.2 pricing, immutable custom offer revisions, access rules and migration 0010: [Pricing and offers baseline](docs/phase3/PRICING-OFFERS-BASELINE.md).

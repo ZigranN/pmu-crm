@@ -2,6 +2,7 @@ import { z } from "zod";
 const euros = z.number().finite().min(0).max(21474836.47).refine(value => Math.abs(value * 100 - Math.round(value * 100)) < 0.000001, "Не более двух знаков после запятой").nullable();
 export const serviceSchema = z.object({
   catalogCode: z.string().min(1, "Выберите услугу из справочника"),
+  priceChangeReason: z.string().trim().max(1000).optional(),
   description: z.string().max(4000).optional(),
   priceMode: z.enum(["fixed", "estimate", "range", "master_quote"]),
   price: euros, priceMax: euros,

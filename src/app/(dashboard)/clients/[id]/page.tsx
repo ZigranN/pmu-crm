@@ -32,6 +32,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
   if (!studioId) redirect("/dashboard");
   if (!await hasPermission(db, session.user.id, studioId, "CLIENT_READ")) redirect("/dashboard");
 
+  const canReadOffers = await hasPermission(db, session.user.id, studioId, "OFFER_READ");
   const role = await getStudioRole(db, session.user.id, studioId);
   const canAssign = (role === "OWNER" || role === "ADMIN") && await hasPermission(db, session.user.id, studioId, "CLIENT_UPDATE");
   const assignmentOptions = canAssign ? await getActiveMasters(studioId) : [];
@@ -60,6 +61,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
           </Link>
         </Button>
       </PageHeader>
+      {canReadOffers && <Button asChild variant="outline" size="sm"><Link href={`/clients/${id}/offers`}>Custom Offer</Link></Button>}
 
       {canAssign && <ClientAssignment clientId={client.id} currentId={client.assignedMasterId} masters={assignmentOptions} />}
       <Tabs defaultValue="info" className="w-full">

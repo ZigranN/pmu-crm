@@ -29,6 +29,7 @@ test("Owner imports catalog, configures missing duration and preserves edits on 
     await expect(page.getByLabel("Услуга из справочника")).toBeDisabled();
     await page.getByLabel("Длительность (минуты)").fill("60");
     await page.getByLabel("Базовая цена / нижняя граница (€)").fill("125.50");
+    await page.getByLabel("Причина изменения цены").fill("Synthetic owner price review");
     await page.getByLabel("Активна", { exact: true }).check();
     await page.getByRole("button", { name: "Сохранить", exact: true }).click();
     await expect(page).toHaveURL(/\/services$/);

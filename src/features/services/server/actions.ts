@@ -11,6 +11,7 @@ import { idempotentCommand, type Json } from "@/server/commands/idempotency";
 import { requireStudioPermission } from "@/server/auth/context";
 import { getStudioRole } from "@/lib/roles";
 import { z } from "zod";
+import { reason as priceReason } from "@/features/offers/schema";
 export async function createServiceAction(input: ServiceSchema, requestKey: string) {
   const context = await requireStudioPermission("SERVICE_CREATE");
   const inputData = serviceSchema.parse(input);
@@ -34,8 +35,10 @@ export async function updateServiceAction(id: string, input: ServiceSchema) {
     const data = await serviceValues(tx, context.studioId, input);
     if (before.catalogCode && before.catalogCode !== data.catalogCode) throw new Error("Нельзя менять вид существующей услуги; создайте отдельную запись");
     await assertCatalogAvailable(tx, context.studioId, data.catalogCode, id);
+    const changedPrice = before.priceCents !== data.priceCents || before.priceMaxCents !== data.priceMaxCents || before.priceMode !== data.priceMode;
+    const reason = changedPrice ? priceReason.parse(input.priceChangeReason) : "command:service_updated";
     const [after] = await tx.update(services).set({ ...data, updatedAt: new Date() }).where(eq(services.id, before.id)).returning();
-    await writeAudit(tx, { ...context, action: "service_updated", entityType: "service", entityId: id, before, after, reason: "command:service_updated" });
+    await writeAudit(tx, { ...context, action: "service_updated", entityType: "service", entityId: id, before, after, reason, reasonSource: changedPrice ? "user" : "command" });
     return after;
   });
   revalidatePath("/services"); revalidatePath(`/services/${id}`); return result;
