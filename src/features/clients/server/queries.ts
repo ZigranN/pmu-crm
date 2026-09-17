@@ -1,9 +1,10 @@
 import "server-only";
+import { alias } from "drizzle-orm/pg-core";
 import { sensitiveRead, recordIds, optionalRecordId } from "@/server/services/access-log.service";
 import { resourceScope } from "@/server/auth/scopes";
 import { db } from "@/db";
 import { hasPermission } from "@/lib/permissions";
-import { clients, clientMedicalProfiles, activityEvents } from "@/db/schema";
+import { clients, clientMedicalProfiles, activityEvents, masters } from "@/db/schema";
 import { eq, and, isNull, ilike, or, desc, ne, SQL, sql } from "drizzle-orm";
 
 export async function getClients(studioId: string, filters?: { search?: string, status?: any }) {
@@ -76,4 +77,15 @@ export async function getClientActivity(id: string, studioId: string) {
       orderBy: [desc(activityEvents.createdAt)], limit: 20,
     });
   }, recordIds);
+}
+
+// Only display names attached to an already authorized client, not other masters' profiles.
+export async function getClientMasterLabels(id: string, studioId: string) {
+  return sensitiveRead("CLIENT_READ", studioId, { operation: "client.read", targetId: id }, async context => {
+    const scope = await resourceScope(context), assigned = alias(masters, "assigned"), preferred = alias(masters, "preferred");
+    return (await db.select({ id: clients.id, assignedName: assigned.displayName, preferredName: preferred.displayName }).from(clients)
+      .leftJoin(assigned, and(eq(assigned.id, clients.assignedMasterId), eq(assigned.studioId, clients.studioId)))
+      .leftJoin(preferred, and(eq(preferred.id, clients.preferredMasterId), eq(preferred.studioId, clients.studioId)))
+      .where(and(eq(clients.id, id), scope.client, isNull(clients.deletedAt))))[0];
+  }, optionalRecordId);
 }

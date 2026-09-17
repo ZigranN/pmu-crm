@@ -1,3 +1,4 @@
+import { requireStudioPermission } from "@/server/auth/context";
 import { PageHeader } from "@/components/shared/page-header";
 import { ClientForm } from "@/features/clients/components/client-form";
 import { getClientById } from "@/features/clients/server/queries";
@@ -5,12 +6,11 @@ import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
 import { redirect, notFound } from "next/navigation";
 
 interface EditClientPageProps {
-  params: {
-    id: string;
-  };
+  params: Promise<{ id: string }>;
 }
 
 export default async function EditClientPage({ params }: EditClientPageProps) {
+  await requireStudioPermission("CLIENT_UPDATE");
   const { id } = await params;
   const session = await getSession();
   if (!session) redirect("/login");
