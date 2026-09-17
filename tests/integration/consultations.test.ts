@@ -124,3 +124,89 @@ test("decision tasks cannot reference another studio or client",async()=>{
  const done=await completed();await expect(db.insert(s.tasks).values({studioId:foreignStudio,assignedToId:actor,consultationId:done.consultationId,title:"Foreign",type:"custom"})).rejects.toThrow();
  const [other]=await db.insert(s.clients).values(clientFixture(studioId)).returning();await expect(db.insert(s.tasks).values({studioId,clientId:other.id,appointmentId:done.v.id,assignedToId:actor,consultationId:done.consultationId,title:"Wrong client",type:"custom"})).rejects.toThrow();
 });
+
+async function followUp(outcome: "client_thinking" | "temporarily_unavailable") {
+ const done=await completed(),input=resultInput(done,outcome),key=randomUUID();
+ await actions.recordConsultationResultAction(input,key);
+ const [job]=await db.select().from(s.outboxJobs).where(and(eq(s.outboxJobs.studioId,studioId),eq(s.outboxJobs.handler,"cycle.follow-up-due.v1")));
+ const [decision]=await db.select().from(s.consultationResults).where(eq(s.consultationResults.consultationId,done.consultationId));
+ return {done,input,key,job,decision,dueAt:(decision.followUpAt??decision.reassessmentAt)!};
+}
+// Only the handler's clock read is advanced. Source decisions remain immutable;
+// scheduling, inbox and task writes still use the real transaction/database.
+async function deliverFollowUp(job:typeof s.outboxJobs.$inferSelect,now:Date) {
+ const {createFollowUpTask}=await import("@/features/treatment-cycles/server/followups");
+ return db.transaction(async tx=>{const clock=vi.spyOn(tx,"execute").mockResolvedValueOnce([{now}] as never);try{return await createFollowUpTask(tx,job);}finally{clock.mockRestore();}});
+}
+test.each(["client_thinking","temporarily_unavailable"] as const)("%s schedules exactly one durable task at the authoritative date",async outcome=>{
+ const f=await followUp(outcome);expect(f.job.availableAt).toEqual(f.dueAt);
+ await actions.recordConsultationResultAction(f.input,f.key);
+ expect(await db.select().from(s.outboxJobs).where(and(eq(s.outboxJobs.studioId,studioId),eq(s.outboxJobs.handler,"cycle.follow-up-due.v1")))).toHaveLength(1);
+ const {RetryableJobError}=await import("@/server/events/worker");
+ await expect(deliverFollowUp(f.job,new Date(f.dueAt.getTime()-1))).rejects.toBeInstanceOf(RetryableJobError);
+ expect(await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,f.decision.id))).toHaveLength(0);
+ const first=await deliverFollowUp(f.job,f.dueAt);expect(await deliverFollowUp(f.job,new Date(f.dueAt.getTime()+86400000))).toEqual(first);
+ const rows=await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,f.decision.id));expect(rows).toHaveLength(1);
+ expect(rows[0]).toMatchObject({clientId,assignedToId:actor,appointmentId:f.done.v.id,consultationId:null,dueAt:f.dueAt,status:"pending"});
+ expect(rows[0].description).toBe(`/deals/${f.done.id}`);expect(rows[0].description).not.toContain(f.input.comment);
+ expect((await queries.getConsultationPanel(f.done.id)).followUpTask?.id).toBe(rows[0].id);
+ await db.update(s.tasks).set({status:"completed",completedAt:new Date()}).where(eq(s.tasks.id,rows[0].id));
+ await deliverFollowUp(f.job,f.dueAt);expect((await queries.getConsultationPanel(f.done.id)).followUpTask?.status).toBe("completed");
+});
+test("follow-up ignores archived cycle/client and rejects another studio, missing master and injected dates",async()=>{
+ const f=await followUp("temporarily_unavailable"),{PermanentJobError}=await import("@/server/events/worker");
+ await expect(deliverFollowUp({...f.job,studioId:foreignStudio},f.dueAt)).rejects.toBeInstanceOf(PermanentJobError);
+ await expect(deliverFollowUp({...f.job,payload:{resultId:f.decision.id,dueAt:new Date(0).toISOString()}},f.dueAt)).rejects.toBeInstanceOf(PermanentJobError);
+ await db.update(s.masters).set({isActive:false}).where(eq(s.masters.id,masterId));await expect(deliverFollowUp(f.job,f.dueAt)).rejects.toBeInstanceOf(PermanentJobError);
+ await db.update(s.masters).set({isActive:true}).where(eq(s.masters.id,masterId));
+ await db.update(s.treatmentCycles).set({archivedAt:new Date()}).where(eq(s.treatmentCycles.id,f.done.id));expect(await deliverFollowUp(f.job,f.dueAt)).toMatchObject({skipped:"archived_cycle"});
+ await db.update(s.treatmentCycles).set({archivedAt:null}).where(eq(s.treatmentCycles.id,f.done.id));await db.update(s.clients).set({deletedAt:new Date()}).where(eq(s.clients.id,clientId));expect(await deliverFollowUp(f.job,f.dueAt)).toMatchObject({skipped:"archived_client"});
+ expect(await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,f.decision.id))).toHaveLength(0);
+});
+test("reassessment never clears suspension; stale suspension and revoked specialist permissions block reminders",async()=>{
+ const f=await followUp("temporarily_unavailable"),{PermanentJobError}=await import("@/server/events/worker");
+ await db.update(s.studioMembers).set({roleId:roles.ADMIN}).where(eq(s.studioMembers.studioId,studioId));await expect(deliverFollowUp(f.job,f.dueAt)).rejects.toBeInstanceOf(PermanentJobError);
+ await db.update(s.studioMembers).set({roleId:roles.OWNER}).where(eq(s.studioMembers.studioId,studioId));
+ const before=await db.select().from(s.treatmentCycles).where(eq(s.treatmentCycles.id,f.done.id));await deliverFollowUp(f.job,f.dueAt);expect(await db.select().from(s.treatmentCycles).where(eq(s.treatmentCycles.id,f.done.id))).toEqual(before);
+ await db.update(s.treatmentCycles).set({suspendedAt:null,suspensionReason:null}).where(eq(s.treatmentCycles.id,f.done.id));expect(await deliverFollowUp(f.job,f.dueAt)).toMatchObject({skipped:"cycle_changed"});
+});
+test("follow-up DB guard rejects changed date, missing client, foreign studio and detached source",async()=>{
+ const f=await followUp("client_thinking");await deliverFollowUp(f.job,f.dueAt);
+ const [task]=await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,f.decision.id));
+ for(const patch of [{dueAt:new Date(0)},{clientId:null},{studioId:foreignStudio},{followUpResultId:null},{consultationId:f.done.consultationId}])await expect(db.update(s.tasks).set(patch).where(eq(s.tasks.id,task.id))).rejects.toThrow();
+ expect(await db.select().from(s.tasks).where(eq(s.tasks.id,task.id))).toEqual([task]);
+});
+test("follow-up task follows canonical client after merge and retries preserve its identity",async()=>{
+ const f=await followUp("client_thinking");await deliverFollowUp(f.job,f.dueAt);
+ const [target]=await db.insert(s.clients).values({...clientFixture(studioId),assignedMasterId:masterId}).returning();
+ const merge=await import("@/features/clients/server/merge-actions"),{MERGE_FIELDS}=await import("@/features/clients/merge-contract");
+ const preview=await merge.previewClientMerge({sourceId:clientId,targetId:target.id});
+ await merge.mergeClientsAction({sourceId:clientId,targetId:target.id,reason:"Synthetic duplicate",token:preview.token,choices:Object.fromEntries(Object.keys(MERGE_FIELDS).map(field=>[field,"target" as const]))},randomUUID());
+ await deliverFollowUp(f.job,f.dueAt);
+ const rows=await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,f.decision.id));expect(rows).toHaveLength(1);expect(rows[0].clientId).toBe(target.id);
+});
+test("follow-up enqueue failure rolls back human decision and stage evidence",async()=>{
+ const done=await completed(),before=await count(),outbox=await import("@/server/events/outbox"),original=outbox.enqueue;
+ const spy=vi.spyOn(outbox,"enqueue").mockImplementation(async(tx,envelope,payload)=>{if(envelope.handler==="cycle.follow-up-due.v1")throw new Error("Follow-up queue unavailable");return original(tx,envelope,payload);});
+ try{await expect(actions.recordConsultationResultAction(resultInput(done,"client_thinking"),randomUUID())).rejects.toThrow("Follow-up queue unavailable");}finally{spy.mockRestore();}
+ expect(await count()).toEqual(before);
+});
+test("worker commits follow-up task and inbox together; replay and migration catch-up cannot duplicate them",async()=>{
+ const f=await followUp("client_thinking"),{runWorkerOnce}=await import("@/server/events/worker"),{handlers}=await import("@/server/events/registry");
+ const handler=handlers["cycle.follow-up-due.v1"];if(handler.kind!=="transactional")throw new Error("Expected transactional handler");
+ const registry={...handlers,"cycle.follow-up-due.v1":{kind:"transactional" as const,run:async(tx:Parameters<typeof handler.run>[0],job:typeof f.job)=>{const clock=vi.spyOn(tx,"execute").mockResolvedValueOnce([{now:f.dueAt}] as never);try{return await handler.run(tx,job);}finally{clock.mockRestore();}}}};
+ await db.update(s.outboxJobs).set({availableAt:new Date(0)}).where(eq(s.outboxJobs.id,f.job.id));
+ const run=await runWorkerOnce(registry);expect(run).toBeTruthy();
+ const [task]=await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,f.decision.id));expect(task).toBeDefined();
+ await db.update(s.outboxJobs).set({state:"pending",availableAt:new Date(0)}).where(eq(s.outboxJobs.id,f.job.id));await runWorkerOnce(registry);
+ expect(await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,f.decision.id))).toHaveLength(1);
+ expect(await db.select().from(s.eventInbox).where(and(eq(s.eventInbox.studioId,studioId),eq(s.eventInbox.consumer,f.job.handler)))).toHaveLength(1);
+ const {readFile}=await import("node:fs/promises");const migration=await readFile("drizzle/0017_cycle_follow_up_tasks.sql","utf8");const catchup=migration.slice(migration.indexOf("INSERT INTO outbox_jobs"));
+ await db.delete(s.outboxJobs).where(eq(s.outboxJobs.id,f.job.id));await db.execute(sql.raw(catchup));await db.execute(sql.raw(catchup));
+ const jobs=await db.select().from(s.outboxJobs).where(and(eq(s.outboxJobs.studioId,studioId),eq(s.outboxJobs.handler,f.job.handler)));expect(jobs).toHaveLength(1);expect(jobs[0]).toMatchObject({payload:f.job.payload,payloadHash:f.job.payloadHash,availableAt:f.dueAt});
+});
+test("follow-up task cannot be routed to a master without current client scope",async()=>{
+ const f=await followUp("client_thinking");await db.update(s.studioMembers).set({roleId:roles.MASTER}).where(eq(s.studioMembers.studioId,studioId));
+ const [other]=await db.insert(s.masters).values({studioId,displayName:"Other assigned master"}).returning();await db.update(s.clients).set({assignedMasterId:other.id}).where(eq(s.clients.id,clientId));
+ const {PermanentJobError}=await import("@/server/events/worker");await expect(deliverFollowUp(f.job,f.dueAt)).rejects.toBeInstanceOf(PermanentJobError);
+});

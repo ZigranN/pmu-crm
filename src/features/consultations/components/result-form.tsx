@@ -30,6 +30,7 @@ export function ConsultationPanel({data}:{data:Awaited<ReturnType<typeof getCons
       <Button disabled={pending}>Сохранить решение</Button>
     </form>}
     {data.result&&<div className="rounded border p-4 break-words"><h3>{OUTCOME_LABELS[data.result.outcome as typeof OUTCOMES[number]]}</h3><p>{data.result.reason}</p><p>{data.result.comment}</p>{data.result.removerCycleId&&<a className="underline" href={`/deals/${data.result.removerCycleId}`}>Связанный Remover-цикл</a>}{data.result.reassessmentAt&&<p>Повторная оценка: {new Date(data.result.reassessmentAt).toISOString()}</p>}{data.result.followUpAt&&<p>Следующий контакт: {new Date(data.result.followUpAt).toISOString()}</p>}</div>}
+    {data.followUpTask&&<p role="status">Задача повторного контакта: {({pending:"ожидает выполнения",in_progress:"в работе",completed:"выполнена",cancelled:"отменена"})[data.followUpTask.status]}.</p>}
     {!data.canWrite&&<p>Решения записывает специалист с соответствующим доступом.</p>}
   </section>;
 }

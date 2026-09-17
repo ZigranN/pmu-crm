@@ -79,7 +79,7 @@
 - [x] **3.1 Схема циклов — foundation** — см. [ТЗ шага 3.1](REMAINING-SPECIFICATION.md#step-3-1).
 - [ ] **3.2 21 стадия — PARTIAL:** engine/UI/ранние переходы реализованы; интеграции 3.3/5–7/10 остаются. [Baseline](CYCLE-TRANSITIONS-BASELINE.md) — см. [ТЗ шага 3.2](REMAINING-SPECIFICATION.md#step-3-2).
 - [ ] **3.3 Qualification / консультация — domain logic/UI реализованы**, production E2E зависит от Calendar Phase 5. [Baseline](CONSULTATION-DECISIONS-BASELINE.md) — см. [ТЗ шага 3.3](REMAINING-SPECIFICATION.md#step-3-3).
-- [ ] **3.4 Thinking / unavailable / lost** — см. [ТЗ шага 3.4](REMAINING-SPECIFICATION.md#step-3-4).
+- [ ] **3.4 Thinking / unavailable / lost** — 3.4a задачи реализованы ([baseline](CYCLE-FOLLOWUPS-BASELINE.md)); остаток 3.4b–d. см. [ТЗ шага 3.4](REMAINING-SPECIFICATION.md#step-3-4).
 
 ### Phase 4 — medical, media и подписанные документы (§4,36–39,72)
 
@@ -226,9 +226,9 @@
 | 41 | КВАЛИФИКАЦИЯ | PARTIAL | AI administrative extraction и Calendar booking интеграция ещё не приняты | 5,11 |
 | 42 | СУЩЕСТВУЮЩИЙ КЛИЕНТ | PARTIAL | Booking command должна потреблять актуальную оценку; Calendar отсутствует | 5 |
 | 43 | РЕЗУЛЬТАТ КОНСУЛЬТАЦИИ | PARTIAL (domain ready) | Реальные calendar prerequisites и scheduler rollout не приняты | 5,10 |
-| 44 | CLIENT THINKING | PARTIAL | Реальный follow-up/условия предложения и перенос даты — 3.4 | 3.4,10 |
+| 44 | CLIENT THINKING | PARTIAL | Перенос/отмена задач, условия предложения и исходящий контакт — 3.4b–d/10 | 3.4,10 |
 | 45 | REMOVAL REQUIRED | PARTIAL | Remover appointments/review/ready_for_pmu restoration ещё отсутствуют | 8.3 |
-| 46 | TEMPORARILY UNAVAILABLE | PARTIAL | Задачи повторного контакта, перенос и возобновление — 3.4 | 3.4 |
+| 46 | TEMPORARILY UNAVAILABLE | PARTIAL | Версионированный перенос, повторная оценка и возобновление — 3.4b/c | 3.4 |
 | 47 | REFRESH | MISSING | Нет350,last same-zone PMU,year offer,monthly6 stop | 10.5 |
 | 48 | AI AGENT — ОСНОВНЫЕ ПРАВИЛА | MISSING | AI runtime/orchestrator/context builder/registry/KB-RAG/memory/execution trace отсутствуют | 11.1,11.2,11.3,11.5,11.6,11.9,11.10 |
 | 49 | AI НЕ МОЖЕТ | PARTIAL (запрет generic actions) | Нет работающего AI runtime, зарегистрированных tools, server output policy и adversarial acceptance | 11.3,11.4,11.10 |
@@ -268,4 +268,4 @@
 
 [Реестр §§76–79](ACCEPTANCE.md) содержит **125 требований**: 50 technical, 48 main/AI E2E, 15 Total Face, 12 Remover. Это не количество существующих тестов. Отдельные integrity/RBAC/retry/merge случаи уже покрыты, но весь реестр не закрыт как релизная приёмка; текущие 150+4+13 тестов не подменяют эти 125 требований.
 
-Следующий шаг разработки: **3.4 — follow-up, повторная оценка и возобновление**. Интеграционные остатки 3.2 закрываются с Phase 5–7/10. Merge PR, миграции Neon и rollout идут отдельным контролируемым процессом, описанным в оставшемся ТЗ. Их выполнение данным отчётом не разрешается и не заявляется.
+Следующий шаг разработки: **3.4b — версионированный перенос даты и повторная оценка**. Интеграционные остатки 3.2 закрываются с Phase 5–7/10. Merge PR, миграции Neon и rollout идут отдельным контролируемым процессом, описанным в оставшемся ТЗ. Их выполнение данным отчётом не разрешается и не заявляется.
