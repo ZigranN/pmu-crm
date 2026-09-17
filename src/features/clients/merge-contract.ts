@@ -13,6 +13,7 @@ export const mergeSchema = z.object({
 }).strict().refine(value => value.sourceId !== value.targetId, "Нужны разные карточки");
 export type MergeInput = z.infer<typeof mergeSchema>;
 export const MERGE_RELATION_LABELS: Record<string, string> = {
+  treatment_packages: "Пакеты", treatment_cycles: "Циклы лечения", appointment_cycles: "Связи визитов и циклов",
   client_assignments: "История назначений мастера", client_status_history: "История статусов", appointments: "Визиты", procedure_sessions: "Процедуры",
   media: "Медиафайлы", consents: "Согласия", payments: "Оплаты", payment_transactions: "Финансовые операции", tasks: "Задачи", notifications: "Уведомления",
   activity_events: "События", questionnaire_responses: "Ответы анкет", reviews: "Отзывы", custom_offers: "Индивидуальные предложения",

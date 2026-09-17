@@ -48,6 +48,7 @@ export const rolePermissionsRelations = relations(schema.rolePermissions, ({ one
 }));
 
 export const clientRelations = relations(schema.clients, ({ many }) => ({
+  treatmentCycles: many(schema.treatmentCycles), treatmentPackages: many(schema.treatmentPackages),
   medicalProfiles: many(schema.clientMedicalProfiles),
   appointments: many(schema.appointments),
   procedureSessions: many(schema.procedureSessions),
@@ -77,6 +78,7 @@ export const serviceRelations = relations(schema.services, ({ many }) => ({
 }));
 
 export const appointmentRelations = relations(schema.appointments, ({ one, many }) => ({
+  cycles: many(schema.appointmentCycles),
   events: many(schema.appointmentEvents),
   payments: many(schema.payments),
   procedureSessions: many(schema.procedureSessions),
@@ -120,4 +122,17 @@ export const paymentRelations = relations(schema.payments, ({ many, one }) => ({
     fields: [schema.payments.clientId],
     references: [schema.clients.id],
   }),
+}));
+
+export const treatmentCycleRelations = relations(schema.treatmentCycles, ({one,many}) => ({
+  client: one(schema.clients,{fields:[schema.treatmentCycles.clientId],references:[schema.clients.id]}),
+  package: one(schema.treatmentPackages,{fields:[schema.treatmentCycles.packageId],references:[schema.treatmentPackages.id]}),
+  visits: many(schema.appointmentCycles),
+}));
+export const treatmentPackageRelations = relations(schema.treatmentPackages, ({one,many}) => ({
+  client: one(schema.clients,{fields:[schema.treatmentPackages.clientId],references:[schema.clients.id]}), cycles: many(schema.treatmentCycles),
+}));
+export const appointmentCycleRelations = relations(schema.appointmentCycles, ({one}) => ({
+  cycle: one(schema.treatmentCycles,{fields:[schema.appointmentCycles.cycleId],references:[schema.treatmentCycles.id]}),
+  appointment: one(schema.appointments,{fields:[schema.appointmentCycles.appointmentId],references:[schema.appointments.id]}),
 }));

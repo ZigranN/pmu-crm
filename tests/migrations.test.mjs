@@ -135,6 +135,8 @@ test("fresh install, upgrade with data, and repeated migrate converge", async (t
   const [legacyMaster] = await upgraded`insert into masters (studio_id,display_name) values (${studio.id},'Migration master') returning id`;
   const [legacyVisit] = await upgraded`insert into appointments (studio_id,client_id,master_id,service_id,start_at,end_at,source,created_by_id,service_snapshot,client_snapshot,master_snapshot,price_snapshot_cents,duration_snapshot_minutes)
     values (${studio.id},${client.id},${legacyMaster.id},${legacyService.id},'2026-10-10 10:00','2026-10-10 12:30','other','override-test','{"legacy":true}','{}','{}',77777,150) returning *`;
+  const [legacyProcedure] = await upgraded`insert into procedure_sessions (studio_id,client_id,appointment_id,master_id,service_id,procedure_area,procedure_type,session_type)
+    values (${studio.id},${client.id},${legacyVisit.id},${legacyMaster.id},${legacyService.id},'brows','brows','primary_session') returning *`;
   const [legacyAudit] = await upgraded`insert into audit_logs (studio_id, action, entity_type, entity_id, metadata)
     values (${studio.id}, 'legacy_custom_event', 'client', ${client.id}, '{"preserve":true}') returning *`;
   await migrate(drizzle(upgradedDatabase.engine), { migrationsFolder });
@@ -143,6 +145,10 @@ test("fresh install, upgrade with data, and repeated migrate converge", async (t
   assert.equal(preservedService.catalog_version, 0);
   assert.equal(preservedService.catalog_code, null);
   assert.deepEqual(await upgraded`select * from appointments where id = ${legacyVisit.id}`, [legacyVisit]);
+  assert.deepEqual(await upgraded`select * from procedure_sessions where id = ${legacyProcedure.id}`, [{...legacyProcedure, cycle_id:null}]);
+  assert.deepEqual(await upgraded`select id from treatment_cycles`, []);
+  assert.deepEqual(await upgraded`select id from treatment_packages`, []);
+  assert.deepEqual(await upgraded`select id from appointment_cycles`, []);
   const [preservedAudit] = await upgraded`select * from audit_logs where id = ${legacyAudit.id}`;
   for (const [key, value] of Object.entries(legacyAudit)) assert.deepEqual(preservedAudit[key], value);
   assert.equal(preservedAudit.contract_version, 0);
