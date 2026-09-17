@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { clients, consultationResults, consultations, masters, tasks, treatmentCycles } from "@/db/schema";
+import { clients, followUpRevisions, consultationResults, consultations, masters, tasks, treatmentCycles } from "@/db/schema";
 import { cycleScope } from "./scope";
 import { hasPermission } from "@/lib/permissions";
 import type { Transaction } from "@/server/commands/ownership";
@@ -11,9 +11,9 @@ import { PermanentJobError, RetryableJobError, type Job } from "@/server/events/
 // Called transactionally by the worker under its studio lock. The immutable
 // result supplies the date; queued payloads cannot change a specialist's decision.
 export async function createFollowUpTask(tx: Transaction, job: Job): Promise<Json> {
-  const parsed = z.object({ resultId: z.string().uuid() }).strict().safeParse(job.payload);
+  const parsed = z.object({ resultId: z.string().uuid(), revisionId:z.string().uuid().optional() }).strict().safeParse(job.payload);
   if (!parsed.success) throw new PermanentJobError();
-  const { resultId } = parsed.data;
+  const { resultId, revisionId } = parsed.data;
   const [source] = await tx.select({ result: consultationResults, consultation: consultations })
     .from(consultationResults).innerJoin(consultations, and(
       eq(consultations.id, consultationResults.consultationId), eq(consultations.studioId, job.studioId),
@@ -22,7 +22,9 @@ export async function createFollowUpTask(tx: Transaction, job: Job): Promise<Jso
   const { result, consultation } = source;
   const thinking = result.outcome === "client_thinking";
   const reassessment = result.outcome === "temporarily_unavailable";
-  const dueAt = thinking ? result.followUpAt : reassessment ? result.reassessmentAt : null;
+  const [revision]=await tx.select().from(followUpRevisions).where(and(eq(followUpRevisions.resultId,resultId),eq(followUpRevisions.studioId,job.studioId))).orderBy(desc(followUpRevisions.sequence)).limit(1);
+  if((revision?.id??undefined)!==revisionId)return {resultId,skipped:"schedule_superseded"};
+  const dueAt = revision?.dueAt ?? (thinking ? result.followUpAt : reassessment ? result.reassessmentAt : null);
   if (!dueAt) throw new PermanentJobError();
   const [cycle] = await tx.select().from(treatmentCycles).where(and(
     eq(treatmentCycles.id, consultation.cycleId), eq(treatmentCycles.studioId, job.studioId),
@@ -59,10 +61,10 @@ export async function createFollowUpTask(tx: Transaction, job: Job): Promise<Jso
   if(!accessible) throw new PermanentJobError();
   await tx.insert(tasks).values({
     studioId: job.studioId, clientId: cycle.clientId, appointmentId: consultation.appointmentId,
-    followUpResultId: resultId, assignedToId: master.userId,
+    followUpResultId: resultId, followUpRevisionId:revisionId??null, assignedToId: master.userId,
     title: thinking ? "Повторный контакт с клиентом" : "Повторная оценка специалистом",
     description: `/deals/${cycle.id}`, type: "custom", priority: "normal", dueAt,
-  }).onConflictDoNothing({ target: tasks.followUpResultId });
-  const [task] = await tx.select({ id: tasks.id }).from(tasks).where(eq(tasks.followUpResultId, resultId));
+  }).onConflictDoNothing();
+  const [task] = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.followUpResultId, resultId),revisionId?eq(tasks.followUpRevisionId,revisionId):isNull(tasks.followUpRevisionId)));
   return { resultId, taskId: task.id };
 }

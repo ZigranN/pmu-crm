@@ -210,3 +210,77 @@ test("follow-up task cannot be routed to a master without current client scope",
  const [other]=await db.insert(s.masters).values({studioId,displayName:"Other assigned master"}).returning();await db.update(s.clients).set({assignedMasterId:other.id}).where(eq(s.clients.id,clientId));
  const {PermanentJobError}=await import("@/server/events/worker");await expect(deliverFollowUp(f.job,f.dueAt)).rejects.toBeInstanceOf(PermanentJobError);
 });
+
+async function rescheduleInput(f:Awaited<ReturnType<typeof followUp>>) {
+ const panel=await queries.getConsultationPanel(f.done.id);
+ return {id:f.done.id,resultId:f.decision.id,expectedVersion:panel.version,dueAt:new Date(f.dueAt.getTime()+5*86400000).toISOString(),reason:"Specialist changed reassessment date",comment:"New clinical review date agreed"};
+}
+async function reschedule(input:Awaited<ReturnType<typeof rescheduleInput>>,key=randomUUID()) {
+ return (await import("@/features/treatment-cycles/server/reschedule-followup")).rescheduleFollowUpAction(input,key);
+}
+test.each(["client_thinking","temporarily_unavailable"] as const)("%s rescheduling keeps original decision, cancels old task and replaces the timer exactly once",async outcome=>{
+ const f=await followUp(outcome);await deliverFollowUp(f.job,f.dueAt);const input=await rescheduleInput(f),key=randomUUID();
+ const before=(await db.select().from(s.treatmentCycles).where(eq(s.treatmentCycles.id,f.done.id)))[0];
+ const response=await reschedule(input,key);expect(await reschedule(input,key)).toEqual(response);
+ const panel=await queries.getConsultationPanel(f.done.id);expect(panel.followUpHistory).toHaveLength(1);expect(panel.followUpTask).toBeNull();expect(panel.currentFollowUpAt?.toISOString()).toBe(input.dueAt);
+ expect(await db.select().from(s.consultationResults).where(eq(s.consultationResults.id,f.decision.id))).toEqual([f.decision]);
+ const [after]=await db.select().from(s.treatmentCycles).where(eq(s.treatmentCycles.id,f.done.id));expect(after).toMatchObject({stage:before.stage,suspendedAt:before.suspendedAt,suspensionReason:before.suspensionReason,commercialSnapshot:before.commercialSnapshot,version:before.version+1});
+ expect((await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,f.decision.id)))[0].status).toBe("cancelled");
+ expect(await deliverFollowUp(f.job,new Date(input.dueAt))).toMatchObject({skipped:"schedule_superseded"});
+ const [newJob]=await db.select().from(s.outboxJobs).where(eq(s.outboxJobs.eventKey,response.revisionId));expect(newJob.availableAt.toISOString()).toBe(input.dueAt);
+ await deliverFollowUp(newJob,new Date(input.dueAt));await deliverFollowUp(newJob,new Date(input.dueAt));
+ expect(await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,f.decision.id))).toHaveLength(2);
+ expect((await queries.getConsultationPanel(f.done.id)).followUpTask?.status).toBe("pending");
+ const next={...input,expectedVersion:response.version,dueAt:new Date(Date.parse(input.dueAt)+86400000).toISOString()};await reschedule(next);
+ expect(await deliverFollowUp(newJob,new Date(next.dueAt))).toMatchObject({skipped:"schedule_superseded"});
+ expect((await queries.getConsultationPanel(f.done.id)).followUpHistory.map(r=>r.sequence)).toEqual([2,1]);
+ await expect(reschedule(input,randomUUID())).rejects.toThrow("Цикл изменён");
+});
+test("reschedule requires reason/comment, future changed date and rejects injected fields with no writes",async()=>{
+ const f=await followUp("temporarily_unavailable"),input=await rescheduleInput(f),before=await count();
+ for(const patch of [{reason:" "},{comment:" "},{dueAt:new Date(0).toISOString()},{dueAt:f.dueAt.toISOString()},{...{medicalClearance:true}}])await expect(reschedule({...input,...patch})).rejects.toThrow();
+ expect(await count()).toEqual(before);expect(await db.select().from(s.followUpRevisions).where(eq(s.followUpRevisions.resultId,f.decision.id))).toHaveLength(0);
+});
+test("reschedule denies Admin/AI, foreign decision and master outside scope; replay rechecks permissions",async()=>{
+ const f=await followUp("temporarily_unavailable"),input=await rescheduleInput(f),key=randomUUID();
+ for(const role of ["ADMIN","AI_SYSTEM"]){await db.update(s.studioMembers).set({roleId:roles[role]}).where(eq(s.studioMembers.studioId,studioId));await expect(reschedule(input)).rejects.toThrow();}
+ await db.update(s.studioMembers).set({roleId:roles.OWNER}).where(eq(s.studioMembers.studioId,studioId));await expect(reschedule({...input,resultId:randomUUID()})).rejects.toThrow();
+ await reschedule(input,key);await db.update(s.studioMembers).set({roleId:roles.ADMIN}).where(eq(s.studioMembers.studioId,studioId));await expect(reschedule(input,key)).rejects.toThrow();
+ await db.update(s.studioMembers).set({roleId:roles.MASTER}).where(eq(s.studioMembers.studioId,studioId));const [other]=await db.insert(s.masters).values({studioId,displayName:"Other"}).returning();await db.update(s.clients).set({assignedMasterId:other.id}).where(eq(s.clients.id,clientId));await expect(reschedule(input,key)).rejects.toThrow();
+});
+test("competing reschedules accept one version; immutable revision and task source cannot be rewritten",async()=>{
+ const f=await followUp("client_thinking"),input=await rescheduleInput(f);
+ const attempts=await Promise.allSettled([reschedule(input),reschedule({...input,dueAt:new Date(Date.parse(input.dueAt)+86400000).toISOString()})]);expect(attempts.filter(r=>r.status==="fulfilled")).toHaveLength(1);
+ const [revision]=await db.select().from(s.followUpRevisions).where(eq(s.followUpRevisions.resultId,f.decision.id));
+ await expect(db.update(s.followUpRevisions).set({comment:"Rewrite"}).where(eq(s.followUpRevisions.id,revision.id))).rejects.toThrow();await expect(db.delete(s.followUpRevisions).where(eq(s.followUpRevisions.id,revision.id))).rejects.toThrow();
+ const [job]=await db.select().from(s.outboxJobs).where(eq(s.outboxJobs.eventKey,revision.id));await deliverFollowUp(job,revision.dueAt);
+ const [task]=await db.select().from(s.tasks).where(eq(s.tasks.followUpRevisionId,revision.id));
+ await expect(db.update(s.tasks).set({followUpRevisionId:null}).where(eq(s.tasks.id,task.id))).rejects.toThrow();
+ await expect(db.update(s.tasks).set({dueAt:f.dueAt}).where(eq(s.tasks.id,task.id))).rejects.toThrow();
+});
+test("reschedule queue failure rolls back revision, cancellation, history and receipt",async()=>{
+ const f=await followUp("client_thinking");await deliverFollowUp(f.job,f.dueAt);const input=await rescheduleInput(f),before=await count(),outbox=await import("@/server/events/outbox"),original=outbox.enqueue;
+ const spy=vi.spyOn(outbox,"enqueue").mockImplementation(async(tx,envelope,payload)=>{if(envelope.handler==="cycle.follow-up-due.v1")throw new Error("Schedule queue failed");return original(tx,envelope,payload);});
+ try{await expect(reschedule(input)).rejects.toThrow("Schedule queue failed");}finally{spy.mockRestore();}
+ expect(await count()).toEqual(before);expect((await queries.getConsultationPanel(f.done.id)).followUpTask?.status).toBe("pending");expect(await db.select().from(s.followUpRevisions).where(eq(s.followUpRevisions.resultId,f.decision.id))).toHaveLength(0);
+});
+test("worker racing with reschedule cannot leave an old pending task",async()=>{
+ const f=await followUp("temporarily_unavailable"),input=await rescheduleInput(f),{runWorkerOnce}=await import("@/server/events/worker"),{handlers}=await import("@/server/events/registry");
+ const handler=handlers["cycle.follow-up-due.v1"];if(handler.kind!=="transactional")throw new Error("Expected transactional handler");
+ const registry={...handlers,"cycle.follow-up-due.v1":{kind:"transactional" as const,run:async(tx:Parameters<typeof handler.run>[0],job:typeof f.job)=>{const clock=vi.spyOn(tx,"execute").mockResolvedValueOnce([{now:f.dueAt}] as never);try{return await handler.run(tx,job);}finally{clock.mockRestore();}}}};
+ await db.update(s.outboxJobs).set({availableAt:new Date(0)}).where(eq(s.outboxJobs.id,f.job.id));await Promise.all([runWorkerOnce(registry),reschedule(input)]);
+ const rows=await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,f.decision.id));expect(rows.every(r=>r.status==="cancelled")).toBe(true);
+ expect(await deliverFollowUp(f.job,new Date(input.dueAt))).toMatchObject({skipped:"schedule_superseded"});
+});
+test("rescheduling preserves revisions and tasks across canonical client merge",async()=>{
+ const f=await followUp("temporarily_unavailable"),input=await rescheduleInput(f),response=await reschedule(input);
+ const [job]=await db.select().from(s.outboxJobs).where(eq(s.outboxJobs.eventKey,response.revisionId));await deliverFollowUp(job,new Date(input.dueAt));
+ const [target]=await db.insert(s.clients).values({...clientFixture(studioId),assignedMasterId:masterId}).returning();const merge=await import("@/features/clients/server/merge-actions"),{MERGE_FIELDS}=await import("@/features/clients/merge-contract");const preview=await merge.previewClientMerge({sourceId:clientId,targetId:target.id});
+ await merge.mergeClientsAction({sourceId:clientId,targetId:target.id,token:preview.token,reason:"Verified same person",choices:Object.fromEntries(Object.keys(MERGE_FIELDS).map(field=>[field,"target" as const]))},randomUUID());
+ await deliverFollowUp(job,new Date(input.dueAt));expect((await db.select().from(s.tasks).where(eq(s.tasks.followUpRevisionId,response.revisionId)))[0].clientId).toBe(target.id);
+ expect((await queries.getConsultationPanel(f.done.id)).followUpHistory[0].id).toBe(response.revisionId);
+});
+test("removal-required and lost decisions cannot be reopened through rescheduling",async()=>{
+ for(const outcome of ["removal_required","master_cannot_help"] as const){const done=await completed();const response=await actions.recordConsultationResultAction(resultInput(done,outcome),randomUUID());const [decision]=await db.select().from(s.consultationResults).where(eq(s.consultationResults.consultationId,done.consultationId));
+ await expect(reschedule({id:done.id,resultId:decision.id,expectedVersion:response.version,dueAt:new Date(Date.now()+20*86400000).toISOString(),reason:"Attempt to change date",comment:"Specialist comment"})).rejects.toThrow("Повторный контакт сейчас недоступен");}
+});
