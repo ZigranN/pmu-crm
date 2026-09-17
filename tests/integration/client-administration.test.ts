@@ -26,7 +26,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   session.id = actor; await db.update(s.studioMembers).set({ roleId: roleIds.OWNER }).where(eq(s.studioMembers.userId, actor));
   await db.delete(s.auditLogs).where(eq(s.auditLogs.studioId, studioId));
-  [clientId] = (await db.insert(s.clients).values({ ...clientFixture(studioId), assignedMasterId: masterId, treatmentZone: "Old free text", source: "Legacy campaign" }).returning()).map(row => row.id);
+  [clientId] = (await db.insert(s.clients).values({ ...clientFixture(studioId), phone: "+390000000001", assignedMasterId: masterId, treatmentZone: "Old free text", source: "Legacy campaign" }).returning()).map(row => row.id);
 });
 afterAll(async () => { try { await db.delete(s.studios).where(eq(s.studios.id, studioId)); await db.delete(s.studios).where(eq(s.studios.id, foreignStudio)); await db.delete(s.user).where(sql`${s.user.id} in (${actor}, ${other})`); } finally { await database.close(); } });
 const row = async () => (await db.select().from(s.clients).where(eq(s.clients.id, clientId)))[0];

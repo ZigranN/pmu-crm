@@ -37,7 +37,7 @@ beforeEach(async () => {
   await db.delete(s.clients).where(eq(s.clients.studioId, studioId));
   await db.update(s.studioMembers).set({ roleId: ownerRole, isActive: true }).where(eq(s.studioMembers.userId, owner));
   await db.update(s.studios).set({ isActive: true }).where(eq(s.studios.id, studioId));
-  [clientId] = (await db.insert(s.clients).values({ ...clientFixture(studioId), ltvCents: 0 }).returning()).map(r => r.id);
+  [clientId] = (await db.insert(s.clients).values({ ...clientFixture(studioId), phone: "+390000000001", ltvCents: 0 }).returning()).map(r => r.id);
 });
 afterAll(async () => {
   if (!database) return;

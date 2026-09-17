@@ -10,7 +10,7 @@ PARTIAL — часть функции; FOUNDATION — схема без workflow
 | 2 | ОСНОВНЫЕ ПРИНЦИПЫ АРХИТЕКТУРЫ | MISSING | server/services; нет command/outbox/worker | Audit не event-driven; нет business idempotency | 1.3,1.4 |
 | 3 | ОСНОВНЫЕ СУЩНОСТИ | PARTIAL | db/schema.ts:39 таблиц | Нет cycles/packages/conversations, multi-cycle visit; остальные сущности частичны | 3.1,6.1,9.1 |
 | 4 | КАРТОЧКА КЛИЕНТА | PARTIAL | CLIENT-ADMINISTRATION-BASELINE.md: language, interested zones, kind, reported PMU, assigned/preferred master и strict allowlists | Полная medical/clearance модель — Phase 4; consultation slot — Calendar Phase 5; AI tools — Phase 11 | 2.3,4.1,5.1,11.3 |
-| 5 | CLIENT DEDUPLICATION | MISSING | clients actions; phone.ts; неуникальные индексы | Нет exact/possible/merge/provenance, create дублируется | 2.4,2.5 |
+| 5 | CLIENT DEDUPLICATION | PARTIAL | canonical generated keys, exact/possible preview, scoped access log, atomic create/replay, explicit shared-contact decision + audit; CLIENT-DEDUPLICATION-BASELINE.md | Merge/aliases/field provenance ещё отсутствуют; поиск по имени ограничен; update предлагает ручную проверку | 2.5 |
 | 6 | СПРАВОЧНИК УСЛУГ | PARTIAL | SERVICE-CATALOG-BASELINE.md; нормализованный каталог, FK, sessions, templates | Legacy требует ручного разбора; Calendar Engine подключается в Phase 5 | 2.1,5.1 |
 | 7 | МОДЕЛЬ КОЛИЧЕСТВА СЕССИЙ | PARTIAL | serviceDefinitions + services sessionsModel, DB constraints | Session workflow ещё не реализован | 2.1,7.1 |
 | 8 | ЦЕНЫ И УСЛУГИ | PARTIAL | 13 определений §8, повторяемый import; quote/estimate/range | Требуется отдельный rollout; legacy не переписываются автоматически | 2.1,2.2 |

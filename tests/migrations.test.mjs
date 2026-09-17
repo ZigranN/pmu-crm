@@ -115,7 +115,7 @@ test("fresh install, upgrade with data, and repeated migrate converge", async (t
     insert into studios (name, slug) values ('Migration test', 'migration-test') returning id`;
   const [client] = await upgraded`
     insert into clients (studio_id, first_name, full_name, phone, client_status, notes)
-    values (${studio.id}, 'Fixture', 'Fixture Client', '+390000000000', 'new_lead', 'Preserve me')
+    values (${studio.id}, 'Fixture', 'Fixture Client', '+39 (000) 000-0000', 'new_lead', 'Preserve me')
     returning *`;
   const [role] = await upgraded`insert into roles (code, name) values ('TEST', 'Test') returning id`;
   const [permission] = await upgraded`insert into permissions (code, name) values ('TEST', 'Test') returning id`;
@@ -155,6 +155,10 @@ test("fresh install, upgrade with data, and repeated migrate converge", async (t
   await assert.rejects(upgraded`insert into role_permissions (role_id, permission_id) values (${role.id}, ${permission.id})`);
   const [preserved] = await upgraded`select * from clients where id = ${client.id}`;
   for (const [key, value] of Object.entries(client)) assert.deepEqual(preserved[key], value);
+  assert.equal(preserved.phone_key, "+390000000000");
+  assert.equal(preserved.name_key, "fixture client");
+  assert.equal(preserved.email_key, null);
+  assert.equal(preserved.instagram_key, null);
   for (const field of clientFields) assert.equal(preserved[field], null);
   for (const field of ["language", "interested_zones", "client_kind", "reported_previous_pmu", "preferred_master_id"]) assert.equal(preserved[field], null);
   await upgraded`update clients set referred_by_name = 'Fixture source', interest = 'PMU',

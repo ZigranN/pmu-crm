@@ -42,3 +42,10 @@ export function formatPhone(phone: string): string {
 
   return normalized;
 }
+
+// Do not guess a country for local/ambiguous numbers. Syntactic E.164, not proof of ownership.
+export function canonicalPhone(value: string | null | undefined): string | null {
+  if (!value?.trim() || value.length > 200 || !/^[+0-9\s().-]+$/.test(value.trim())) return null;
+  const compact = value.trim().replace(/[\s().-]/g, "").replace(/^00/, "+");
+  return /^\+[1-9][0-9]{6,14}$/.test(compact) ? compact : null;
+}
