@@ -5,6 +5,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { cycleCommercialTerms, customOffers, offerItems, offerRevisions, treatmentCycles } from "@/db/schema";
 import type { Transaction } from "@/server/commands/ownership";
 import { resolvePrice } from "@/features/services/server/pricing";
+import type { CycleStage } from "@/features/treatment-cycles/stages";
 import type { TermsInput } from "../contract";
 
 export async function canConfirmTerms(tx: Transaction, context: {studioId: string; userId: string}) {
@@ -15,9 +16,10 @@ export async function canConfirmTerms(tx: Transaction, context: {studioId: strin
 export async function latestTerms(tx: Transaction, cycleId: string) {
   return (await tx.select().from(cycleCommercialTerms).where(eq(cycleCommercialTerms.cycleId, cycleId)).orderBy(desc(cycleCommercialTerms.revision)).limit(1))[0] ?? null;
 }
+const termsStages = ["new_lead", "qualification", "consultation_needed", "consultation_offered", "consultation_scheduled", "consultation_confirmed", "consultation_result", "thinking"] as const satisfies readonly CycleStage[];
 export async function termsBlocker(tx: Transaction, cycle: typeof treatmentCycles.$inferSelect) {
   if (cycle.kind !== "pmu" || cycle.packageId || cycle.suspendedAt || cycle.firstSessionAt || cycle.secondSessionAt || cycle.completedAt ||
-    !["new_lead", "qualification", "consultation_needed", "consultation_offered", "consultation_booked", "consultation_confirmed", "consultation_result", "thinking"].includes(cycle.stage))
+    !termsStages.some(stage => stage === cycle.stage))
     return "Условия доступны только до процедуры, вне приостановленного цикла и Total Face";
   const result = await tx.execute(sql`select 1 from appointment_cycles l join appointments a on a.id=l.appointment_id where l.cycle_id=${cycle.id} and (l.visit_kind<>'consultation' or exists(select 1 from payments p where p.appointment_id=a.id) or exists(select 1 from payment_transactions p where p.appointment_id=a.id))
     union all select 1 from procedure_sessions p where p.cycle_id=${cycle.id} limit 1`);
