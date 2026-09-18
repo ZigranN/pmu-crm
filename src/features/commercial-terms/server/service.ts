@@ -1,9 +1,16 @@
 import "server-only";
+import { getStudioRole } from "@/lib/roles";
+import { hasPermission } from "@/lib/permissions";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { cycleCommercialTerms, customOffers, offerItems, offerRevisions, treatmentCycles } from "@/db/schema";
 import type { Transaction } from "@/server/commands/ownership";
 import { resolvePrice } from "@/features/services/server/pricing";
 import type { TermsInput } from "../contract";
+
+export async function canConfirmTerms(tx: Transaction, context: {studioId: string; userId: string}) {
+  const role = await getStudioRole(tx, context.userId, context.studioId);
+  return (role === "OWNER" || role === "ADMIN") && await hasPermission(tx, context.userId, context.studioId, "OFFER_MANAGE");
+}
 
 export async function latestTerms(tx: Transaction, cycleId: string) {
   return (await tx.select().from(cycleCommercialTerms).where(eq(cycleCommercialTerms.cycleId, cycleId)).orderBy(desc(cycleCommercialTerms.revision)).limit(1))[0] ?? null;

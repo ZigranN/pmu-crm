@@ -8,7 +8,7 @@ import { lockStudioAccess } from "@/server/auth/scopes";
 import { lockCycle } from "@/features/treatment-cycles/server/scope";
 import { hasPermission } from "@/lib/permissions";
 import { resolvePrice } from "@/features/services/server/pricing";
-import { termsBlocker } from "./service";
+import { termsBlocker, canConfirmTerms } from "./service";
 import { termsNeedReview } from "../contract";
 
 export async function getCommercialTerms(id: string) {
@@ -24,7 +24,7 @@ export async function getCommercialTerms(id: string) {
     let blocked = await termsBlocker(tx, cycle);
     if (cycle.assignedMasterId && !(await tx.select({id: masters.id}).from(masters).where(and(eq(masters.id, cycle.assignedMasterId), eq(masters.studioId, context.studioId), eq(masters.isActive, true), isNull(masters.deletedAt)))).length) blocked = "Назначенный мастер недоступен";
     const [studio] = await tx.select({timezone: studios.timezone}).from(studios).where(eq(studios.id, context.studioId));
-    const canManage = await hasPermission(tx, context.userId, context.studioId, "OFFER_MANAGE");
+    const canManage = await canConfirmTerms(tx, context);
     const options: Awaited<ReturnType<typeof resolvePrice>>[] = [];
     const offers: {id: string; label: string}[] = [];
     if (canManage && !blocked) {

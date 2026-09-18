@@ -7,11 +7,12 @@ import { idempotentCommand } from "@/server/commands/idempotency";
 import { writeAudit } from "@/server/services/audit-log.service";
 import { lockCycle } from "@/features/treatment-cycles/server/scope";
 import { termsSchema, type TermsInput } from "../contract";
-import { latestTerms, termsBlocker, termsSource } from "./service";
+import { latestTerms, termsBlocker, termsSource, canConfirmTerms } from "./service";
 
 export async function confirmTermsAction(input: TermsInput, requestKey: string) {
   const data = termsSchema.parse(input), context = await requireStudioPermission("OFFER_MANAGE");
   const result = await idempotentCommand(context, "OFFER_MANAGE", "cycle.terms-confirm.v1", requestKey, data, async (tx, commandId) => {
+    if (!await canConfirmTerms(tx, context)) throw new Error("Permission denied");
     const cycle = await lockCycle(tx, context, data.cycleId), before = await latestTerms(tx, cycle.id);
     if (cycle.version !== data.expectedCycleVersion || (before?.revision ?? 0) !== data.expectedRevision) throw new Error("Цикл или условия изменены. Обновите данные");
     const blocked = await termsBlocker(tx, cycle); if (blocked) throw new Error(blocked);
@@ -26,6 +27,6 @@ export async function confirmTermsAction(input: TermsInput, requestKey: string) 
     await writeAudit(tx, {...context, action: "commercial_terms_confirmed", entityType: "cycle_commercial_terms", entityId: after.id,
       before, after, reason: data.reason, reasonSource: "user", metadata: {commandId, cycleId: cycle.id}});
     return {id: after.id, cycleId: cycle.id, revision: after.revision};
-  }, async (tx, result) => { await lockCycle(tx, context, result.cycleId); });
+  }, async (tx, result) => { if (!await canConfirmTerms(tx, context)) throw new Error("Permission denied"); await lockCycle(tx, context, result.cycleId); });
   revalidatePath(`/deals/${result.cycleId}`); return result;
 }

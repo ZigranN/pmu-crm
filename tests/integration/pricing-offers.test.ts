@@ -326,3 +326,14 @@ test("paid consultation and suspended cycle block changes; existing terms surviv
   await db.insert(s.payments).values({studioId, clientId, appointmentId: v.id, totalAmountCents: 1000, paidAmountCents: 1000, balanceAmountCents: 0, status: "paid"});
   await expect(confirmTerms({...input, expectedRevision: 1})).rejects.toThrow("финансового решения");
 });
+test("a custom role cannot approve terms even with an OFFER_MANAGE grant or replay key", async () => {
+ const c=await termsCycle(), input=await termsInput(c), key=randomUUID(); await confirmTerms(input,key);
+ const [custom]=await db.insert(s.roles).values({code:`TERMS_TEST_${randomUUID()}`,name:"Custom role"}).returning();
+ try {
+  const [permission]=await db.select().from(s.permissions).where(eq(s.permissions.code,"OFFER_MANAGE"));
+  await db.insert(s.rolePermissions).values({roleId:custom.id,permissionId:permission.id});
+  await db.update(s.studioMembers).set({roleId:custom.id}).where(eq(s.studioMembers.userId,actor));
+  await expect(confirmTerms(input,key)).rejects.toThrow("Permission denied");
+  await expect(confirmTerms({...input,expectedRevision:1})).rejects.toThrow("Permission denied");
+ } finally { await role("OWNER"); await db.delete(s.roles).where(eq(s.roles.id,custom.id)); }
+});
