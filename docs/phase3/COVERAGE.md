@@ -1,18 +1,16 @@
 # Матрица покрытия — 80 разделов
 
-Дополнение шага 3.1: ветка `codex/phase-3-cycle-schema`; [объём и проверки](TREATMENT-CYCLE-SCHEMA-BASELINE.md). Исторические сведения о PR №1–12 ниже относятся к предыдущему срезу; применение 0014 в Neon не выполнялось.
+Актуализировано **15.09.2026** по коду `d9553dc1d71d09a77135e5bb185de3b07750c160` и Master Specification 1.1. [Полный аудит](FULL-AUDIT-2026-09-15.md), [доказательства](AUDIT-EVIDENCE-2026-09-15.json), [оставшееся ТЗ](REMAINING-SPECIFICATION.md).
 
-Актуализировано 13.09.2026 по коду `eceed9cdbb6a8110c24c983818fc7422570d69af` и рабочему ТЗ 1.1 (исходная версия 1.0 + согласованное расширение AI). Это заменяет устаревшие статусы исходного аудита `6ed762f`; история изменений остаётся в Git и baseline-документах.
+Статусы описывают реализацию в draft-цепочке, не rollout. PR №1–6 MERGED; №7–18 OPEN/DRAFT. Neon/Vercel не проверялись. CI: 225 unit/integration + 4 migration + 18 Chromium, success на указанном commit.
 
-Статусы описывают реализацию в текущей ветке, а не rollout. На момент проверки PR №1–6 MERGED; №7–12 OPEN/DRAFT. Применение миграций Neon и состояние Vercel не проверялись. CI окончательного кода: [успешный прогон](https://github.com/ZigranN/pmu-crm/actions/runs/34758447526).
-
-PARTIAL — требование выполнено частично; FOUNDATION — схема без полного workflow; CONFLICT — сохраняющееся расхождение; MISSING — функциональный сценарий отсутствует; MATCH — ограничение соблюдается; DEFERRED — P2; NOT ACCEPTED — итоговая готовность не доказана. «Текущие boundaries/роли реализованы» не закрывает ещё не созданные бизнес-модули. Пути относятся к src/, если не указано иное.
+PARTIAL — выполнена часть; FOUNDATION — схема/каркас; MISSING — целевой сценарий отсутствует; CONFLICT — сохраняющееся расхождение; MATCH — ограничение соблюдено; DEFERRED — P2; NOT ACCEPTED — полная приёмка не доказана. Нельзя переводить число строк в процент готовности.
 
 | § | Требование | Статус | Доказательство | Пробел / исправление | Шаги |
 |---|---|---|---|---|---|
 | 1 | ЦЕЛЬ ЭТАПА | NOT ACCEPTED | Реализованы основы и текущие client/service workflows | Единый путь Lead → Refresh отсутствует | 3–15 |
 | 2 | ОСНОВНЫЕ ПРИНЦИПЫ АРХИТЕКТУРЫ | PARTIAL | server/commands/idempotency.ts; server/events/{outbox,worker,registry}.ts; transactional audit | Framework работает; бизнес-события будущих модулей, реальные adapters и общий E2E ещё не подключены | 3–12,15 |
-| 3 | ОСНОВНЫЕ СУЩНОСТИ | PARTIAL | Cycle schema + create/transition commands, board/timeline; package shells | Полный cycle workflow, conversations и ledger allocations ещё не приняты | 3.3–3.4,5–10 |
+| 3 | ОСНОВНЫЕ СУЩНОСТИ | PARTIAL | Cycle schema, versioned commands, consultation/reassessment/Lost/follow-up closures, package shells | Полный cycle workflow, conversations и ledger allocations ещё не приняты | 3.4d,4–10 |
 | 4 | КАРТОЧКА КЛИЕНТА | PARTIAL | CLIENT-ADMINISTRATION-BASELINE.md: language, interested zones, kind, reported PMU, assigned/preferred master и strict allowlists | Полная medical/clearance модель — Phase 4; consultation slot — Calendar Phase 5; AI tools — Phase 11 | 2.3,4.1,5.1,11.3 |
 | 5 | CLIENT DEDUPLICATION | PARTIAL (текущая схема реализована) | Canonical dedup/merge; registry включает cycles/packages/appointment_cycles с сохранением IDs и snapshots | Будущие conversations/ledger расширяют merge registry; ограничения поиска сохраняются | 6,7,9,15.1 |
 | 6 | СПРАВОЧНИК УСЛУГ | PARTIAL | SERVICE-CATALOG-BASELINE.md; нормализованный каталог, FK, sessions, templates | Legacy требует ручного разбора; Calendar Engine подключается в Phase 5 | 2.1,5.1 |
@@ -21,7 +19,7 @@ PARTIAL — требование выполнено частично; FOUNDATION
 | 9 | MASTER-SPECIFIC PRICING | PARTIAL | PRICING-OFFERS-BASELINE.md; resolvePrice + immutable overrides | Effective price реализован; будущий booking должен использовать общий resolver | 2.2,5.1 |
 | 10 | CUSTOM OFFER | PARTIAL | Immutable offer revisions и nullable cycle.offerRevisionId с проверкой клиента | Команды применения offer к cycle и ledger ещё не реализованы | 3.2,6.1 |
 | 11 | TOTAL FACE | PARTIAL (schema foundation) | Package shell и три уникальные PMU-зоны; multi-cycle visit | Нет atomic создания Total Face,1400,500/400/500,deadline/extension | 8.1,8.2 |
-| 12 | REMOVER | MISSING | Enum remover, нет workflow | Нет variable sessions,100/visit,review30–45,outcomes | 8.3,8.4 |
+| 12 | REMOVER | PARTIAL (linked cycle) | removal_required создаёт linked Remover cycle; original PMU сохраняется и защищён от обхода | Нет variable sessions, 100/visit, review30–45 и Repeat/Ready/Wait/Stop | 8.3,8.4 |
 | 13 | КАЛЕНДАРЬ | FOUNDATION | availability/breaks/blockedTimes; schedule заглушка | Нет slot engine/DST/holiday/vacation/override | 5.1 |
 | 14 | ПРЕДПОЧТИТЕЛЬНЫЕ СЛОТЫ | MISSING | Нет slot generator | Нет preferred PMU/consultation slots | 5.1 |
 | 15 | GOOGLE CALENDAR | MISSING | Нет integration/schema/routes Google | Нет two-way sync/private Busy/conflict protocol | 12.1,12.2 |
@@ -46,14 +44,14 @@ PARTIAL — требование выполнено частично; FOUNDATION
 | 34 | РЕЗУЛЬТАТ КОНТРОЛЯ | MISSING | Нет control outcome model/UI | Нет completed/free/paid decision | 7.3 |
 | 35 | FREE THIRD CORRECTION | MISSING | Correction enum без approval | Нет free third и45-day guideline | 7.3 |
 | 36 | ФОТО ПЕРЕД КОНТРОЛЕМ | MISSING | Нет healed_result/source/verification | Нет запроса за3дня и missing task без отмены | 4.2,10.3 |
-| 37 | ФОТОГРАФИИ | PARTIAL | media types before/after; галерея | Нет требуемых stage guards/healed_result/pre-consult rules | 4.2,4.3 |
+| 37 | ФОТОГРАФИИ | PARTIAL | media types before/after; галерея | Upload authorization/validation/private delivery gaps S0; stage/healed/pre-consult rules отсутствуют | S0.2,S0.3,4.2,4.3 |
 | 38 | WHATSAPP MEDIA | MISSING | wa.me helper не intake | Нет inbound images и human verification классификации | 9.2,4.2 |
 | 39 | CONSENT | PARTIAL/CONFLICT | consents schema/service; upload transaction и archive сохраняют evidence (0.4); UI пока пишет media | Нет multi-zone signature/PDF/versions/review2y и restore UI; hard delete заменён архивированием | 4.4,4.5 |
 | 40 | ВОРОНКА PMU | PARTIAL (domain integration) | Cycle engine/UI + qualification/completion/result commands и нейтральная история | Полный booking/finance/procedure/refresh path требует Phase 5–7/10 | 3.4,5–7,10 |
 | 41 | КВАЛИФИКАЦИЯ | PARTIAL | Административные поля + specialist qualification с immutable risk/evidence | AI administrative extraction и Calendar booking интеграция ещё не приняты | 5,11 |
 | 42 | СУЩЕСТВУЮЩИЙ КЛИЕНТ | PARTIAL | Live same-zone ≤2 calendar years, completed procedure, master и исключения; boundary tests | Booking command должна потреблять актуальную оценку; Calendar отсутствует | 5 |
 | 43 | РЕЗУЛЬТАТ КОНСУЛЬТАЦИИ | PARTIAL (domain ready) | Все пять результатов, specialist role, reason/version/receipt/audit, реальный overdue decision task | Реальные calendar prerequisites и scheduler rollout не приняты | 5,10 |
-| 44 | CLIENT THINKING | PARTIAL | Thinking tasks, rescheduling, human reassessment/Lost, immutable closures и история UI | Срок/условия предложения — 3.4d; реальные исходящие контакты — Phase 9/10 | 3.4,10 |
+| 44 | CLIENT THINKING | PARTIAL | Thinking tasks, rescheduling, human reassessment/Lost, immutable closures, commercial terms и история UI | Booking/ledger integration — Phase 5/6; реальные исходящие контакты — Phase 9/10 | 3.4,10 |
 | 45 | REMOVAL REQUIRED | PARTIAL | Human removal_required создаёт linked Remover и приостанавливает исходный PMU; replay/merge tests | Remover appointments/review/ready_for_pmu restoration ещё отсутствуют | 8.3 |
 | 46 | TEMPORARILY UNAVAILABLE | PARTIAL | Human unavailable + задачи/перенос + повторная оценка и возобновление с live qualification, closure и Lost | Production rollout/scheduler и сквозная запись с medical clearance не приняты | 4,5,10,15 |
 | 47 | REFRESH | MISSING | Refresh enum без cycle/jobs | Нет350,last same-zone PMU,year offer,monthly6 stop | 10.5 |
@@ -79,14 +77,14 @@ PARTIAL — требование выполнено частично; FOUNDATION
 | 67 | РОЛИ | PARTIAL (текущие роли реализованы) | lib/roles.ts, lib/permissions.ts; OWNER/ADMIN/MASTER/AI_SYSTEM, legacy mapping, ceilings/deny; ROLE-POLICY-BASELINE.md | Матрицу нужно применять к каждому новому domain command и AI tool | 3–12,15.1 |
 | 68 | OWNER | PARTIAL | Owner membership, role management UI, audit/jobs access; role-management.ts | Полноценный export и все будущие бизнес-операции ещё отсутствуют | 14.1,3–12 |
 | 69 | ADMIN | PARTIAL (текущие ограничения реализованы) | Admin ограничен capability ceiling; нет refund/medical write/settings; Custom Offer с reason/audit | Будущие calendar/payment/AI workflows требуют реализации и проверок матрицы | 5,6,11,15.1 |
-| 70 | MASTER | PARTIAL (текущий scope реализован) | server/auth/scopes.ts; master-scope tests; назначенные клиенты, ограниченные medical/media/finance reads | Новые cycles/booking/ledger commands должны сохранить этот scope; полный Master E2E отсутствует | 3–7,15 |
-| 71 | AUDIT LOG | PARTIAL (текущие boundaries реализованы) | writeAudit(tx), sensitiveRead; old/new/reason/actor; audit/access UI; ошибка audit откатывает мутацию | Расширить event contracts на новые модули; retention/экспорт и эксплуатационная защита журналов отдельно | 3–12,14,15 |
-| 72 | DATA PROTECTION | PARTIAL | Auth/RBAC, tenant/master scopes, access logs, archive preservation, merge provenance | Нет полного private delivery, retention/anonymisation/export и доказанного backup restore | 4.2,14.1–14.3 |
+| 70 | MASTER | PARTIAL (текущий scope реализован) | server/auth/scopes.ts; master-scope tests; назначенные клиенты, ограниченные medical/media/finance reads | Booking/ledger/AI должны сохранить текущий scope; полный Master E2E отсутствует | 5–7,11,15 |
+| 71 | AUDIT LOG | PARTIAL (текущие boundaries реализованы) | writeAudit(tx), sensitiveRead; old/new/reason/actor; audit/access UI; ошибка audit откатывает мутацию | Generic upload не проходит полный audit boundary; новые события, retention/export и эксплуатация отдельно | S0.2,4–12,14,15 |
+| 72 | DATA PROTECTION | PARTIAL | Auth/RBAC, tenant/master scopes, access logs, archive preservation, merge provenance | Upload gap и vulnerable dependencies S0; private delivery, retention/anonymisation/export и backup restore не приняты | S0,4.2,14.1–14.3 |
 | 73 | АРХИВИРОВАНИЕ | PARTIAL | Archive вместо удаления клиентов/медиа/согласий; исходные файлы и merge evidence сохранены | Нет полного retention/restore/document version workflow; privacy policy не утверждена | 4.2,4.4,14.2 |
 | 74 | P0 — КРИТИЧЕСКИЙ ОБЪЁМ PHASE 3 | MISSING | Большинство P0 только schema или отсутствует | Ни один P0 пакет целиком не принят E2E | 15.4 |
 | 75 | P2 | DEFERRED | P2 реализаций нет | Отложено по ТЗ; daily report/export остаются P0 | 16.1,16.2,16.3,16.4,16.5 |
-| 76 | ОБЯЗАТЕЛЬНЫЕ TECHNICAL TESTS | PARTIAL (итоговая приёмка открыта) | 150 unit/integration + 4 migration + 13 browser tests на eceed9c; покрыты отдельные integrity/roles/retry/merge случаи | Все 50 technical acceptance scenarios должны быть привязаны к исполняемым тестам и проверены на готовой системе | 15.1,11.10 |
+| 76 | ОБЯЗАТЕЛЬНЫЕ TECHNICAL TESTS | PARTIAL (итоговая приёмка открыта) | 225 unit/integration + 4 migration + 18 Chromium на d9553dc; проверены свойства существующих commands, не полный release acceptance | Все 50 technical acceptance scenarios должны быть привязаны к исполняемым тестам и проверены на готовой системе | 15.1,11.10 |
 | 77 | END-TO-END ACCEPTANCE TEST | MISSING (сквозной сценарий) | Playwright инфраструктура и 13 браузерных тестов есть; полный PMU E2E отсутствует | Human 33-step PMU и AI77.34–48; равенство конечного business state не доказано | 15.2,11.10 |
 | 78 | ОТДЕЛЬНЫЙ END-TO-END TEST TOTAL FACE | MISSING | Нет package/cycles | Total Face business E2E и AI13–15:3 зоны/withdrawal/manual reprice/independent deadlines отсутствуют | 15.3,11.10 |
 | 79 | ОТДЕЛЬНЫЙ END-TO-END TEST REMOVER | MISSING | Нет linked remover flow | Remover business и AI10–12:human decision и original PMU restoration отсутствуют | 15.3,11.10 |
-| 80 | КРИТЕРИЙ ГОТОВНОСТИ | NOT ACCEPTED | CI eceed9c зелёный, текущие workflows проверены на PostgreSQL 17/Chromium | Нет итоговой приёмки всех P0, реальных integrations/restore/release rehearsal; сборка не равна готовности всей CRM | 15.1–15.4,11.10 |
+| 80 | КРИТЕРИЙ ГОТОВНОСТИ | NOT ACCEPTED | CI d9553dc success; текущие workflows проверены PostgreSQL 17/Chromium, полный PMU/AI путь отсутствует | Нет итоговой приёмки всех P0, реальных integrations/restore/release rehearsal; сборка не равна готовности всей CRM | 15.1–15.4,11.10 |

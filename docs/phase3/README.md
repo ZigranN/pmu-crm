@@ -1,5 +1,8 @@
 # PMU CRM — рабочие документы Phase 3
 
+- [Полный аудит на 15.09.2026](FULL-AUDIT-2026-09-15.md)
+- [Проверенные GitHub/CI/dependency сведения](AUDIT-EVIDENCE-2026-09-15.json)
+
 - [Полный актуальный чек-лист](IMPLEMENTATION-CHECKLIST.md)
 - [ТЗ на весь оставшийся объём](REMAINING-SPECIFICATION.md)
 
@@ -28,3 +31,5 @@
 - [3.2: команды стадий и оставшиеся зависимости](CYCLE-TRANSITIONS-BASELINE.md).
 
 - [3.3: квалификация, решения и overdue task](CONSULTATION-DECISIONS-BASELINE.md).
+
+- [Условия предложения 3.4d](COMMERCIAL-TERMS-BASELINE.md)

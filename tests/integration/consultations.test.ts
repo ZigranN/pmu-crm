@@ -355,3 +355,15 @@ test("review replay rechecks membership and worker racing with Lost cannot leave
  const rows=await db.select().from(s.tasks).where(eq(s.tasks.followUpResultId,f.decision.id));expect(rows.every(r=>r.status==="cancelled")).toBe(true);
  await db.update(s.studioMembers).set({roleId:roles.ADMIN}).where(eq(s.studioMembers.studioId,studioId));await expect(review(input,key)).rejects.toThrow();
 });
+test("Thinking contact rescheduling never extends commercial terms", async () => {
+ const f=await followUp("client_thinking");
+ await (await import("@/features/services/server/actions")).importPhase3Catalog();
+ const [service]=await db.select().from(s.services).where(and(eq(s.services.studioId,studioId),eq(s.services.catalogCode,"brows-hair")));
+ await db.insert(s.masterServices).values({studioId,masterId,serviceId:service.id});
+ const price=await db.transaction(tx=>import("@/features/services/server/pricing").then(m=>m.resolvePrice(tx,studioId,service.id,masterId)));
+ const panel=await queries.getConsultationPanel(f.done.id);
+ await (await import("@/features/commercial-terms/server/actions")).confirmTermsAction({cycleId:f.done.id,expectedCycleVersion:panel.version,expectedRevision:0,source:"catalog",serviceId:service.id,priceVersion:price.version,quotedCents:null,reviewAt:new Date(Date.now()+7*86400000).toISOString(),reason:"Human confirmed terms before follow-up"},randomUUID());
+ const before=await db.select().from(s.cycleCommercialTerms).where(eq(s.cycleCommercialTerms.cycleId,f.done.id));
+ await reschedule(await rescheduleInput(f));
+ expect(await db.select().from(s.cycleCommercialTerms).where(eq(s.cycleCommercialTerms.cycleId,f.done.id))).toEqual(before);
+});

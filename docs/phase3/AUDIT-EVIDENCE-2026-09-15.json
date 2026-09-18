@@ -1,0 +1,389 @@
+{
+  "date": "2026-09-15",
+  "codeCommit": "d9553dc1d71d09a77135e5bb185de3b07750c160",
+  "mainCommit": "4ad7e7c0aa5872612c00542d6cc83ef95e3cde2a",
+  "ci": {
+    "url": "https://github.com/ZigranN/pmu-crm/actions/runs/34777824797",
+    "status": "success",
+    "unitIntegration": 225,
+    "migrations": 4,
+    "chromium": 18
+  },
+  "scope": "Static repository audit and existing exact-head CI; no live Neon/Vercel/Cloudinary inspection; no runtime changes",
+  "pullRequests": [
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/phase-0-migration-baseline",
+      "headRefOid": "66aa87b4637a0826df5120042c17f86f6847eaef",
+      "isDraft": false,
+      "mergedAt": "2026-09-12T11:52:16Z",
+      "number": 1,
+      "state": "MERGED",
+      "title": "Restore migration history, add CI and enforce tenant read access",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/1"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/phase-0-mutation-integrity",
+      "headRefOid": "dff05b7804f443e6bbc627dbf0791ac34e6949b6",
+      "isDraft": false,
+      "mergedAt": "2026-09-12T13:08:36Z",
+      "number": 2,
+      "state": "MERGED",
+      "title": "Protect mutation ownership and preserve master service assignments",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/2"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/phase-0-ui-seed",
+      "headRefOid": "df800ac4f402702cc47458fc9e645fa6ed4ebe19",
+      "isDraft": false,
+      "mergedAt": "2026-09-13T10:40:44Z",
+      "number": 3,
+      "state": "MERGED",
+      "title": "Phase 0.5: repeatable seed and shared CRM navigation",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/3"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/phase-1-role-policy",
+      "headRefOid": "8683c1c02f475a99e3b29c871fc217cac40ed956",
+      "isDraft": false,
+      "mergedAt": "2026-09-13T10:41:13Z",
+      "number": 4,
+      "state": "MERGED",
+      "title": "Phase 1.1: studio role policy and protected registration",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/4"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/phase-1-master-scope",
+      "headRefOid": "126873bf9337c4c067b4b8185a5aa693bb2666fd",
+      "isDraft": false,
+      "mergedAt": "2026-09-13T10:41:48Z",
+      "number": 5,
+      "state": "MERGED",
+      "title": "Phase 1.2: master assignment scope and Owner membership management",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/5"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/phase-1-audit-access",
+      "headRefOid": "ed296a3621dc3f86681ed70ebd98f37df7973104",
+      "isDraft": false,
+      "mergedAt": "2026-09-13T10:42:32Z",
+      "number": 6,
+      "state": "MERGED",
+      "title": "Phase 1.3: transactional audit and sensitive read journals",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/6"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/phase-1-command-reliability",
+      "headRefOid": "cbb1692debd795449dfb76ee72f770b856a49aa5",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 7,
+      "state": "OPEN",
+      "title": "Phase 1.4: idempotent client commands and durable event worker",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/7"
+    },
+    {
+      "baseRefName": "codex/phase-1-command-reliability",
+      "headRefName": "codex/phase-2-service-catalog",
+      "headRefOid": "da2bedb1a98538eb94560e19b74821183823b7bd",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 8,
+      "state": "OPEN",
+      "title": "Phase 2.1: normalized service catalog and legacy preservation",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/8"
+    },
+    {
+      "baseRefName": "codex/phase-2-service-catalog",
+      "headRefName": "codex/phase-2-pricing-offers",
+      "headRefOid": "46ddba22b032c95a18f6a4c969f837ff816403d9",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 9,
+      "state": "OPEN",
+      "title": "Phase 2.2: master pricing and immutable Custom Offers",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/9"
+    },
+    {
+      "baseRefName": "codex/phase-2-pricing-offers",
+      "headRefName": "codex/phase-2-client-administration",
+      "headRefOid": "1f99e465199982e86c1382f43586cc9652054d5b",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 10,
+      "state": "OPEN",
+      "title": "Phase 2.3: administrative client card and preferred master",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/10"
+    },
+    {
+      "baseRefName": "codex/phase-2-client-administration",
+      "headRefName": "codex/phase-2-client-deduplication",
+      "headRefOid": "bc7d106d0106f9e89d6a835bb27272bac04bf8d2",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 11,
+      "state": "OPEN",
+      "title": "Phase 2.4: client contact normalization and duplicate review",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/11"
+    },
+    {
+      "baseRefName": "codex/phase-2-client-deduplication",
+      "headRefName": "codex/phase-2-client-merge",
+      "headRefOid": "eceed9cdbb6a8110c24c983818fc7422570d69af",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 12,
+      "state": "OPEN",
+      "title": "Phase 2.5: atomic client merge with aliases and preserved history",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/12"
+    },
+    {
+      "baseRefName": "codex/phase-2-client-merge",
+      "headRefName": "codex/phase-3-cycle-schema",
+      "headRefOid": "d639678dabce0c4f19c32d507a2e12a269def320",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 13,
+      "state": "OPEN",
+      "title": "Phase 3.1: per-zone treatment cycle schema and legacy inventory",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/13"
+    },
+    {
+      "baseRefName": "codex/phase-3-cycle-schema",
+      "headRefName": "codex/phase-3-cycle-transitions",
+      "headRefOid": "7f703dfaecdeca19f9df6f74c20e917a2058e77c",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 14,
+      "state": "OPEN",
+      "title": "Phase 3.2: guarded cycle commands, history and pipeline UI",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/14"
+    },
+    {
+      "baseRefName": "codex/phase-3-cycle-transitions",
+      "headRefName": "codex/phase-3-consultation-decisions",
+      "headRefOid": "f2c234cefd426d275616fedbb91f1c241b079325",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 15,
+      "state": "OPEN",
+      "title": "Phase 3.3: qualification, consultation outcomes and overdue tasks",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/15"
+    },
+    {
+      "baseRefName": "codex/phase-3-consultation-decisions",
+      "headRefName": "codex/phase-3-cycle-followups",
+      "headRefOid": "1b273244d29c65e3b2fae7406927a77556d454ee",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 16,
+      "state": "OPEN",
+      "title": "Phase 3.4a: durable Thinking and reassessment tasks",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/16"
+    },
+    {
+      "baseRefName": "codex/phase-3-cycle-followups",
+      "headRefName": "codex/phase-3-followup-rescheduling",
+      "headRefOid": "cd6689d232fc900dbe07196b938f515f06dcebcc",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 17,
+      "state": "OPEN",
+      "title": "Phase 3.4b: versioned follow-up rescheduling",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/17"
+    },
+    {
+      "baseRefName": "codex/phase-3-followup-rescheduling",
+      "headRefName": "codex/phase-3-cycle-reassessment",
+      "headRefOid": "d9553dc1d71d09a77135e5bb185de3b07750c160",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 18,
+      "state": "OPEN",
+      "title": "Phase 3.4c: human reassessment, Lost and follow-up closure",
+      "url": "https://github.com/ZigranN/pmu-crm/pull/18"
+    }
+  ],
+  "dependencyAudit": {
+    "command": "npm audit --json; npm audit --omit=dev --json",
+    "full": {
+      "info": 0,
+      "low": 5,
+      "moderate": 10,
+      "high": 42,
+      "critical": 1,
+      "total": 58
+    },
+    "omitDev": {
+      "info": 0,
+      "low": 5,
+      "moderate": 10,
+      "high": 29,
+      "critical": 1,
+      "total": 45
+    },
+    "note": "Package counts, not unique exploitable vulnerabilities. Applicability not proven for all advisories. No automatic fixes executed.",
+    "directFlagged": [
+      {
+        "name": "better-auth",
+        "severity": "high",
+        "fixAvailable": false,
+        "advisories": [
+          {
+            "title": "Better Auth has stored XSS in the auth-server origin via javascript: redirect_uri in oidc-provider and mcp",
+            "url": "https://github.com/advisories/GHSA-86j7-9j95-vpqj",
+            "severity": "high"
+          },
+          {
+            "title": "Better Auth: Account takeover via pre-account hijacking on magic-link and email-OTP sign-in",
+            "url": "https://github.com/advisories/GHSA-qq9h-g4jm-xgf3",
+            "severity": "high"
+          }
+        ]
+      },
+      {
+        "name": "drizzle-kit",
+        "severity": "moderate",
+        "fixAvailable": false,
+        "advisories": []
+      },
+      {
+        "name": "eslint",
+        "severity": "high",
+        "fixAvailable": false,
+        "advisories": []
+      },
+      {
+        "name": "eslint-config-next",
+        "severity": "high",
+        "fixAvailable": false,
+        "advisories": []
+      },
+      {
+        "name": "next",
+        "severity": "critical",
+        "fixAvailable": false,
+        "advisories": [
+          {
+            "title": "Next.js: Middleware / Proxy bypass in App Router applications using Turbopack and single locale",
+            "url": "https://github.com/advisories/GHSA-6gpp-xcg3-4w24",
+            "severity": "high"
+          },
+          {
+            "title": "Next.js: Denial of Service in App Router using Server Actions",
+            "url": "https://github.com/advisories/GHSA-m99w-x7hq-7vfj",
+            "severity": "high"
+          },
+          {
+            "title": "Next.js: Server-Side Request Forgery in Server Actions on custom servers",
+            "url": "https://github.com/advisories/GHSA-89xv-2m56-2m9x",
+            "severity": "high"
+          },
+          {
+            "title": "Next.js: Cache confusion of response bodies for requests with bodies",
+            "url": "https://github.com/advisories/GHSA-68g3-v927-f742",
+            "severity": "moderate"
+          },
+          {
+            "title": "Next.js: Cache confusion of response bodies for requests with bodies containing invalid UTF-8 byte sequences",
+            "url": "https://github.com/advisories/GHSA-4633-3j49-mh5q",
+            "severity": "moderate"
+          },
+          {
+            "title": "Next.js: Unbounded Server Action payload in Edge runtime",
+            "url": "https://github.com/advisories/GHSA-4c39-4ccg-62r3",
+            "severity": "moderate"
+          },
+          {
+            "title": "Next.js: Server-Side Request Forgery in rewrites via attacker-controlled destination hostname",
+            "url": "https://github.com/advisories/GHSA-p9j2-gv94-2wf4",
+            "severity": "high"
+          },
+          {
+            "title": "Next.js: Denial of Service in the Image Optimization API using SVGs",
+            "url": "https://github.com/advisories/GHSA-q8wf-6r8g-63ch",
+            "severity": "moderate"
+          },
+          {
+            "title": "Next.js: Unauthenticated disclosure of internal Server Function endpoints",
+            "url": "https://github.com/advisories/GHSA-955p-x3mx-jcvp",
+            "severity": "moderate"
+          },
+          {
+            "title": "Next.js: Unauthenticated Remote Code Execution on windows-hosted servers",
+            "url": "https://github.com/advisories/GHSA-p293-qw3h-jr36",
+            "severity": "critical"
+          },
+          {
+            "title": "Next.js: Unauthenticated Remote Code Execution in Image Optimization API when AVIF files are used",
+            "url": "https://github.com/advisories/GHSA-2xp9-vwfh-vxw4",
+            "severity": "critical"
+          }
+        ]
+      },
+      {
+        "name": "next-cloudinary",
+        "severity": "high",
+        "fixAvailable": false,
+        "advisories": []
+      },
+      {
+        "name": "shadcn",
+        "severity": "high",
+        "fixAvailable": false,
+        "advisories": []
+      },
+      {
+        "name": "tsx",
+        "severity": "low",
+        "fixAvailable": false,
+        "advisories": []
+      },
+      {
+        "name": "vitest",
+        "severity": "low",
+        "fixAvailable": false,
+        "advisories": []
+      }
+    ]
+  },
+  "inputs": {
+    "masterSpecificationSha256": "a8629753c0b044fb9ac7103158368df37b38e5ab6f49786a1f009078d04e20b6",
+    "packageLockSha256": "cf214350e20347d94d95e402aabeabaffc4ec6e4c3af0abf4ff5c6d70b86e017"
+  },
+  "recheck": {
+    "date": "2026-09-17",
+    "codeUnchanged": true,
+    "mainUnchanged": true,
+    "ciConclusion": "success",
+    "mergedPRs": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "openDraftPRs": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+    ],
+    "dependencyAuditRerun": false
+  }
+}
