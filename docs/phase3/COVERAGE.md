@@ -51,7 +51,7 @@ PARTIAL — выполнена часть; FOUNDATION — схема/карка�
 | 41 | КВАЛИФИКАЦИЯ | PARTIAL | Административные поля + specialist qualification с immutable risk/evidence | AI administrative extraction и Calendar booking интеграция ещё не приняты | 5,11 |
 | 42 | СУЩЕСТВУЮЩИЙ КЛИЕНТ | PARTIAL | Live same-zone ≤2 calendar years, completed procedure, master и исключения; boundary tests | Booking command должна потреблять актуальную оценку; Calendar отсутствует | 5 |
 | 43 | РЕЗУЛЬТАТ КОНСУЛЬТАЦИИ | PARTIAL (domain ready) | Все пять результатов, specialist role, reason/version/receipt/audit, реальный overdue decision task | Реальные calendar prerequisites и scheduler rollout не приняты | 5,10 |
-| 44 | CLIENT THINKING | PARTIAL | Thinking tasks, rescheduling, human reassessment/Lost, immutable closures и история UI | Срок/условия предложения — 3.4d; реальные исходящие контакты — Phase 9/10 | 3.4,10 |
+| 44 | CLIENT THINKING | PARTIAL | Thinking tasks, rescheduling, human reassessment/Lost, immutable closures, commercial terms и история UI | Booking/ledger integration — Phase 5/6; реальные исходящие контакты — Phase 9/10 | 3.4,10 |
 | 45 | REMOVAL REQUIRED | PARTIAL | Human removal_required создаёт linked Remover и приостанавливает исходный PMU; replay/merge tests | Remover appointments/review/ready_for_pmu restoration ещё отсутствуют | 8.3 |
 | 46 | TEMPORARILY UNAVAILABLE | PARTIAL | Human unavailable + задачи/перенос + повторная оценка и возобновление с live qualification, closure и Lost | Production rollout/scheduler и сквозная запись с medical clearance не приняты | 4,5,10,15 |
 | 47 | REFRESH | MISSING | Refresh enum без cycle/jobs | Нет350,last same-zone PMU,year offer,monthly6 stop | 10.5 |

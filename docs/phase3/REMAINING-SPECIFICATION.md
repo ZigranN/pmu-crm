@@ -6,7 +6,7 @@
 
 Довести систему до проверяемого пути Lead → Consultation → Master decision → Treatment Cycle → Acconto → Session 1 → Payment → Post-care → Check-in → Session 2 → Control → Completed → Refresh, с отдельным AI-operated вариантом, Total Face и Remover. Сохранить уже реализованные данные, права, историю, snapshots и поведение.
 
-Не начинать заново auth, клиенты, роли, audit, каталог, prices/offers, dedup или merge. Расширять существующие модули. Оставшийся объём включает S0 security hardening, 3.4d и интеграционные остатки Phase 3, Phase 4–15; Phase 16 — отдельно от P0. Наличие legacy таблицы не снимает требования реализовать бизнес-сервис, интерфейс и тесты.
+Не начинать заново auth, клиенты, роли, audit, каталог, prices/offers, dedup или merge. Расширять существующие модули. Оставшийся объём включает S0 security hardening и интеграционные остатки Phase 3, Phase 4–15; Phase 16 — отдельно от P0. Наличие legacy таблицы не снимает требования реализовать бизнес-сервис, интерфейс и тесты.
 
 ## 2. Общие обязательные требования к каждому шагу
 
@@ -95,12 +95,14 @@
 [Baseline](CONSULTATION-DECISIONS-BASELINE.md). Пройти сценарий 5.1 availability → 5.2 booking → подтверждение/attendance → completion command → human result без прямой подготовки appointment в БД. Проверить обязательные фото 4.3, medical/consent guards и production scheduler отдельно. Default 24h для overdue decision task согласовать со студией до rollout. Не объявлять существующий fixture E2E реальным booking.
 
 <a id="step-3-4"></a>
-#### 3.4a–c — реализовано; остаётся 3.4d
+#### 3.4a–d — реализован ограниченный объём
 
 [Задачи](CYCLE-FOLLOWUPS-BASELINE.md), [перенос](FOLLOWUP-RESCHEDULING-BASELINE.md), [повторная оценка/Lost](CYCLE-REASSESSMENT-BASELINE.md). Новые lifecycle commands должны использовать permanent closure hook; самостоятельная cycle archive command и пагинация полной истории добавляются в 13/14. Исторические client archives до 0019 подлежат сверке перед rollout.
 
 <a id="step-3-4d"></a>
-#### 3.4d Срок и условия предложения
+#### 3.4d Срок и условия предложения — реализовано
+
+Результат и точные файлы: [baseline](COMMERCIAL-TERMS-BASELINE.md). Контракт ниже сохранён для интеграционной приёмки Phase 5/6; runtime/ledger/Total Face приёмка ещё не выполнена.
 
 **Основание:** §§9–10,44. **Файлы:** `src/features/offers/schema.ts`, `server/service.ts`, `server/actions.ts`, `server/queries.ts`, `components/offer-form.tsx`; +`src/features/treatment-cycles/server/commercial-terms.ts`; `components/cycle-timeline.tsx` или отдельная панель; `src/db/schema.ts`, новая migration, audit contract; +`tests/integration/cycle-offer-terms.test.ts`, +`tests/e2e/cycle-offer-terms.spec.ts`.
 
@@ -1084,4 +1086,4 @@
 - [ ] Подтверждены private access, role scopes, безопасный экспорт, retention/anonymisation и восстановление backup.
 - [ ] Зафиксирован staged release rehearsal и выполнена приёмка владельцем. Зелёный build или наличие enum не заменяет критерии выше.
 
-Порядок реализации: S0 → 3.4d → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15, затем P2. Указанные взаимные зависимости (например hold/credit и AI/Google) означают совместную интеграционную приёмку, а не два источника бизнес-логики.
+Порядок реализации: S0 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15, затем P2. Указанные взаимные зависимости (например hold/credit и AI/Google) означают совместную интеграционную приёмку, а не два источника бизнес-логики.

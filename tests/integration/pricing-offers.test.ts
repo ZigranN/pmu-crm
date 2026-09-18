@@ -188,3 +188,141 @@ test("database seals line insertion with the revision and validates multi-zone t
   })).rejects.toThrow();
   expect((await queries.getOfferWorkspace(clientId)).revisions).toHaveLength(1);
 });
+
+// Phase 3.4d: use the same catalog/offer fixtures and real command transaction.
+async function termsCycle(zoneCode = "brows") {
+  return (await db.insert(s.treatmentCycles).values({studioId, clientId, zoneCode, kind: "pmu", stage: "thinking", assignedMasterId: masterId}).returning())[0];
+}
+async function termsInput(c: Awaited<ReturnType<typeof termsCycle>>) {
+  const p = await price(c.zoneCode === "brows" ? "brows-hair" : "lips", masterId);
+  return {cycleId: c.id, expectedCycleVersion: c.version, expectedRevision: 0, source: "catalog" as const,
+    serviceId: p.serviceId, priceVersion: p.version, quotedCents: null as number | null,
+    reviewAt: new Date(Date.now() + 7 * 86400000).toISOString(), reason: "Human confirmed commercial terms"};
+}
+const confirmTerms = async (input: import("@/features/commercial-terms/contract").TermsInput, key = randomUUID()) =>
+  (await import("@/features/commercial-terms/server/actions")).confirmTermsAction(input, key);
+const readTerms = async (id: string) => (await import("@/features/commercial-terms/server/queries")).getCommercialTerms(id);
+
+test("single-zone terms freeze current master price, human date/reason and leave cycle/contact state untouched", async () => {
+  const c = await termsCycle(), input = await termsInput(c), key = randomUUID();
+  const [first, replay] = await Promise.all([confirmTerms(input, key), confirmTerms(input, key)]); expect(first).toEqual(replay);
+  const panel = await readTerms(c.id); expect(panel.history).toHaveLength(1);
+  expect(panel.history[0]).toMatchObject({amountCents: 60000, source: "catalog", actorId: actor, revision: 1, offerItemId: null, reason: input.reason});
+  expect(panel.history[0].reviewAt.toISOString()).toBe(input.reviewAt);
+  expect((await db.select().from(s.treatmentCycles).where(eq(s.treatmentCycles.id, c.id)))[0]).toEqual(c);
+  await override(70000);
+  expect((await readTerms(c.id)).history).toEqual(panel.history);
+  await expect(confirmTerms({...input, expectedRevision: 1})).rejects.toThrow("Цена изменилась");
+  const current = await termsInput(c);
+  await confirmTerms({...current, expectedRevision: 1, reason: "Explicit new price decision"});
+  expect((await readTerms(c.id)).history.map(r => r.amountCents)).toEqual([70000, 60000]);
+});
+test("terms extension appends history; competing revision, payload reuse, forged actor and stale cycle fail", async () => {
+  const c = await termsCycle(), input = await termsInput(c), key = randomUUID(); await confirmTerms(input, key);
+  await expect(confirmTerms({...input, reason: "Different payload"}, key)).rejects.toThrow("другими данными");
+  await expect(confirmTerms(input)).rejects.toThrow("изменены");
+  await expect(confirmTerms({...input, expectedRevision: 1, expectedCycleVersion: 99})).rejects.toThrow("изменены");
+  await expect(confirmTerms({...input, actorId: "forged"} as typeof input)).rejects.toThrow();
+  const extended = {...input, expectedRevision: 1, reviewAt: new Date(Date.now() + 14 * 86400000).toISOString(), reason: "Human approved extension"};
+  const results = await Promise.allSettled([confirmTerms(extended), confirmTerms(extended)]);
+  expect(results.filter(r => r.status === "fulfilled")).toHaveLength(1);
+  const history = (await readTerms(c.id)).history;
+  expect(history.map(r => r.amountCents)).toEqual([60000, 60000]);
+  await expect(db.update(s.cycleCommercialTerms).set({reason: "tamper"}).where(eq(s.cycleCommercialTerms.id, history[0].id))).rejects.toThrow();
+  await expect(db.delete(s.cycleCommercialTerms).where(eq(s.cycleCommercialTerms.id, history[0].id))).rejects.toThrow();
+  await expect(db.insert(s.cycleCommercialTerms).values({...history[0], id: randomUUID(), revision: 3, commandId: randomUUID()})).rejects.toThrow();
+});
+test("term deadline has an exact inclusive boundary and never reprices the cycle", async () => {
+  const {termsNeedReview} = await import("@/features/commercial-terms/contract");
+  const deadline = new Date("2026-10-25T01:30:00Z");
+  expect(termsNeedReview(deadline, new Date(deadline.getTime() - 1))).toBe(false);
+  expect(termsNeedReview(deadline, deadline)).toBe(true);
+  expect(termsNeedReview("2026-10-25T02:30:00+01:00", deadline)).toBe(true);
+  const c = await termsCycle(), input = await termsInput(c);
+  await expect(confirmTerms({...input, reviewAt: new Date(Date.now() - 1000).toISOString()})).rejects.toThrow("в будущем");
+  await confirmTerms(input);
+  vi.useFakeTimers({toFake: ["Date"]}); vi.setSystemTime(new Date(Date.now() + 8 * 86400000));
+  try { const panel = await readTerms(c.id); expect(panel.needsReview).toBe(true); expect(panel.history[0].amountCents).toBe(60000); }
+  finally { vi.useRealTimers(); }
+});
+test("fixed terms reject forged amount; non-fixed single-zone quote requires human amount", async () => {
+  const c = await termsCycle(), input = await termsInput(c);
+  await expect(confirmTerms({...input, quotedCents: 1})).rejects.toThrow("сервером");
+  const lips = await termsCycle("lips"), quoted = await termsInput(lips);
+  await expect(confirmTerms(quoted)).rejects.toThrow("подтверждённую");
+  await confirmTerms({...quoted, quotedCents: 53000});
+  expect((await readTerms(lips.id)).history[0]).toMatchObject({amountCents: 53000, sourceSnapshot: {humanQuoted: true}});
+  await expect(confirmTerms({...input, serviceId: quoted.serviceId, priceVersion: quoted.priceVersion})).rejects.toThrow("зоне");
+});
+test("multi-zone terms reference the proper item and never copy the bundle charge into the cycle amount", async () => {
+  const saved = await actions.saveOffer(await offer(), randomUUID()), c = await termsCycle();
+  const items = await db.select().from(s.offerItems).where(eq(s.offerItems.revisionId, saved.revisionId));
+  const item = items.find(i => i.zoneCode === "brows")!, base = await termsInput(c);
+  const input = {cycleId: c.id, expectedCycleVersion: 1, expectedRevision: 0, source: "offer" as const, offerItemId: item.id, reviewAt: base.reviewAt, reason: base.reason};
+  await confirmTerms(input);
+  const row = (await readTerms(c.id)).history[0];
+  expect(row).toMatchObject({amountCents: null, offerItemId: item.id, sourceSnapshot: {offerTotalCents: 85000, offerRevisionId: saved.revisionId}});
+  await expect(confirmTerms({...input, expectedRevision: 1, offerItemId: items.find(i => i.zoneCode === "eyes")!.id})).rejects.toThrow("не соответствует");
+  await actions.saveOffer({...await offer(), offerId: saved.offerId, expectedRevision: 1}, randomUUID());
+  await expect(confirmTerms({...input, expectedRevision: 1})).rejects.toThrow("последнюю редакцию");
+  expect((await readTerms(c.id)).history[0]).toEqual(row);
+});
+test("offer terms reject another client and stale master price", async () => {
+  const saved = await actions.saveOffer(await offer(), randomUUID()), c = await termsCycle();
+  const [item] = await db.select().from(s.offerItems).where(and(eq(s.offerItems.revisionId, saved.revisionId), eq(s.offerItems.zoneCode, "brows")));
+  const input = {cycleId: c.id, expectedCycleVersion: 1, expectedRevision: 0, source: "offer" as const, offerItemId: item.id, reviewAt: new Date(Date.now()+86400000).toISOString(), reason: "Confirm approved offer"};
+  const [other] = await db.insert(s.clients).values(clientFixture(studioId)).returning();
+  await db.update(s.treatmentCycles).set({clientId: other.id}).where(eq(s.treatmentCycles.id, c.id));
+  await expect(confirmTerms(input)).rejects.toThrow("не соответствует");
+  await db.update(s.treatmentCycles).set({clientId}).where(eq(s.treatmentCycles.id, c.id));
+  await override(70000); await expect(confirmTerms(input)).rejects.toThrow("Цена изменилась");
+});
+test("Owner/Admin write terms; scoped Master reads only; AI, foreign cycles and revoked replay are denied", async () => {
+  const c = await termsCycle(), input = await termsInput(c), key = randomUUID();
+  await role("ADMIN"); await confirmTerms(input, key);
+  await db.update(s.masters).set({userId: actor}).where(eq(s.masters.id, masterId));
+  await db.update(s.clients).set({assignedMasterId: masterId}).where(eq(s.clients.id, clientId));
+  await role("MASTER"); expect((await readTerms(c.id)).history).toHaveLength(1);
+  await expect(confirmTerms(input, key)).rejects.toThrow("Permission denied");
+  await db.update(s.clients).set({assignedMasterId: null}).where(eq(s.clients.id, clientId));
+  await expect(readTerms(c.id)).rejects.toThrow("недоступен");
+  await role("AI_SYSTEM"); await expect(readTerms(c.id)).rejects.toThrow("Permission denied");
+  await role("OWNER");
+  const [foreign] = await db.insert(s.treatmentCycles).values({studioId: foreignStudio, clientId: foreignClient, kind: "pmu", zoneCode: "brows"}).returning();
+  await expect(confirmTerms({...input, cycleId: foreign.id})).rejects.toThrow("недоступен");
+  await db.update(s.clients).set({deletedAt: new Date()}).where(eq(s.clients.id, clientId));
+  await expect(confirmTerms(input, key)).rejects.toThrow("недоступен");
+});
+test("performed cycle and linked procedural booking prevent commercial rewriting", async () => {
+  const c = await termsCycle(), input = await termsInput(c);
+  await db.update(s.treatmentCycles).set({firstSessionAt: new Date()}).where(eq(s.treatmentCycles.id, c.id));
+  await expect(confirmTerms(input)).rejects.toThrow("до процедуры");
+  await db.update(s.treatmentCycles).set({firstSessionAt: null}).where(eq(s.treatmentCycles.id, c.id));
+  const [v] = await db.insert(s.appointments).values({studioId, clientId, masterId, serviceId: input.serviceId, startAt: new Date(), endAt: new Date(Date.now()+7200000), priceSnapshotCents: 60000, serviceSnapshot: {}, clientSnapshot: {}, masterSnapshot: {}, durationSnapshotMinutes: 120, source: "other", createdById: actor}).returning();
+  await db.insert(s.appointmentCycles).values({studioId, clientId, cycleId: c.id, appointmentId: v.id, visitKind: "session_1", serviceSnapshot: {}});
+  await expect(confirmTerms(input)).rejects.toThrow("финансового решения");
+  expect((await db.select().from(s.appointments).where(eq(s.appointments.id, v.id)))[0]).toEqual(v);
+});
+test("commercial audit and read log are fail closed", async () => {
+  const c = await termsCycle(), input = await termsInput(c);
+  await db.execute(sql`alter table audit_logs add constraint reject_terms_test check (action != 'commercial_terms_confirmed') not valid`);
+  try { await expect(confirmTerms(input)).rejects.toThrow(); expect(await db.select().from(s.cycleCommercialTerms).where(eq(s.cycleCommercialTerms.cycleId,c.id))).toHaveLength(0); }
+  finally { await db.execute(sql`alter table audit_logs drop constraint reject_terms_test`); }
+  await confirmTerms(input);
+  await db.execute(sql`alter table access_logs add constraint reject_terms_read_test check (operation != 'commercial-terms.read') not valid`);
+  try { await expect(readTerms(c.id)).rejects.toThrow("Access logging unavailable"); }
+  finally { await db.execute(sql`alter table access_logs drop constraint reject_terms_read_test`); }
+});
+test("paid consultation and suspended cycle block changes; existing terms survive master deactivation", async () => {
+  const c = await termsCycle(), input = await termsInput(c); await confirmTerms(input);
+  await db.update(s.masters).set({isActive: false}).where(eq(s.masters.id, masterId));
+  const panel = await readTerms(c.id); expect(panel.history).toHaveLength(1); expect(panel.blocked).toContain("мастер недоступен");
+  await db.update(s.masters).set({isActive: true}).where(eq(s.masters.id, masterId));
+  await db.update(s.treatmentCycles).set({suspendedAt: new Date(), suspensionReason: "temporarily_unavailable"}).where(eq(s.treatmentCycles.id, c.id));
+  await expect(confirmTerms({...input, expectedRevision: 1})).rejects.toThrow("приостановленного");
+  await db.update(s.treatmentCycles).set({suspendedAt: null, suspensionReason: null}).where(eq(s.treatmentCycles.id, c.id));
+  const [v] = await db.insert(s.appointments).values({studioId, clientId, masterId, serviceId: input.serviceId, startAt: new Date(), endAt: new Date(Date.now()+7200000), priceSnapshotCents: 1000, serviceSnapshot: {}, clientSnapshot: {}, masterSnapshot: {}, durationSnapshotMinutes: 120, source: "other", createdById: actor}).returning();
+  await db.insert(s.appointmentCycles).values({studioId, clientId, cycleId: c.id, appointmentId: v.id, visitKind: "consultation", serviceSnapshot: {}});
+  await db.insert(s.payments).values({studioId, clientId, appointmentId: v.id, totalAmountCents: 1000, paidAmountCents: 1000, balanceAmountCents: 0, status: "paid"});
+  await expect(confirmTerms({...input, expectedRevision: 1})).rejects.toThrow("финансового решения");
+});

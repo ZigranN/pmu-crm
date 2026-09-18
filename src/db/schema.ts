@@ -1671,3 +1671,23 @@ export const followUpClosures=pgTable("follow_up_closures",{
  resultId:uuid("result_id").notNull().references(()=>consultationResults.id),actorId:text("actor_id").notNull(),
  reason:text("reason").notNull(),createdAt:timestamp("created_at",{withTimezone:true}).defaultNow().notNull(),
 },t=>({result:uniqueIndex("follow_up_closure_result_unique").on(t.resultId),contract:check("follow_up_closure_reason",sql`${t.reason} in ('cycle_left_branch','client_archived')`)}));
+
+// Immutable, human-confirmed terms. Offer totals belong to the offer, not to each cycle.
+export const cycleCommercialTerms = pgTable("cycle_commercial_terms", {
+  id: uuid("id").defaultRandom().primaryKey(), studioId: uuid("studio_id").notNull().references(() => studios.id, {onDelete:"cascade"}),
+  cycleId: uuid("cycle_id").notNull(), revision: integer("revision").notNull(), cycleVersion: integer("cycle_version").notNull(),
+  commandId: uuid("command_id").notNull(), actorId: text("actor_id").notNull(),
+  source: text("source").notNull(), serviceId: uuid("service_id").notNull(), masterId: uuid("master_id"),
+  offerItemId: uuid("offer_item_id").references(() => offerItems.id),
+  amountCents: integer("amount_cents"), currency: text("currency").notNull().default("EUR"),
+  sourceSnapshot: jsonb("source_snapshot").$type<Record<string, string | number | boolean | null>>().notNull(),
+  reason: text("reason").notNull(), confirmedAt: timestamp("confirmed_at", {withTimezone:true}).notNull().defaultNow(),
+  reviewAt: timestamp("review_at", {withTimezone:true}).notNull(),
+}, t => ({
+  cycle: foreignKey({name:"commercial_terms_cycle_fk",columns:[t.cycleId,t.studioId],foreignColumns:[treatmentCycles.id,treatmentCycles.studioId]}),
+  service: foreignKey({name:"commercial_terms_service_fk",columns:[t.serviceId,t.studioId],foreignColumns:[services.id,services.studioId]}),
+  master: foreignKey({name:"commercial_terms_master_fk",columns:[t.masterId,t.studioId],foreignColumns:[masters.id,masters.studioId]}),
+  version: uniqueIndex("commercial_terms_revision_unique").on(t.cycleId,t.revision),
+  command: uniqueIndex("commercial_terms_command_unique").on(t.commandId),
+  contract: check("commercial_terms_contract",sql`${t.revision}>0 and ${t.cycleVersion}>0 and ${t.currency}='EUR' and ${t.reviewAt}>${t.confirmedAt} and length(trim(${t.reason})) between 3 and 1000 and jsonb_typeof(${t.sourceSnapshot})='object' and ((${t.source}='catalog' and ${t.offerItemId} is null and ${t.amountCents} is not null and ${t.amountCents}>=0) or (${t.source}='offer' and ${t.offerItemId} is not null and ${t.amountCents} is null))`),
+}));

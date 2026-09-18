@@ -346,9 +346,9 @@
   {
     "section": "44",
     "status": "PARTIAL",
-    "evidence": "Thinking tasks, rescheduling, human reassessment/Lost, immutable closures и история UI",
-    "gap": "Срок/условия предложения — 3.4d; реальные исходящие контакты — Phase 9/10",
-    "steps": "3.4,10",
+    "evidence": "Thinking tasks, rescheduling, human reassessment/Lost, immutable closures и история UI; commercial-terms immutable confirmations/review UI",
+    "gap": "Booking/ledger integration — Phase 5/6; реальные исходящие контакты — Phase 9/10",
+    "steps": "5,6,9,10",
     "title": "CLIENT THINKING"
   },
   {

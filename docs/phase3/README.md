@@ -31,3 +31,5 @@
 - [3.2: команды стадий и оставшиеся зависимости](CYCLE-TRANSITIONS-BASELINE.md).
 
 - [3.3: квалификация, решения и overdue task](CONSULTATION-DECISIONS-BASELINE.md).
+
+- [Условия предложения 3.4d](COMMERCIAL-TERMS-BASELINE.md)

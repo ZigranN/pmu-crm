@@ -1,16 +1,16 @@
-# Полный чек-лист PMU CRM — 15.09.2026
+# Полный чек-лист PMU CRM — 18.09.2026
 
 [Полный анализ](FULL-AUDIT-2026-09-15.md) · [ТЗ оставшегося](REMAINING-SPECIFICATION.md) · [Матрица 80 разделов](COVERAGE.md).
 
 ## Что означает «выполнено»
 
-Чекбокс означает реализованный и проверенный ограниченный объём, а не production release. Текущий код: `d9553dc1d71d09a77135e5bb185de3b07750c160`, ветка `codex/phase-3-cycle-reassessment`. Статусы предыдущих baseline относятся к их датам.
+Чекбокс означает реализованный и проверенный ограниченный объём, а не production release. Текущая разработка: ветка `codex/phase-3-offer-terms`, [baseline 3.4d](COMMERCIAL-TERMS-BASELINE.md). Статусы предыдущих baseline относятся к их датам.
 
 ## GitHub и проверки
 
-Main: `4ad7e7c0aa5872612c00542d6cc83ef95e3cde2a`. PR №1–6 merged; №7–18 draft/open. [CI окончательного кода](https://github.com/ZigranN/pmu-crm/actions/runs/34777824797) — typecheck/lint/build, 225 unit/integration, 4 migration, 18 Chromium tests passed. Полный PMU/AI E2E ещё отсутствует; часть browser prerequisites — fixtures.
+Main на 18.09: `6fcc91e`. PR №1–18 merged. [CI окончательного кода](https://github.com/ZigranN/pmu-crm/actions/runs/34777824797) — typecheck/lint/build, 225 unit/integration, 4 migration, 18 Chromium tests passed. Полный PMU/AI E2E ещё отсутствует; часть browser prerequisites — fixtures.
 
-- [ ] Merge цепочки №7–18 — не выполнен.
+- [x] Merge цепочки №7–18 — подтверждён GitHub; агент merge не выполнял.
 - [ ] Применение актуальных миграций в Neon — не подтверждено; БД не обследовалась в этом аудите.
 - [ ] Версия Vercel, реальные providers и scheduler — не подтверждены.
 - [ ] S0.1 dependency triage/update/gate — открыт.
@@ -25,18 +25,18 @@ Main: `4ad7e7c0aa5872612c00542d6cc83ef95e3cde2a`. PR №1–6 merged; №7–18 
 | [№4](https://github.com/ZigranN/pmu-crm/pull/4) | Phase 1.1: studio role policy and protected registration | MERGED |
 | [№5](https://github.com/ZigranN/pmu-crm/pull/5) | Phase 1.2: master assignment scope and Owner membership management | MERGED |
 | [№6](https://github.com/ZigranN/pmu-crm/pull/6) | Phase 1.3: transactional audit and sensitive read journals | MERGED |
-| [№7](https://github.com/ZigranN/pmu-crm/pull/7) | Phase 1.4: idempotent client commands and durable event worker | OPEN / DRAFT |
-| [№8](https://github.com/ZigranN/pmu-crm/pull/8) | Phase 2.1: normalized service catalog and legacy preservation | OPEN / DRAFT |
-| [№9](https://github.com/ZigranN/pmu-crm/pull/9) | Phase 2.2: master pricing and immutable Custom Offers | OPEN / DRAFT |
-| [№10](https://github.com/ZigranN/pmu-crm/pull/10) | Phase 2.3: administrative client card and preferred master | OPEN / DRAFT |
-| [№11](https://github.com/ZigranN/pmu-crm/pull/11) | Phase 2.4: client contact normalization and duplicate review | OPEN / DRAFT |
-| [№12](https://github.com/ZigranN/pmu-crm/pull/12) | Phase 2.5: atomic client merge with aliases and preserved history | OPEN / DRAFT |
-| [№13](https://github.com/ZigranN/pmu-crm/pull/13) | Phase 3.1: per-zone treatment cycle schema and legacy inventory | OPEN / DRAFT |
-| [№14](https://github.com/ZigranN/pmu-crm/pull/14) | Phase 3.2: guarded cycle commands, history and pipeline UI | OPEN / DRAFT |
-| [№15](https://github.com/ZigranN/pmu-crm/pull/15) | Phase 3.3: qualification, consultation outcomes and overdue tasks | OPEN / DRAFT |
-| [№16](https://github.com/ZigranN/pmu-crm/pull/16) | Phase 3.4a: durable Thinking and reassessment tasks | OPEN / DRAFT |
-| [№17](https://github.com/ZigranN/pmu-crm/pull/17) | Phase 3.4b: versioned follow-up rescheduling | OPEN / DRAFT |
-| [№18](https://github.com/ZigranN/pmu-crm/pull/18) | Phase 3.4c: human reassessment, Lost and follow-up closure | OPEN / DRAFT |
+| [№7](https://github.com/ZigranN/pmu-crm/pull/7) | Phase 1.4: idempotent client commands and durable event worker | MERGED |
+| [№8](https://github.com/ZigranN/pmu-crm/pull/8) | Phase 2.1: normalized service catalog and legacy preservation | MERGED |
+| [№9](https://github.com/ZigranN/pmu-crm/pull/9) | Phase 2.2: master pricing and immutable Custom Offers | MERGED |
+| [№10](https://github.com/ZigranN/pmu-crm/pull/10) | Phase 2.3: administrative client card and preferred master | MERGED |
+| [№11](https://github.com/ZigranN/pmu-crm/pull/11) | Phase 2.4: client contact normalization and duplicate review | MERGED |
+| [№12](https://github.com/ZigranN/pmu-crm/pull/12) | Phase 2.5: atomic client merge with aliases and preserved history | MERGED |
+| [№13](https://github.com/ZigranN/pmu-crm/pull/13) | Phase 3.1: per-zone treatment cycle schema and legacy inventory | MERGED |
+| [№14](https://github.com/ZigranN/pmu-crm/pull/14) | Phase 3.2: guarded cycle commands, history and pipeline UI | MERGED |
+| [№15](https://github.com/ZigranN/pmu-crm/pull/15) | Phase 3.3: qualification, consultation outcomes and overdue tasks | MERGED |
+| [№16](https://github.com/ZigranN/pmu-crm/pull/16) | Phase 3.4a: durable Thinking and reassessment tasks | MERGED |
+| [№17](https://github.com/ZigranN/pmu-crm/pull/17) | Phase 3.4b: versioned follow-up rescheduling | MERGED |
+| [№18](https://github.com/ZigranN/pmu-crm/pull/18) | Phase 3.4c: human reassessment, Lost and follow-up closure | MERGED |
 
 ## Выполненные шаги разработки — Phase 0–2
 
@@ -76,7 +76,7 @@ Main: `4ad7e7c0aa5872612c00542d6cc83ef95e3cde2a`. PR №1–6 merged; №7–18 
 - [x] **3.1 Схема циклов — foundation** — см. [ТЗ шага 3.1](REMAINING-SPECIFICATION.md#step-3-1).
 - [ ] **3.2 21 стадия — PARTIAL:** engine/UI/ранние переходы реализованы; интеграции 3.3/5–7/10 остаются. [Baseline](CYCLE-TRANSITIONS-BASELINE.md) — см. [ТЗ шага 3.2](REMAINING-SPECIFICATION.md#step-3-2).
 - [ ] **3.3 Qualification / консультация — domain logic/UI реализованы**, production E2E зависит от Calendar Phase 5. [Baseline](CONSULTATION-DECISIONS-BASELINE.md) — см. [ТЗ шага 3.3](REMAINING-SPECIFICATION.md#step-3-3).
-- [ ] **3.4 Thinking / unavailable / lost** — 3.4a–c реализованы ([повторная оценка и Lost](CYCLE-REASSESSMENT-BASELINE.md)); остаток 3.4d. См. [ТЗ шага 3.4](REMAINING-SPECIFICATION.md#step-3-4).
+- [x] **3.4 Thinking / unavailable / lost** — ограниченный объём 3.4a–d реализован ([условия предложения](COMMERCIAL-TERMS-BASELINE.md)); booking/ledger/outbound интеграции остаются в Phase 5/6/9/10. См. [ТЗ шага 3.4](REMAINING-SPECIFICATION.md#step-3-4).
 
 ### Phase 4 — medical, media и подписанные документы (§4,36–39,72)
 
@@ -223,7 +223,7 @@ Main: `4ad7e7c0aa5872612c00542d6cc83ef95e3cde2a`. PR №1–6 merged; №7–18 
 | 41 | КВАЛИФИКАЦИЯ | PARTIAL | AI administrative extraction и Calendar booking интеграция ещё не приняты | 5,11 |
 | 42 | СУЩЕСТВУЮЩИЙ КЛИЕНТ | PARTIAL | Booking command должна потреблять актуальную оценку; Calendar отсутствует | 5 |
 | 43 | РЕЗУЛЬТАТ КОНСУЛЬТАЦИИ | PARTIAL (domain ready) | Реальные calendar prerequisites и scheduler rollout не приняты | 5,10 |
-| 44 | CLIENT THINKING | PARTIAL | Срок/условия предложения — 3.4d; реальные исходящие контакты — Phase 9/10 | 3.4,10 |
+| 44 | CLIENT THINKING | PARTIAL | Условия реализованы; применение при booking/ledger — Phase 5/6; реальные исходящие контакты — Phase 9/10 | 3.4,10 |
 | 45 | REMOVAL REQUIRED | PARTIAL | Remover appointments/review/ready_for_pmu restoration ещё отсутствуют | 8.3 |
 | 46 | TEMPORARILY UNAVAILABLE | PARTIAL | Production rollout/scheduler и сквозная запись с medical clearance не приняты | 4,5,10,15 |
 | 47 | REFRESH | MISSING | Нет350,last same-zone PMU,year offer,monthly6 stop | 10.5 |
@@ -265,4 +265,4 @@ Main: `4ad7e7c0aa5872612c00542d6cc83ef95e3cde2a`. PR №1–6 merged; №7–18 
 
 [Реестр §§76–79](ACCEPTANCE.md) содержит **125 требований**: 50 technical, 48 main/AI E2E, 15 Total Face, 12 Remover. Это не количество существующих тестов. Отдельные integrity/RBAC/retry/merge случаи уже покрыты, но весь реестр не закрыт как релизная приёмка; текущие 225+4+18 тестов не подменяют эти 125 требований.
 
-Следующий шаг разработки: **3.4d — срок и условия предложения**. Интеграционные остатки 3.2 закрываются с Phase 5–7/10. Merge PR, миграции Neon и rollout идут отдельным контролируемым процессом, описанным в оставшемся ТЗ. Их выполнение данным отчётом не разрешается и не заявляется.
+Следующий функциональный шаг: **4.1 — медицинское решение**. S0 security hardening остаётся открытым и обязательным до production. Интеграционные остатки 3.2 закрываются с Phase 5–7/10. Merge PR, миграции Neon и rollout идут отдельным контролируемым процессом, описанным в оставшемся ТЗ. Их выполнение данным отчётом не разрешается и не заявляется.
