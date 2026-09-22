@@ -1,10 +1,10 @@
 import { PageHeader } from "@/components/shared/page-header";
 import { ServiceForm } from "@/features/services/components/service-form";
-
-import { requireStudioPermission } from "@/server/auth/context";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { getCatalogOptions } from "@/features/services/server/queries";
+
 export default async function NewServicePage() {
-  const { studioId } = await requireStudioPermission("SERVICE_CREATE");
+  const { studioId } = await requireBrowserStudioPermission("SERVICE_CREATE");
   const options = await getCatalogOptions(studioId);
   return (
     <div className="space-y-6">

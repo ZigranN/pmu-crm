@@ -39,9 +39,28 @@ export async function lockStudioAccess(tx: Transaction, context: Context) {
   return { ...context, role };
 }
 
+/**
+ * Execute command in explicit browser studio context.
+ */
+export async function withBrowserStudioCommand<T>(
+  permission: import("@/lib/permissions").PermissionCode,
+  command: (tx: Transaction, context: Context) => Promise<T>
+) {
+  const { requireBrowserStudioPermission, ForbiddenPermissionError } = await import("./context");
+  const { hasPermission } = await import("@/lib/permissions");
+  const context = await requireBrowserStudioPermission(permission);
+  return db.transaction(async (tx) => {
+    await lockStudioAccess(tx, context);
+    if (!(await hasPermission(tx, context.userId, context.studioId, permission))) {
+      throw new ForbiddenPermissionError("FORBIDDEN_PERMISSION");
+    }
+    return command(tx, context);
+  });
+}
 
-// For global studio mutations, recheck capabilities after taking the same lock
-// used by membership changes. Callers still apply any resource-specific scope.
+/**
+ * @deprecated Transitional legacy command helper. Will be migrated in PHASE 1.1C.
+ */
 export async function withStudioCommand<T>(permission: import("@/lib/permissions").PermissionCode,
   command: (tx: Transaction, context: Context) => Promise<T>) {
   const { requireStudioPermission } = await import("./context");

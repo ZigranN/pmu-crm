@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { requireStudioContext } from "@/server/auth/context";
+import { requireBrowserStudioContext } from "@/server/auth/context";
 import { getJournal } from "@/features/audit/server/queries";
 
 export default async function AuditPage({ searchParams }: { searchParams: Promise<{ kind?: string; page?: string }> }) {
-  const { studioId } = await requireStudioContext();
+  const { studioId } = await requireBrowserStudioContext();
   const params = await searchParams;
   const kind = params.kind === "access" ? "access" : "audit";
   const requestedPage = Number(params.page ?? 1);

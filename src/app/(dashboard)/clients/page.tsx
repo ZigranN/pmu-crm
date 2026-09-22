@@ -1,19 +1,17 @@
-import { hasPermission } from "@/lib/permissions";
-import { db } from "@/db";
 import { getClients } from "@/features/clients/server/queries";
 import { ClientList } from "@/features/clients/components/client-list";
-import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { redirect } from "next/navigation";
 
 export default async function ClientsPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  let context;
+  try {
+    context = await requireBrowserStudioPermission("CLIENT_READ");
+  } catch {
+    redirect("/dashboard");
+  }
 
-  const studioId = await getCurrentStudioId(session.user.id);
-  if (!studioId) redirect("/dashboard");
-  if (!await hasPermission(db, session.user.id, studioId, "CLIENT_READ")) redirect("/dashboard");
-
-  const clientsList = await getClients(studioId)
+  const clientsList = await getClients(context.studioId)
     .catch((error) => {
       console.error("[Clients Page Error]", error);
       throw error;

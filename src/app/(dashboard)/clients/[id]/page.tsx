@@ -1,9 +1,8 @@
 import { MedicalMergeReview } from "@/features/clients/components/medical-merge-review";
 import { LANGUAGES, INTEREST_ZONES, CLIENT_KINDS, CLIENT_SOURCES } from "@/features/clients/administrative";
 import { ClientAssignment } from "@/features/settings/components/client-assignment";
-import { getStudioRole } from "@/lib/roles";
 import { getActiveMasters } from "@/features/masters/server/queries";
-import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { getClientById, getClientMedicalHistory, getClientMedicalProfile, getClientActivity, getClientMasterLabels } from "@/features/clients/server/queries";
 import { PageHeader } from "@/components/shared/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -27,16 +26,17 @@ interface ClientDetailPageProps {
 
 export default async function ClientDetailPage({ params }: ClientDetailPageProps) {
   const { id } = await params;
-  const session = await getSession();
-  if (!session) redirect("/login");
+  let context;
+  try {
+    context = await requireBrowserStudioPermission("CLIENT_READ");
+  } catch {
+    redirect("/dashboard");
+  }
+  const studioId = context.studioId;
 
-  const studioId = await getCurrentStudioId(session.user.id);
-  if (!studioId) redirect("/dashboard");
-  if (!await hasPermission(db, session.user.id, studioId, "CLIENT_READ")) redirect("/dashboard");
-
-  const canReadOffers = await hasPermission(db, session.user.id, studioId, "OFFER_READ");
-  const role = await getStudioRole(db, session.user.id, studioId);
-  const canAssign = (role === "OWNER" || role === "ADMIN") && await hasPermission(db, session.user.id, studioId, "CLIENT_UPDATE");
+  const canReadOffers = await hasPermission(db, context.userId, studioId, "OFFER_READ");
+  const role = context.role;
+  const canAssign = (role === "OWNER" || role === "ADMIN") && await hasPermission(db, context.userId, studioId, "CLIENT_UPDATE");
   const assignmentOptions = canAssign ? await getActiveMasters(studioId) : [];
   const client = await getClientById(id, studioId);
   if (!client) notFound();
@@ -44,7 +44,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
   const masterLabels = await getClientMasterLabels(id, studioId);
   const [canReadMedical, canEditMedical, canReadMedia, canReadConsent] = await Promise.all(
     (["MEDICAL_PROFILE_READ", "MEDICAL_PROFILE_UPDATE", "MEDIA_READ", "CONSENT_READ"] as const)
-      .map((permission) => hasPermission(db, session.user.id, studioId, permission))
+      .map((permission) => hasPermission(db, context.userId, studioId, permission))
   );
   const [medicalProfile, events, medicalHistory] = await Promise.all([
     canReadMedical ? getClientMedicalProfile(id, studioId) : undefined,

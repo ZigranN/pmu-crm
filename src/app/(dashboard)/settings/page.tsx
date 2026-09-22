@@ -1,7 +1,5 @@
 
-import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
-import { getStudioRole } from "@/lib/roles";
-import { db } from "@/db";
+import { requireBrowserStudioContext } from "@/server/auth/context";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -9,9 +7,8 @@ import { ChevronRight, Settings, Users, Scissors } from "lucide-react";
 import Link from "next/link";
 
 export default async function SettingsPage() {
-  const session = await getSession();
-  const studioId = session ? await getCurrentStudioId(session.user.id) : undefined;
-  const role = session && studioId ? await getStudioRole(db, session.user.id, studioId) : null;
+  const context = await requireBrowserStudioContext();
+  const role = context.role;
 
   const settingsLinks = [
     { title: "Циклы процедур", description: "Стадии и история по каждой зоне", icon: Settings, href: "/deals" },
@@ -73,13 +70,8 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex justify-between items-center">
-            <span className="text-muted-foreground">Имя</span>
-            <span className="font-medium">{session?.user.name}</span>
-          </div>
-          <Separator />
-          <div className="flex justify-between items-center">
             <span className="text-muted-foreground">Email</span>
-            <span className="font-medium">{session?.user.email}</span>
+            <span className="font-medium">{context.userEmail}</span>
           </div>
           <Separator />
           <div className="flex justify-between items-center">

@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { MasterForm } from "@/features/masters/components/master-form";
 import { getMasterById } from "@/features/masters/server/queries";
 import { getActiveServices } from "@/features/services/server/queries";
-import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { redirect, notFound } from "next/navigation";
 
 interface EditMasterPageProps {
@@ -11,17 +11,18 @@ interface EditMasterPageProps {
 
 export default async function EditMasterPage({ params }: EditMasterPageProps) {
   const { id } = await params;
-  const session = await getSession();
-  if (!session) redirect("/login");
-
-  const studioId = await getCurrentStudioId(session.user.id);
-  if (!studioId) redirect("/dashboard");
+  let context;
+  try {
+    context = await requireBrowserStudioPermission("MASTER_UPDATE");
+  } catch {
+    redirect("/dashboard");
+  }
 
   let master;
   let services;
   try {
-    master = await getMasterById(id, studioId);
-    services = await getActiveServices(studioId);
+    master = await getMasterById(id, context.studioId);
+    services = await getActiveServices(context.studioId);
   } catch (error) {
     console.error("[Master Edit Page Error]", error);
     throw error;

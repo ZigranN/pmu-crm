@@ -2,15 +2,21 @@ import { MERGE_FIELDS } from "@/features/clients/merge-contract";
 import { getClientById } from "@/features/clients/server/queries";
 import { getClientMergeHistory, getMergeCandidates } from "@/features/clients/server/merge-actions";
 import { MergeDialog } from "@/features/clients/components/merge-dialog";
-import { requireStudioPermission } from "@/server/auth/context";
-import { getStudioRole } from "@/lib/roles";
-import { db } from "@/db";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { notFound, redirect } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
+
 export default async function ClientMergePage({ params }: { params: Promise<{ id: string }> }) {
-  const context = await requireStudioPermission("CLIENT_UPDATE");
-  const role = await getStudioRole(db, context.userId, context.studioId); if (role !== "OWNER" && role !== "ADMIN") notFound();
-  const { id } = await params; const client = await getClientById(id, context.studioId); if (!client) notFound();
+  let context;
+  try {
+    context = await requireBrowserStudioPermission("CLIENT_UPDATE");
+  } catch {
+    redirect("/dashboard");
+  }
+  if (context.role !== "OWNER" && context.role !== "ADMIN") notFound();
+  const { id } = await params;
+  const client = await getClientById(id, context.studioId);
+  if (!client) notFound();
   if (client.id !== id) redirect(`/clients/${client.id}/merge`);
   const [rows, history] = await Promise.all([getMergeCandidates(id), getClientMergeHistory(id)]);
   return <div className="space-y-6"><PageHeader title="Объединение клиентов" description={client.fullName} backHref={`/clients/${id}`} />

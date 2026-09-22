@@ -3,8 +3,8 @@ import { SESSION_LABELS, CATALOG_ZONES, CATALOG_TECHNIQUES } from "@/features/se
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/db";
 import { getServiceById, getCatalogOptions } from "@/features/services/server/queries";
-import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
-import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
+import { hasPermission } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,14 +17,13 @@ export default async function ServiceDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const session = await getSession();
-  if (!session) redirect("/login");
-
-  const studioId = await getCurrentStudioId(session.user.id);
-  if (!studioId) redirect("/dashboard");
-
-  const canRead = await hasPermission(db, session.user.id, studioId, PERMISSIONS.SERVICE_READ);
-  if (!canRead) redirect("/dashboard");
+  let context;
+  try {
+    context = await requireBrowserStudioPermission("SERVICE_READ");
+  } catch {
+    redirect("/dashboard");
+  }
+  const studioId = context.studioId;
 
   let service;
   try {
@@ -38,7 +37,7 @@ export default async function ServiceDetailPage({
 
   const options = await getCatalogOptions(studioId);
   const definition = options.definitions.find(row => row.code === service.catalogCode);
-  const canEdit = await hasPermission(db, session.user.id, studioId, "SERVICE_UPDATE");
+  const canEdit = await hasPermission(db, context.userId, studioId, "SERVICE_UPDATE");
   const isArchived = !!service.deletedAt;
   const price = servicePriceLabel(service);
 

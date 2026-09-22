@@ -1,19 +1,17 @@
-import { hasPermission } from "@/lib/permissions";
-import { db } from "@/db";
 import { getMasters } from "@/features/masters/server/queries";
 import { MasterList } from "@/features/masters/components/master-list";
-import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { redirect } from "next/navigation";
 
 export default async function MastersPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  let context;
+  try {
+    context = await requireBrowserStudioPermission("MASTER_READ");
+  } catch {
+    redirect("/dashboard");
+  }
 
-  const studioId = await getCurrentStudioId(session.user.id);
-  if (!studioId) redirect("/dashboard");
-  if (!await hasPermission(db, session.user.id, studioId, "MASTER_READ")) redirect("/dashboard");
-
-  const mastersList = await getMasters(studioId, { showArchived: true })
+  const mastersList = await getMasters(context.studioId, { showArchived: true })
     .catch((error) => {
       console.error("[Masters Page Error]", error);
       throw error;

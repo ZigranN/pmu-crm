@@ -1,8 +1,7 @@
-import { requireStudioPermission } from "@/server/auth/context";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { PageHeader } from "@/components/shared/page-header";
 import { ClientForm } from "@/features/clients/components/client-form";
 import { getClientById } from "@/features/clients/server/queries";
-import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
 import { redirect, notFound } from "next/navigation";
 
 interface EditClientPageProps {
@@ -10,15 +9,15 @@ interface EditClientPageProps {
 }
 
 export default async function EditClientPage({ params }: EditClientPageProps) {
-  await requireStudioPermission("CLIENT_UPDATE");
+  let context;
+  try {
+    context = await requireBrowserStudioPermission("CLIENT_UPDATE");
+  } catch {
+    redirect("/dashboard");
+  }
   const { id } = await params;
-  const session = await getSession();
-  if (!session) redirect("/login");
 
-  const studioId = await getCurrentStudioId(session.user.id);
-  if (!studioId) redirect("/dashboard");
-
-  const client = await getClientById(id, studioId)
+  const client = await getClientById(id, context.studioId)
     .catch((error) => {
       console.error("[Client Edit Page Error]", error);
       throw error;

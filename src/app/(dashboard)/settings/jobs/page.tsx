@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { requireStudioContext } from "@/server/auth/context";
+import { requireBrowserStudioContext } from "@/server/auth/context";
 import { getJobs } from "@/features/jobs/server/queries";
 import { RecoveryButton } from "@/features/jobs/components/recovery-button";
 const labels: Record<string, string> = { pending: "Ожидает обработки", processing: "Обрабатывается", reconciling: "Проверяется отправка",
   completed: "Выполнено", dead: "Требует внимания", uncertain: "Результат отправки неизвестен" };
 export default async function JobsPage({ searchParams }: { searchParams: Promise<{ page?: string; all?: string }> }) {
-  const { studioId } = await requireStudioContext(), params = await searchParams;
+  const { studioId } = await requireBrowserStudioContext(), params = await searchParams;
   const candidate = Number(params.page ?? 1), page = Number.isInteger(candidate) && candidate > 0 && candidate <= 10000 ? candidate : 1;
   const all = params.all === "1";
   const rows = await getJobs(studioId, page, !all).catch(error => { if (error instanceof Error && error.message === "Permission denied") redirect("/dashboard"); throw error; });

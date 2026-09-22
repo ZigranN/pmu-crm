@@ -1,7 +1,5 @@
 
-import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
-import { db } from "@/db";
-import { getStudioRole } from "@/lib/roles";
+import { requireBrowserStudioContext } from "@/server/auth/context";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Users, Scissors, UserCog, Settings, Calendar } from "lucide-react";
 import Link from "next/link";
@@ -16,15 +14,14 @@ const quickLinks = [
 ];
 
 export default async function DashboardPage() {
-  const session = await getSession();
-  const studioId = session ? await getCurrentStudioId(session.user.id) : undefined;
-  const role = session && studioId ? await getStudioRole(db, session.user.id, studioId) : null;
+  const context = await requireBrowserStudioContext();
+  const role = context.role;
 
   return (
     <>
       <div className="space-y-6 pb-20">
         <PageHeader 
-          title={`Добро пожаловать, ${session?.user.name || "Гость"}`}
+          title={`Добро пожаловать, ${context.userEmail || "Пользователь"}`}
           description="Управление вашей студией в одном месте"
         />
 

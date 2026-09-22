@@ -1,8 +1,6 @@
 import { notFound, redirect } from "next/navigation";
-import { db } from "@/db";
 import { getMasterById } from "@/features/masters/server/queries";
-import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
-import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,18 +15,16 @@ export default async function MasterDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const session = await getSession();
-  if (!session) redirect("/login");
-
-  const studioId = await getCurrentStudioId(session.user.id);
-  if (!studioId) redirect("/dashboard");
-
-  const canRead = await hasPermission(db, session.user.id, studioId, PERMISSIONS.MASTER_READ);
-  if (!canRead) redirect("/dashboard");
+  let context;
+  try {
+    context = await requireBrowserStudioPermission("MASTER_READ");
+  } catch {
+    redirect("/dashboard");
+  }
 
   let master;
   try {
-    master = await getMasterById(id, studioId);
+    master = await getMasterById(id, context.studioId);
   } catch (error) {
     console.error("[Master Detail Page Error]", error);
     throw error;

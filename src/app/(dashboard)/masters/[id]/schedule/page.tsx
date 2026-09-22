@@ -1,8 +1,6 @@
 import { notFound, redirect } from "next/navigation";
-import { db } from "@/db";
 import { getMasterById } from "@/features/masters/server/queries";
-import { getSession, getCurrentStudioId } from "@/features/auth/server/actions";
-import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ArrowLeft, Calendar } from "lucide-react";
@@ -14,16 +12,14 @@ export default async function MasterSchedulePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const session = await getSession();
-  if (!session) redirect("/login");
+  let context;
+  try {
+    context = await requireBrowserStudioPermission("MASTER_READ");
+  } catch {
+    redirect("/dashboard");
+  }
 
-  const studioId = await getCurrentStudioId(session.user.id);
-  if (!studioId) redirect("/dashboard");
-
-  const canRead = await hasPermission(db, session.user.id, studioId, PERMISSIONS.MASTER_READ);
-  if (!canRead) redirect("/dashboard");
-
-  const master = await getMasterById(id, studioId);
+  const master = await getMasterById(id, context.studioId);
 
   if (!master) notFound();
 
