@@ -1,4 +1,5 @@
 import { CYCLE_STAGES } from "./schemas/cycle.schema";
+export { CYCLE_STAGES };
 export type CycleStage = typeof CYCLE_STAGES[number];
 export const STAGE_LABELS: Record<CycleStage,string> = {
   new_lead:"Новый лид", qualification:"Квалификация", consultation_needed:"Нужна консультация", consultation_offered:"Консультация предложена",
@@ -21,6 +22,35 @@ export const TRANSITIONS: Readonly<Record<CycleStage,readonly CycleStage[]>> = {
   second_session_scheduled:["second_session_completed"], second_session_completed:["control_scheduled"],
   control_scheduled:["cycle_completed"], cycle_completed:["refresh_offered"], refresh_offered:["refresh_no_response"], refresh_no_response:[], lost:["qualification","consultation_needed"],
 };
+
+export const GENERIC_ALLOWED_TRANSITIONS: Readonly<Record<CycleStage, readonly CycleStage[]>> = {
+  new_lead: ["qualification"],
+  qualification: [],
+  consultation_needed: ["consultation_offered"],
+  consultation_offered: [],
+  consultation_scheduled: [],
+  consultation_confirmed: [],
+  consultation_completed: [],
+  consultation_result_required: [],
+  consultation_result: [],
+  thinking: [],
+  procedure_slot_selected: [],
+  awaiting_acconto: [],
+  procedure_confirmed: [],
+  first_session_completed: [],
+  second_session_scheduled: [],
+  second_session_completed: [],
+  control_scheduled: [],
+  cycle_completed: [],
+  refresh_offered: [],
+  refresh_no_response: [],
+  lost: [],
+};
+
+export const GENERIC_ALLOWED_EDGES: ReadonlySet<string> = new Set([
+  "new_lead->qualification",
+  "consultation_needed->consultation_offered",
+]);
 // Until these owners exist, manual stage changes must not forge their business facts.
 export const REQUIRED_COMMAND: Partial<Record<CycleStage,string>> = {
   consultation_scheduled:"Запись на консультацию через календарь", consultation_confirmed:"Подтверждение записи через календарь",

@@ -6,9 +6,15 @@ import { createTestDatabase } from "../support/database";
 import { studioFixture, clientFixture } from "../fixtures/studio";
 import * as s from "@/db/schema";
 import { MERGE_FIELDS, type MergeInput, type MergeField } from "@/features/clients/merge-contract";
-const session = vi.hoisted(() => ({ id: "" }));
+const session = vi.hoisted(() => ({ id: "", studioId: "" }));
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession: async () => ({ user: { id: session.id } }) } } }));
-vi.mock("next/headers", () => ({ headers: async () => new Headers() })); vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers(),
+  cookies: async () => ({
+    get: (name: string) => (name === "pmu_active_studio" && session.studioId ? { value: session.studioId } : undefined),
+  }),
+}));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 let database: Awaited<ReturnType<typeof createTestDatabase>>, db: typeof import("@/db").db;
 let actions: typeof import("@/features/clients/server/merge-actions"), queries: typeof import("@/features/clients/server/queries"), mutations: typeof import("@/features/clients/server/actions");
 let studioId: string, foreignStudio: string, source: typeof s.clients.$inferSelect, target: typeof source, roleIds: Record<string, string>;
@@ -22,6 +28,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   session.id = actor;
   [studioId, foreignStudio] = (await db.insert(s.studios).values([studioFixture(), studioFixture()]).returning()).map(row => row.id);
+  session.studioId = studioId;
   await db.insert(s.studioMembers).values({ studioId, userId: actor, roleId: roleIds.OWNER });
   [source, target] = await db.insert(s.clients).values([{ ...clientFixture(studioId), firstName: "Source", fullName: "Source", notes: "Source note", phone: "+393331111111", ltvCents: 100, visitCount: 2 }, { ...clientFixture(studioId), firstName: "Target", fullName: "Target", notes: "Target note", phone: "+393332222222", ltvCents: 200, visitCount: 3 }]).returning();
 });
@@ -55,9 +62,10 @@ async function rich() {
   await db.insert(s.questionnaireResponses).values({ ...linked, templateId: template.id, answers: { original: true } });
   await db.insert(s.reviews).values({ ...linked, rating: 5, source: s.reviewSourceEnum.enumValues[0] });
   const [offer] = await db.insert(s.customOffers).values(common).returning();
+  const [handoff] = await db.insert(s.handoffs).values({ studioId, entityType: "CLIENT", entityId: source.id, clientId: source.id, toUserId: actor, createdById: actor, reasonCode: "TEST" }).returning();
   await db.insert(s.clientDuplicateDecisions).values([source,target].map(row => ({ studioId, clientId: row.id, actorId: actor, reason: "Prior decision", reviewToken: "a".repeat(64), matches: [] })));
   await db.insert(s.clientMedicalProfiles).values([{ clientId: source.id, allergies: "Source allergy", diabetes: true }, { clientId: target.id, allergies: "Target allergy" }]);
-  return { appointment, procedure, media, consent, payment, transaction, offer, pkg, cycles, links };
+  return { appointment, procedure, media, consent, payment, transaction, offer, handoff, pkg, cycles, links };
 }
 test("every direct client FK is classified in the merge registry", async () => {
   const registry = await import("@/features/clients/server/merge-registry");
@@ -89,7 +97,7 @@ test("old IDs resolve reads, archived aliases cannot be edited or restored", asy
   expect((await queries.getClientById(source.id, studioId))?.id).toBe(target.id);
   expect(await queries.getClients(studioId)).toHaveLength(1);
   await expect(mutations.restoreClientAction(source.id)).rejects.toThrow();
-  await expect(mutations.updateClientAction(source.id, { firstName: "Stale", phone: source.phone, clientStatus: "new_lead" })).rejects.toThrow();
+  await expect(mutations.updateClientAction(source.id, { firstName: "Stale", phone: source.phone })).rejects.toThrow();
 });
 test("same key retry is one merge; conflicting payload under same key is rejected", async () => {
   const data = await input(), key = randomUUID();
@@ -137,10 +145,10 @@ test("Admin can merge, explicit archive deny blocks; resolved ID retains current
   expect((await queries.getClientById(source.id,studioId))?.id).toBe(target.id);
 });
 test("chain flattening retains both merge records and original create retry returns a resolvable ID", async () => {
-  const created = await mutations.createClientAction({firstName:"Retry",phone:"+393339999999",clientStatus:"new_lead"}, "11111111-1111-4111-8111-111111111111");
+  const created = await mutations.createClientAction({firstName:"Retry",phone:"+393339999999"}, "11111111-1111-4111-8111-111111111111");
   await actions.mergeClientsAction(await input(created.id,source.id),randomUUID()); await actions.mergeClientsAction(await input(),randomUUID());
   expect((await client(created.id)).mergedIntoId).toBe(target.id); expect(await actions.getClientMergeHistory(target.id)).toHaveLength(2);
-  expect(await mutations.createClientAction({firstName:"Retry",phone:"+393339999999",clientStatus:"new_lead"},"11111111-1111-4111-8111-111111111111")).toEqual(created);
+  expect(await mutations.createClientAction({firstName:"Retry",phone:"+393339999999"},"11111111-1111-4111-8111-111111111111")).toEqual(created);
   expect((await queries.getClientById(created.id,studioId))?.id).toBe(target.id);
 });
 test("audit failure rolls back moved rows, alias, snapshots and receipt", async () => {
@@ -158,7 +166,7 @@ test("cross-studio corrupt legacy relation blocks merge rather than transferring
 });
 test("historical contacts still identify the canonical client after merge", async () => {
   await actions.mergeClientsAction(await input(),randomUUID()); const { reviewClientDuplicates } = await import("@/features/clients/server/duplicate-actions");
-  const result = await reviewClientDuplicates({firstName:"New name",phone:source.phone,clientStatus:"new_lead"});
+  const result = await reviewClientDuplicates({firstName:"New name",phone:source.phone});
   expect(result.candidates.map(row => row.id)).toEqual([target.id]);
 });
 test("medical acknowledgement requires a specialist and preserves historical profiles", async () => {
@@ -173,8 +181,49 @@ test("medical acknowledgement requires a specialist and preserves historical pro
   expect(await queries.getClientMedicalHistory(target.id,studioId)).toHaveLength(1);
 });
 test("merge preview fails closed when access logging fails", async () => {
-  await db.execute(sql`alter table access_logs add constraint reject_merge_reads check (operation != 'clients.merge.preview')`);
-  try { await expect(input()).rejects.toThrow("Access logging unavailable"); } finally {await db.execute(sql`alter table access_logs drop constraint reject_merge_reads`);}
+  // Existing access_logs may already contain successful merge-preview
+  // entries. NOT VALID skips historical validation but still rejects
+  // new violating writes, which is the failure scenario under test.
+  await db.execute(
+    sql`alter table access_logs add constraint reject_merge_reads check (operation != 'clients.merge.preview') not valid`
+  );
+  try {
+    await expect(input()).rejects.toThrow("Access logging unavailable");
+    expect((await client(source.id)).mergedIntoId).toBeNull();
+    expect((await client(target.id)).mergedIntoId).toBeNull();
+    expect(await db.select().from(s.clientMerges).where(eq(s.clientMerges.studioId, studioId))).toHaveLength(0);
+  } finally {
+    await db.execute(sql`alter table access_logs drop constraint if exists reject_merge_reads`);
+  }
+});
+const noFlags = { previousPMU: false, herpesHistory: false, diabetes: false, bloodThinners: false, keloidRisk: false, autoimmuneDiseases: false, recentBotoxFillers: false, recentPeelingLaser: false, skinSensitivity: false };
+test("merge preserves medical revision rows, IDs and numbering on their original client", async () => {
+  const medical = await import("@/features/medical/server/actions"), revisions = await import("@/features/medical/server/revisions");
+  for (const note of ["t1", "t2"]) await medical.upsertMedicalProfileAction(target.id, { ...noFlags, allergies: "Target allergy", medicalNotes: note });
+  for (const note of ["s1", "s2", "s3"]) await medical.upsertMedicalProfileAction(source.id, { ...noFlags, allergies: "Source allergy", medicalNotes: note });
+  const all = async () => db.select().from(s.medicalProfileRevisions).where(eq(s.medicalProfileRevisions.studioId, studioId)).orderBy(s.medicalProfileRevisions.clientId, s.medicalProfileRevisions.revisionNumber);
+  const before = await all(), sourceBefore = await revisions.getMedicalProfileRevisions(studioId, source.id, db), targetBefore = await revisions.getMedicalProfileRevisions(studioId, target.id, db);
+  expect([sourceBefore.length, targetBefore.length]).toEqual([3, 2]);
+  await actions.mergeClientsAction(await input(), randomUUID());
+  expect(await client(source.id)).toMatchObject({ mergedIntoId: target.id, deletedAt: expect.any(Date) });
+  // No copy, delete, re-parent or renumber: every row is byte-identical after merge.
+  expect(await all()).toEqual(before);
+  // Target history is its own rows only; source rows stay readable by the archived source ID.
+  expect(await revisions.getMedicalProfileRevisions(studioId, target.id, db)).toEqual(targetBefore);
+  expect(await revisions.getMedicalProfileRevisions(studioId, source.id, db)).toEqual(sourceBefore);
+  expect((await revisions.getLatestMedicalProfileRevision(studioId, target.id, db))?.id).toBe(targetBefore[1].id);
+  for (const row of sourceBefore) expect(await revisions.getMedicalProfileRevisionById(studioId, row.id, db)).toEqual(row);
+  for (const row of sourceBefore) expect(await revisions.getMedicalProfileRevisionById(foreignStudio, row.id, db)).toBeUndefined();
+  const [record] = await db.select().from(s.clientMerges).where(eq(s.clientMerges.sourceId, source.id));
+  expect(record.targetId).toBe(target.id); expect(record.movedRecords).not.toHaveProperty("medical_profile_revisions");
+});
+test("archived client revisions remain directly readable by known client ID", async () => {
+  const medical = await import("@/features/medical/server/actions"), revisions = await import("@/features/medical/server/revisions");
+  await medical.upsertMedicalProfileAction(source.id, { ...noFlags, allergies: "Archived allergy" });
+  const [written] = await revisions.getMedicalProfileRevisions(studioId, source.id, db);
+  await db.update(s.clients).set({ deletedAt: new Date() }).where(eq(s.clients.id, source.id));
+  expect(await revisions.getMedicalProfileRevisions(studioId, source.id, db)).toEqual([written]);
+  expect(await queries.getClientById(source.id, studioId)).toBeUndefined();
 });
 test("archived source may merge into an active target; stale medical review cannot clear a new warning", async () => {
   await rich(); await db.update(s.clients).set({deletedAt:new Date()}).where(eq(s.clients.id,source.id));

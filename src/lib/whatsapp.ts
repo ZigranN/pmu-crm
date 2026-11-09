@@ -16,3 +16,13 @@ export function createWhatsAppLink(phone: string, message?: string): string {
   
   return url.toString();
 }
+
+export * from "@/features/whatsapp/domain/types";
+export {
+  getWhatsAppClient,
+  setWhatsAppClient,
+  MetaWhatsAppCloudApiClient,
+  MockWhatsAppCloudApiClient,
+  WhatsAppApiError,
+  type IWhatsAppClient,
+} from "@/features/whatsapp/server/client";

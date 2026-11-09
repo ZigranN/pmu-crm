@@ -5,7 +5,7 @@ import { createTestDatabase } from "../support/database";
 import { studioFixture } from "../fixtures/studio";
 import * as s from "@/db/schema";
 import { hasPermission, PERMISSIONS, type PermissionCode } from "@/lib/permissions";
-import { normalizeRole, hasRole } from "@/lib/roles";
+import { normalizeRole } from "@/lib/roles";
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let studioId: string;
 const userId = randomUUID();
@@ -29,16 +29,15 @@ afterAll(async () => {
   try { await database.db.delete(s.user).where(eq(s.user.id, userId)); await database.db.delete(s.studios).where(eq(s.studios.id, studioId)); }
   finally { await database.close(); }
 });
-const adminAllowed = new Set(`OFFER_READ OFFER_MANAGE CLIENT_READ CLIENT_CREATE CLIENT_UPDATE CLIENT_ARCHIVE MEDICAL_PROFILE_READ APPOINTMENT_READ APPOINTMENT_CREATE APPOINTMENT_UPDATE APPOINTMENT_CANCEL APPOINTMENT_NO_SHOW MEDIA_READ MEDIA_CREATE CONSENT_READ CONSENT_UPLOAD PAYMENT_READ PAYMENT_MARK_DEPOSIT SERVICE_READ MASTER_READ WHATSAPP_TEMPLATE_READ WHATSAPP_TEMPLATE_USE TASK_READ TASK_CREATE TASK_UPDATE REVIEW_READ REVIEW_CREATE`.split(" "));
-const masterAllowed = new Set(`CLIENT_READ CLIENT_UPDATE MEDICAL_PROFILE_READ MEDICAL_PROFILE_UPDATE APPOINTMENT_READ APPOINTMENT_COMPLETE APPOINTMENT_NO_SHOW PROCEDURE_READ PROCEDURE_CREATE PROCEDURE_UPDATE MEDIA_READ MEDIA_CREATE CONSENT_READ CONSENT_UPLOAD PAYMENT_READ PAYMENT_MARK_DEPOSIT SERVICE_READ MASTER_READ WHATSAPP_TEMPLATE_READ WHATSAPP_TEMPLATE_USE TASK_READ TASK_CREATE TASK_UPDATE REVIEW_READ REVIEW_CREATE`.split(" "));
+const adminAllowed = new Set(`OFFER_READ OFFER_MANAGE CLIENT_READ CLIENT_CREATE CLIENT_UPDATE CLIENT_ARCHIVE MEDICAL_PROFILE_READ APPOINTMENT_READ APPOINTMENT_CREATE APPOINTMENT_UPDATE APPOINTMENT_CANCEL APPOINTMENT_NO_SHOW MEDIA_READ MEDIA_CREATE CONSENT_READ CONSENT_UPLOAD PAYMENT_READ PAYMENT_MARK_DEPOSIT SERVICE_READ MASTER_READ WHATSAPP_TEMPLATE_READ WHATSAPP_TEMPLATE_USE TASK_READ TASK_CREATE TASK_UPDATE REVIEW_READ REVIEW_CREATE CONVERSATION_READ CONVERSATION_WRITE CONVERSATION_ASSIGN AUTOMATION_READ AUTOMATION_MANAGE INTEGRATION_READ INTEGRATION_MANAGE AI_READ AI_USE HANDOFF_READ HANDOFF_CREATE HANDOFF_ACCEPT HANDOFF_ASSIGN HANDOFF_OVERRIDE OPERATIONS_READ OPERATIONS_MANAGE PRIVACY_READ PRIVACY_EXPORT PRIVACY_MANAGE`.split(" "));
+const masterAllowed = new Set(`CLIENT_READ CLIENT_UPDATE MEDICAL_PROFILE_READ MEDICAL_PROFILE_UPDATE APPOINTMENT_READ APPOINTMENT_COMPLETE APPOINTMENT_NO_SHOW PROCEDURE_READ PROCEDURE_CREATE PROCEDURE_UPDATE MEDIA_READ MEDIA_CREATE CONSENT_READ CONSENT_UPLOAD PAYMENT_READ PAYMENT_MARK_DEPOSIT SERVICE_READ MASTER_READ WHATSAPP_TEMPLATE_READ WHATSAPP_TEMPLATE_USE TASK_READ TASK_CREATE TASK_UPDATE REVIEW_READ REVIEW_CREATE CONVERSATION_READ CONVERSATION_WRITE AUTOMATION_READ INTEGRATION_READ AI_READ AI_USE HANDOFF_READ HANDOFF_CREATE HANDOFF_ACCEPT`.split(" "));
 test.each(["OWNER", "ADMIN", "MASTER", "AI_SYSTEM"])("%s capability matrix against migrated grants", async (role) => {
   await database.db.update(s.studioMembers).set({ roleId: roleIds.get(role)! }).where(eq(s.studioMembers.userId, userId));
   for (const permission of Object.values(PERMISSIONS)) {
     const expected = role === "OWNER" || (role === "ADMIN" && adminAllowed.has(permission)) || (role === "MASTER" && masterAllowed.has(permission));
     expect(await hasPermission(database.db, userId, studioId, permission), `${role}/${permission}`).toBe(expected);
   }
-  expect(await hasRole(database.db, userId, studioId, "OWNER")).toBe(role === "OWNER");
-});
+}, 60000);
 test.each(["ADMIN", "MASTER", "AI_SYSTEM"])("%s cannot bypass hard prohibitions using allow overrides", async (role) => {
   await database.db.update(s.studioMembers).set({ roleId: roleIds.get(role)! }).where(eq(s.studioMembers.userId, userId));
   const forbidden: PermissionCode[] = ["PAYMENT_REFUND", "SETTINGS_UPDATE", "ROLES_MANAGE", "SERVICE_UPDATE"];

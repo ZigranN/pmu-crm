@@ -5,14 +5,14 @@ import { revalidatePath } from "next/cache";
 import { clients,masters,treatmentCycles,consultations,consultationResults,cycleReviews,cycleQualifications } from "@/db/schema";
 import { cycleReviewSchema } from "@/features/consultations/contracts";
 import { evaluateQualification } from "@/features/consultations/server/qualification";
-import { requireStudioPermission } from "@/server/auth/context";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { hasPermission } from "@/lib/permissions";
 import { idempotentCommand } from "@/server/commands/idempotency";
 import { lockCycle } from "./scope";
 import { recordCycleChange } from "./mutation";
 import { closeCycleFollowUps } from "./close-followups";
 export async function reviewCycleAction(input:z.infer<typeof cycleReviewSchema>,key:string) {
- const data=cycleReviewSchema.parse(input),context=await requireStudioPermission("MEDICAL_PROFILE_UPDATE");
+ const data=cycleReviewSchema.parse(input),context=await requireBrowserStudioPermission("MEDICAL_PROFILE_UPDATE");
  const response=await idempotentCommand(context,"MEDICAL_PROFILE_UPDATE","cycle.review.v1",key,data,async(tx,commandId)=>{
   if(!await hasPermission(tx,context.userId,context.studioId,"CLIENT_UPDATE"))throw new Error("Permission denied");
   const cycle=await lockCycle(tx,context,data.id);

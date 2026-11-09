@@ -15,12 +15,22 @@ export { cloudinary };
 export interface UploadOptions {
   folder?: string;
   transformation?: any;
-  resource_type?: "image" | "video" | "raw" | "auto";
+  resource_type: "image" | "raw";
+  type: "upload" | "authenticated";
+}
+
+export interface DeleteOptions {
+  resource_type?: "image" | "raw";
+  type?: "upload" | "authenticated";
+}
+
+export interface SignedDeliveryUrlOptions {
+  resource_type: "image" | "raw";
 }
 
 export async function uploadToCloudinary(
   file: File,
-  options?: UploadOptions
+  options: UploadOptions
 ): Promise<{ url: string; publicId: string }> {
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
@@ -29,9 +39,10 @@ export async function uploadToCloudinary(
     cloudinary.uploader
       .upload_stream(
         {
-          folder: options?.folder || "crm-pmu",
-          resource_type: options?.resource_type || "auto",
-          transformation: options?.transformation,
+          folder: options.folder || "crm-pmu",
+          resource_type: options.resource_type,
+          type: options.type,
+          transformation: options.transformation,
         },
         (error, result) => {
           if (error) reject(error);
@@ -49,6 +60,24 @@ export async function uploadToCloudinary(
   });
 }
 
-export async function deleteFromCloudinary(publicId: string): Promise<void> {
-  await cloudinary.uploader.destroy(publicId);
+export async function deleteFromCloudinary(
+  publicId: string,
+  options?: DeleteOptions
+): Promise<void> {
+  await cloudinary.uploader.destroy(publicId, {
+    resource_type: options?.resource_type,
+    type: options?.type,
+  });
+}
+
+export function getSignedCloudinaryDeliveryUrl(
+  publicId: string,
+  options: SignedDeliveryUrlOptions
+): string {
+  return cloudinary.url(publicId, {
+    resource_type: options.resource_type,
+    type: "authenticated",
+    sign_url: true,
+    secure: true,
+  });
 }

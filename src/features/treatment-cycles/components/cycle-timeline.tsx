@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { getCycleTimeline } from "../server/queries";
 import { transitionCycleAction } from "../server/actions";
 import { STAGE_LABELS, ZONE_LABELS, type CycleStage } from "../stages";
+import { ProcedureHistoryList } from "@/features/procedures/components/procedure-history-list";
 export function CycleTimeline({data}:{data:Awaited<ReturnType<typeof getCycleTimeline>>}) {
   const router=useRouter(),[pending,start]=useTransition(),[error,setError]=useState("");
   const request=useRef<{payload:string;key:string}|null>(null);
@@ -26,6 +27,12 @@ export function CycleTimeline({data}:{data:Awaited<ReturnType<typeof getCycleTim
       <Button disabled={pending||!selected||Boolean(selected.blocked)}>Изменить стадию</Button>
     </form>}
     {error&&<div role="alert"><p>{error}</p><Button variant="outline" onClick={()=>router.refresh()}>Обновить данные</Button></div>}
+
+    <div className="space-y-2">
+      <h2 className="text-lg font-semibold">Процедуры цикла</h2>
+      <ProcedureHistoryList procedures={(data as any).procedures || []} />
+    </div>
+
     <h2 className="text-lg font-semibold">История цикла</h2>{data.truncated&&<p>Показаны последние 1000 событий.</p>}
     {!data.history.length&&<p>Истории команд пока нет. Старые события не восстанавливаются автоматически.</p>}
     <ol className="space-y-3">{data.history.map(row=><li key={row.id} className="rounded border p-3 break-words"><p>{row.fromStage?STAGE_LABELS[row.fromStage as CycleStage]+" → ":"Создание → "}{STAGE_LABELS[row.toStage as CycleStage]}</p><p>{row.reason}</p><p className="text-sm text-muted-foreground">{new Date(row.createdAt).toISOString()} · Версия {row.version} · {row.actorName??"Пользователь недоступен"}</p></li>)}</ol>

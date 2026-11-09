@@ -6,9 +6,9 @@ import { writeAudit } from "@/server/services/audit-log.service";
 import { db } from "@/db";
 import { idempotentCommand, type Json } from "@/server/commands/idempotency";
 import { enqueue } from "@/server/events/outbox";
-import { clients, clientStatusHistory, clientDuplicateDecisions } from "@/db/schema";
+import { clients, clientDuplicateDecisions } from "@/db/schema";
 import { clientSchema, type ClientSchema } from "../schemas/client.schema";
-import { requireStudioPermission } from "@/server/auth/context";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { resourceScope } from "@/server/auth/scopes";
 import { lockClient } from "@/server/commands/ownership";
 import { canonicalPhone, canonicalEmail, canonicalInstagram } from "../contacts";
@@ -31,11 +31,10 @@ function parseClient(input: ClientSchema, before?: typeof clients.$inferSelect) 
     ...(validated.email !== undefined ? { email: validated.email ? contact(validated.email, before?.email, canonicalEmail, "email") : "" } : {}),
     ...(validated.instagram !== undefined ? { instagram: validated.instagram ? contact(validated.instagram, before?.instagram, canonicalInstagram, "Instagram handle или ссылку на профиль") : "" } : {}),
     fullName: `${validated.firstName} ${validated.lastName || ""}`.trim(),
-    clientStatus: validated.clientStatus as typeof clients.$inferInsert.clientStatus,
     tags: Array.isArray(validated.tags) ? validated.tags.join(",") : validated.tags };
 }
 export async function createClientAction(input: ClientSchema, requestKey: string, decision?: DuplicateDecision) {
-  const context = await requireStudioPermission("CLIENT_CREATE");
+  const context = await requireBrowserStudioPermission("CLIENT_CREATE");
   const data = parseClient(input);
   const confirmation = decision ? duplicateDecisionSchema.parse(decision) : undefined;
   // Persist only a result reference; replay never returns an old personal-data snapshot.
@@ -47,7 +46,7 @@ export async function createClientAction(input: ClientSchema, requestKey: string
         const role = await getStudioRole(tx, context.userId, context.studioId);
         if ((role !== "OWNER" && role !== "ADMIN") || !await hasPermission(tx, context.userId, context.studioId, "CLIENT_READ")) throw new Error("Permission denied");
       }
-      const [created] = await tx.insert(clients).values({ ...data, studioId: context.studioId }).returning();
+      const [created] = await tx.insert(clients).values({ ...data, clientStatus: "new_lead", studioId: context.studioId }).returning();
       await writeActivity(tx, { ...context, clientId: created.id, type: "client_created", title: "Клиент создан" });
       await writeAudit(tx, { ...context, action: "client_created", entityType: "client", entityId: created.id,
         before: null, after: created, reason: "command:client_created", metadata: { commandId } });
@@ -64,21 +63,13 @@ export async function createClientAction(input: ClientSchema, requestKey: string
   return result;
 }
 export async function updateClientAction(id: string, input: ClientSchema) {
-  const context = await requireStudioPermission("CLIENT_UPDATE");
+  const context = await requireBrowserStudioPermission("CLIENT_UPDATE");
   clientSchema.parse(input);
   const result = await db.transaction(async tx => {
     const before = await lockClient(tx, id, context.studioId, context.userId, false, "CLIENT_UPDATE");
     const data = parseClient(input, before);
     const [after] = await tx.update(clients).set({ ...data, updatedAt: new Date() }).where(eq(clients.id, before.id)).returning();
-    if (before.clientStatus !== after.clientStatus) {
-      await tx.insert(clientStatusHistory).values({
-      studioId: context.studioId, clientId: id, oldStatus: before.clientStatus, newStatus: after.clientStatus, changedById: context.userId,
-    });
-      await writeActivity(tx, { ...context, clientId: id, type: "client_status_changed", title: "Статус клиента изменён", metadata: { before: before.clientStatus, after: after.clientStatus } });
-      await writeAudit(tx, { ...context, action: "client_status_changed", entityType: "client", entityId: id, before: { status: before.clientStatus }, after: { status: after.clientStatus }, reason: "command:client_status_changed" });
-    }
-    await writeActivity(tx, { ...context, clientId: id, type: "client_updated", title: "Данные клиента обновлены",
-      metadata: { oldStatus: before.clientStatus, newStatus: after.clientStatus } });
+    await writeActivity(tx, { ...context, clientId: id, type: "client_updated", title: "Данные клиента обновлены" });
     await writeAudit(tx, { ...context, action: "client_updated", entityType: "client", entityId: id,
       before, after, reason: "command:client_updated" });
     const scope = await resourceScope(context, tx);
@@ -89,7 +80,7 @@ export async function updateClientAction(id: string, input: ClientSchema) {
 }
 async function archiveState(id: string, archived: boolean) {
   const permission = archived ? "CLIENT_ARCHIVE" : "CLIENT_UPDATE";
-  const context = await requireStudioPermission(permission);
+  const context = await requireBrowserStudioPermission(permission);
   await db.transaction(async tx => {
     const before = await lockClient(tx, id, context.studioId, context.userId, !archived, permission);
     const [after] = await tx.update(clients).set({ deletedAt: archived ? new Date() : null, deletedById: archived ? context.userId : null, updatedAt: new Date() }).where(eq(clients.id, before.id)).returning();

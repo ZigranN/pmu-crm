@@ -1,7 +1,7 @@
 "use server";
 import { and, eq } from "drizzle-orm";
 import { customOffers, masterPriceRevisions } from "@/db/schema";
-import { requireStudioPermission } from "@/server/auth/context";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { idempotentCommand, type Json } from "@/server/commands/idempotency";
 import { lockClient } from "@/server/commands/ownership";
 import { writeAudit } from "@/server/services/audit-log.service";
@@ -10,7 +10,7 @@ import { recordOffer } from "./service";
 import { offerSchema, overrideSchema, type OfferInput, type OverrideInput } from "../schema";
 import { revalidatePath } from "next/cache";
 export async function saveOffer(input: OfferInput, requestKey: string) {
-  const context = await requireStudioPermission("OFFER_MANAGE"), data = offerSchema.parse(input);
+  const context = await requireBrowserStudioPermission("OFFER_MANAGE"), data = offerSchema.parse(input);
   const result = await idempotentCommand(context, "OFFER_MANAGE", "offer.save.v1", requestKey, data as Json,
     (tx, commandId) => recordOffer(tx, context, data, commandId), async (tx, result) => {
       await lockClient(tx, data.clientId, context.studioId, context.userId, false, "OFFER_MANAGE");
@@ -19,7 +19,7 @@ export async function saveOffer(input: OfferInput, requestKey: string) {
   revalidatePath(`/clients/${data.clientId}/offers`); return result;
 }
 export async function saveMasterPrice(input: OverrideInput, requestKey: string) {
-  const context = await requireStudioPermission("SERVICE_UPDATE"), data = overrideSchema.parse(input);
+  const context = await requireBrowserStudioPermission("SERVICE_UPDATE"), data = overrideSchema.parse(input);
   const result = await idempotentCommand(context, "SERVICE_UPDATE", "master-price.save.v1", requestKey, data as Json,
     async (tx, commandId) => {
       const before = await resolvePrice(tx, context.studioId, data.serviceId, data.masterId);

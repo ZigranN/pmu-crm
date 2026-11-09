@@ -3,7 +3,7 @@ import { z } from "zod";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { clients, masters, appointments, appointmentCycles, treatmentCycles, cycleQualifications, consultations, consultationResults, tasks } from "@/db/schema";
-import { requireStudioPermission } from "@/server/auth/context";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { hasPermission } from "@/lib/permissions";
 import { idempotentCommand } from "@/server/commands/idempotency";
 import { lockCycle, type CycleContext } from "@/features/treatment-cycles/server/scope";
@@ -24,7 +24,7 @@ async function clinicalCycle(tx:Transaction,context:CycleContext,id:string,versi
 }
 function invalidate(id:string){revalidatePath("/deals");revalidatePath(`/deals/${id}`);}
 export async function qualifyCycleAction(input:z.input<typeof qualificationSchema>,key:string) {
-  const data=qualificationSchema.parse(input),context=await requireStudioPermission("MEDICAL_PROFILE_UPDATE");
+  const data=qualificationSchema.parse(input),context=await requireBrowserStudioPermission("MEDICAL_PROFILE_UPDATE");
   const result=await idempotentCommand(context,"MEDICAL_PROFILE_UPDATE","cycle.qualify.v1",key,data,async(tx,commandId)=>{
     const {cycle,client,master,now}=await clinicalCycle(tx,context,data.id,data.expectedVersion);
     if(!["qualification","consultation_needed"].includes(cycle.stage))throw new Error("Сначала откройте квалификацию");
@@ -38,7 +38,7 @@ export async function qualifyCycleAction(input:z.input<typeof qualificationSchem
   invalidate(result.id);return result;
 }
 export async function completeConsultationAction(input:z.infer<typeof completionSchema>,key:string) {
-  const data=completionSchema.parse(input),context=await requireStudioPermission("MEDICAL_PROFILE_UPDATE");
+  const data=completionSchema.parse(input),context=await requireBrowserStudioPermission("MEDICAL_PROFILE_UPDATE");
   const result=await idempotentCommand(context,"MEDICAL_PROFILE_UPDATE","consultation.complete.v1",key,data,async(tx,commandId)=>{
     const {cycle,master,now}=await clinicalCycle(tx,context,data.id,data.expectedVersion);
     if(!["consultation_scheduled","consultation_confirmed","consultation_completed"].includes(cycle.stage))throw new Error("Консультация должна быть назначена через календарь");
@@ -57,7 +57,7 @@ export async function completeConsultationAction(input:z.infer<typeof completion
   invalidate(result.id);return result;
 }
 export async function recordConsultationResultAction(input:z.input<typeof resultSchema>,key:string) {
-  const data=resultSchema.parse(input),context=await requireStudioPermission("MEDICAL_PROFILE_UPDATE");
+  const data=resultSchema.parse(input),context=await requireBrowserStudioPermission("MEDICAL_PROFILE_UPDATE");
   const result=await idempotentCommand(context,"MEDICAL_PROFILE_UPDATE","consultation.result.v1",key,data,async(tx,commandId)=>{
     const {cycle,now}=await clinicalCycle(tx,context,data.id,data.expectedVersion);
     if(cycle.stage!=="consultation_result_required")throw new Error("Результат сейчас не ожидается");

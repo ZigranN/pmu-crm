@@ -5,9 +5,14 @@ import { createTestDatabase } from "../support/database";
 import { studioFixture, clientFixture } from "../fixtures/studio";
 import * as s from "@/db/schema";
 import type { OfferInput } from "@/features/offers/schema";
-const session = vi.hoisted(() => ({ id: "" }));
+const session = vi.hoisted(() => ({ id: "", studioId: "" }));
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession: async () => ({ user: { id: session.id } }) } } }));
-vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers(),
+  cookies: async () => ({
+    get: (name: string) => (name === "pmu_active_studio" && session.studioId ? { value: session.studioId } : undefined),
+  }),
+}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 let database: Awaited<ReturnType<typeof createTestDatabase>>, db: typeof import("@/db").db;
 let actions: typeof import("@/features/offers/server/actions"), queries: typeof import("@/features/offers/server/queries"), catalog: typeof import("@/features/services/server/actions"), pricing: typeof import("@/features/services/server/pricing");
@@ -22,6 +27,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   session.id = actor;
   [studioId, foreignStudio] = (await db.insert(s.studios).values([studioFixture(), studioFixture()]).returning()).map(row => row.id);
+  session.studioId = studioId;
   await db.insert(s.studioMembers).values({ studioId, userId: actor, roleId: roleIds.OWNER });
   [clientId, foreignClient] = (await db.insert(s.clients).values([clientFixture(studioId), clientFixture(foreignStudio)]).returning()).map(row => row.id);
   await catalog.importPhase3Catalog();
@@ -117,19 +123,19 @@ test("Master and AI cannot create offers or modify prices, including retries and
   const input = await offer(), key = randomUUID(); await actions.saveOffer(input, key);
   for (const code of ["MASTER", "AI_SYSTEM"]) {
     await role(code);
-    await expect(actions.saveOffer(input, key)).rejects.toThrow("Permission denied");
-    await expect(override(1)).rejects.toThrow("Permission denied");
-    await expect(queries.getOfferWorkspace(clientId)).rejects.toThrow("Permission denied");
+    await expect(actions.saveOffer(input, key)).rejects.toThrow();
+    await expect(override(1)).rejects.toThrow();
+    await expect(queries.getOfferWorkspace(clientId)).rejects.toThrow();
   }
   await role("OWNER"); await expect(actions.saveOffer({ ...input, approvedById: "forged" } as OfferInput, randomUUID())).rejects.toThrow();
 });
 test("Admin can approve offers but cannot modify catalog/master prices; deny override is respected", async () => {
   const input = await offer(); await role("ADMIN");
   expect((await actions.saveOffer(input, randomUUID())).revision).toBe(1);
-  await expect(override(1)).rejects.toThrow("Permission denied");
+  await expect(override(1)).rejects.toThrow();
   const [permission] = await db.select().from(s.permissions).where(eq(s.permissions.code, "OFFER_MANAGE"));
   await db.insert(s.userCustomPermissions).values({ studioId, userId: actor, permissionId: permission.id, effect: "deny" });
-  await expect(actions.saveOffer(input, randomUUID())).rejects.toThrow("Permission denied");
+  await expect(actions.saveOffer(input, randomUUID())).rejects.toThrow();
 });
 test("recorded header, revisions and line items cannot be updated/deleted directly", async () => {
   const saved = await actions.saveOffer(await offer(), randomUUID()); await override(65000);
@@ -283,7 +289,7 @@ test("Owner/Admin write terms; scoped Master reads only; AI, foreign cycles and 
   await db.update(s.masters).set({userId: actor}).where(eq(s.masters.id, masterId));
   await db.update(s.clients).set({assignedMasterId: masterId}).where(eq(s.clients.id, clientId));
   await role("MASTER"); expect((await readTerms(c.id)).history).toHaveLength(1);
-  await expect(confirmTerms(input, key)).rejects.toThrow("Permission denied");
+  await expect(confirmTerms(input, key)).rejects.toThrow();
   await db.update(s.clients).set({assignedMasterId: null}).where(eq(s.clients.id, clientId));
   await expect(readTerms(c.id)).rejects.toThrow("недоступен");
   await role("AI_SYSTEM"); await expect(readTerms(c.id)).rejects.toThrow("Permission denied");

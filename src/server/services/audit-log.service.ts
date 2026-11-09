@@ -21,7 +21,19 @@ export function snapshot(value: Record<string, unknown>) {
   return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
 }
 export async function writeAudit(tx: Transaction, input: AuditInput) {
-  const data = contract.parse({ ...input, reasonSource: input.reasonSource ?? "command" });
+  const { studioId, userId, action, entityType, entityId, before, after, reason, reasonSource, metadata } = input;
+  const data = contract.parse({
+    studioId,
+    userId,
+    action,
+    entityType,
+    entityId,
+    before,
+    after,
+    reason,
+    reasonSource: reasonSource ?? "command",
+    ...(metadata !== undefined ? { metadata } : {}),
+  });
   if (!Object.hasOwn(AUDIT_ENTITIES, data.action) || AUDIT_ENTITIES[data.action as AuditAction] !== data.entityType) throw new Error("Invalid audit event contract");
   await tx.insert(auditLogs).values({ studioId: data.studioId, userId: data.userId, action: data.action as AuditAction,
     entityType: data.entityType, entityId: data.entityId, contractVersion: 1,

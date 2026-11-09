@@ -19,7 +19,7 @@ test("Owner resolves merge conflicts on mobile, retries a lost response and open
     const [source,target] = await db.insert(s.clients).values([{...clientFixture(studioId),firstName:"Anna",fullName:"Anna",notes:"Preserved source note"},{...clientFixture(studioId),firstName:"Anna Maria",fullName:"Anna Maria",notes:"Target note"}]).returning();
     await db.insert(s.activityEvents).values({studioId,clientId:source.id,type:"client_created",title:"Original historic event"});
     await page.setViewportSize({width:390,height:844}); await page.goto(`/clients/${target.id}`);
-    await page.getByRole("link",{name:"Объединить с другой карточкой"}).click();
+    await page.getByRole("link",{name:"Объединить"}).click();
     await page.getByLabel("Карточка-дубль").selectOption(source.id);
     await page.getByRole("button",{name:"Проверить объединение",exact:true}).click();
     const commit = page.getByRole("button",{name:"Объединить и сохранить историю",exact:true}); await expect(commit).toBeDisabled();

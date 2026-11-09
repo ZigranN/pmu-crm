@@ -14,4 +14,8 @@ vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("External HTTP disab
 vi.mock("@/lib/cloudinary", () => ({
   uploadToCloudinary: vi.fn(() => Promise.reject(new Error("Configure an upload mock"))),
   deleteFromCloudinary: vi.fn(() => Promise.reject(new Error("Configure a deletion mock"))),
+  getSignedCloudinaryDeliveryUrl: vi.fn(
+    (publicId: string, options: { resource_type: "image" | "raw" }) =>
+      `https://res.cloudinary.com/test-only/${options.resource_type}/authenticated/s--mock-sig--/${publicId}`
+  ),
 }));

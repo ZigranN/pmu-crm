@@ -2,7 +2,7 @@
 import { db } from "@/db";
 import { outboxJobs } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
-import { requireStudioContext } from "@/server/auth/context";
+import { requireBrowserStudioContext } from "@/server/auth/context";
 import { lockStudioAccess } from "@/server/auth/scopes";
 import { writeAudit } from "@/server/services/audit-log.service";
 import { handlers } from "@/server/events/registry";
@@ -10,7 +10,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 export async function recoverJob(input: { id: string; reason: string }) {
   const data = z.object({ id: z.string().uuid(), reason: z.string().trim().min(3).max(1000) }).strict().parse(input);
-  const context = await requireStudioContext();
+  const context = await requireBrowserStudioContext();
   await db.transaction(async tx => {
     const actor = await lockStudioAccess(tx, context);
     if (actor.role !== "OWNER") throw new Error("Permission denied");

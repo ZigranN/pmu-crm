@@ -722,6 +722,25 @@ export const clientMedicalProfiles = pgTable("client_medical_profiles", {
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, table => ({ active: uniqueIndex("client_medical_active_unique").on(table.clientId).where(sql`${table.supersededAt} is null`) }));
 
+export const medicalProfileRevisions = pgTable("medical_profile_revisions", {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+        .notNull()
+        .references(() => studios.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id")
+        .notNull()
+        .references(() => clients.id, { onDelete: "cascade" }),
+    revisionNumber: integer("revision_number").notNull(),
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+    createdById: text("created_by_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+    clientRevisionUnique: uniqueIndex("medical_profile_revisions_client_revision_unique").on(table.clientId, table.revisionNumber),
+    studioIdx: index("medical_profile_revisions_studio_idx").on(table.studioId),
+    clientCreatedIdx: index("medical_profile_revisions_client_created_idx").on(table.clientId, table.createdAt),
+    revisionNumberCheck: check("medical_profile_revisions_revision_positive", sql`${table.revisionNumber} > 0`),
+}));
+
 
 export const clientStatusHistory = pgTable("client_status_history", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -811,6 +830,44 @@ export const blockedTimes = pgTable(
     })
 );
 
+export const calendarExceptions = pgTable(
+  "calendar_exceptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "cascade" }),
+    masterId: uuid("master_id")
+      .references(() => masters.id, { onDelete: "cascade" }),
+    type: text("type").notNull(), // "DAY_OFF" | "BLOCKED_TIME" | "STUDIO_CLOSURE"
+    reason: text("reason"),
+    startAt: timestamp("start_at").notNull(),
+    endAt: timestamp("end_at").notNull(),
+    createdById: text("created_by_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"),
+    deletedById: text("deleted_by_id"),
+  },
+  (table) => ({
+    studioMasterRangeIdx: index("calendar_exceptions_studio_master_range_idx").on(
+      table.studioId,
+      table.masterId,
+      table.startAt,
+      table.endAt
+    ),
+    studioRangeIdx: index("calendar_exceptions_studio_range_idx").on(
+      table.studioId,
+      table.startAt,
+      table.endAt
+    ),
+    endAfterStartCheck: check(
+      "calendar_exceptions_end_after_start_check",
+      sql`${table.endAt} > ${table.startAt}`
+    ),
+  })
+);
+
 export const recurrenceRules = pgTable("recurrence_rules", {
   id: uuid("id").defaultRandom().primaryKey(),
   studioId: uuid("studio_id")
@@ -857,6 +914,8 @@ export const appointments = pgTable(
         createdById: text("created_by_id").notNull(),
         confirmedAt: timestamp("confirmed_at"),
         completedAt: timestamp("completed_at"),
+        cancelledAt: timestamp("cancelled_at"),
+        cancelledById: text("cancelled_by_id").references(() => user.id),
         serviceSnapshot: jsonb("service_snapshot").notNull(),
         clientSnapshot: jsonb("client_snapshot").notNull(),
         masterSnapshot: jsonb("master_snapshot").notNull(),
@@ -868,6 +927,7 @@ export const appointments = pgTable(
         deletedById: text("deleted_by_id"),
     },
     (table) => ({
+        studioIdentity: uniqueIndex("appointments_id_studio_unique").on(table.id, table.studioId),
         clientIdentity: uniqueIndex("appointments_id_studio_client_unique").on(table.id, table.studioId, table.clientId),
         studioIdIdx: index("appointments_studio_id_idx").on(table.studioId),
         masterIdIdx: index("appointments_master_id_idx").on(table.masterId),
@@ -909,6 +969,14 @@ export const procedureTechniques = pgTable("procedure_techniques", {
   deletedById: text("deleted_by_id"),
 });
 
+export const PROCEDURE_SESSION_STATUSES = [
+  "PLANNED",
+  "IN_PROGRESS",
+  "COMPLETED",
+  "ABORTED",
+] as const;
+export type ProcedureSessionStatus = typeof PROCEDURE_SESSION_STATUSES[number];
+
 export const procedureSessions = pgTable(
     "procedure_sessions",
     {
@@ -929,6 +997,15 @@ export const procedureSessions = pgTable(
         serviceId: uuid("service_id")
             .notNull()
             .references(() => services.id),
+        status: text("status").$type<ProcedureSessionStatus>().notNull().default("COMPLETED"),
+        startedAt: timestamp("started_at", { withTimezone: true }),
+        completedAt: timestamp("completed_at", { withTimezone: true }),
+        abortedAt: timestamp("aborted_at", { withTimezone: true }),
+        abortReason: text("abort_reason"),
+        commandId: text("command_id"),
+        serviceSnapshot: jsonb("service_snapshot").$type<Record<string, unknown>>(),
+        masterSnapshot: jsonb("master_snapshot").$type<Record<string, unknown>>(),
+        clientSnapshot: jsonb("client_snapshot").$type<Record<string, unknown>>(),
         procedureArea: procedureAreaEnum("procedure_area").notNull(),
         procedureType: procedureTypeEnum("procedure_type").notNull(),
         sessionType: sessionTypeEnum("session_type").notNull(),
@@ -957,9 +1034,17 @@ export const procedureSessions = pgTable(
         cycleIdx: index("procedure_sessions_cycle_idx").on(table.studioId,table.cycleId),
         clientIdIdx: index("procedure_sessions_client_id_idx").on(table.clientId),
         masterIdIdx: index("procedure_sessions_master_id_idx").on(table.masterId),
+        statusIdx: index("procedure_sessions_studio_status_idx").on(table.studioId, table.status),
+        activeCycleUnique: uniqueIndex("procedure_sessions_active_cycle_unique").on(table.cycleId).where(sql`${table.status} = 'IN_PROGRESS' AND ${table.deletedAt} IS NULL`),
+        activeAppointmentUnique: uniqueIndex("procedure_sessions_active_appointment_unique").on(table.appointmentId).where(sql`${table.appointmentId} IS NOT NULL AND ${table.status} = 'IN_PROGRESS' AND ${table.deletedAt} IS NULL`),
+        commandUnique: uniqueIndex("procedure_sessions_command_unique").on(table.commandId).where(sql`${table.commandId} IS NOT NULL`),
         painLevelCheck: check(
             "procedure_sessions_pain_level_check",
             sql`${table.painLevel} IS NULL OR (${table.painLevel} >= 0 AND ${table.painLevel} <= 10)`
+        ),
+        statusCheck: check(
+            "procedure_sessions_status_check",
+            sql`${table.status} IN ('PLANNED', 'IN_PROGRESS', 'COMPLETED', 'ABORTED')`
         ),
     })
 );
@@ -1024,7 +1109,9 @@ export const media = pgTable("media", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   deletedAt: timestamp("deleted_at"),
   deletedById: text("deleted_by_id"),
-});
+}, table => ({
+  studioIdentity: uniqueIndex("media_studio_identity").on(table.id, table.studioId),
+}));
 
 export const consents = pgTable("consents", {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -1554,13 +1641,15 @@ export const clientMerges = pgTable("client_merges", {
 export const treatmentPackages = pgTable("treatment_packages", {
   id: uuid("id").defaultRandom().primaryKey(), studioId: uuid("studio_id").notNull().references(() => studios.id, {onDelete:"cascade"}),
   clientId: uuid("client_id").notNull(), kind: text("kind").notNull().default("total_face"),
+  status: text("status").notNull().default("active"),
   version: integer("version").notNull().default(1), commercialSnapshot: jsonb("commercial_snapshot"),
+  createdById: text("created_by_id"), completedAt: timestamp("completed_at", {withTimezone:true}),
   createdAt: timestamp("created_at", {withTimezone:true}).notNull().defaultNow(), updatedAt: timestamp("updated_at", {withTimezone:true}).notNull().defaultNow(),
   archivedAt: timestamp("archived_at", {withTimezone:true}),
 }, table => ({
   identity: uniqueIndex("treatment_packages_identity").on(table.id,table.studioId,table.clientId),
   client: foreignKey({name:"treatment_packages_client_fk",columns:[table.clientId,table.studioId],foreignColumns:[clients.id,clients.studioId]}),
-  contract: check("treatment_packages_contract", sql`${table.kind} = 'total_face' and ${table.version} > 0 and (${table.commercialSnapshot} is null or jsonb_typeof(${table.commercialSnapshot}) = 'object')`),
+  contract: check("treatment_packages_contract", sql`${table.kind} = 'total_face' and ${table.status} in ('active', 'completed', 'archived') and ${table.version} > 0 and (${table.commercialSnapshot} is null or jsonb_typeof(${table.commercialSnapshot}) = 'object')`),
 }));
 export const treatmentCycles = pgTable("treatment_cycles", {
   id: uuid("id").defaultRandom().primaryKey(), studioId: uuid("studio_id").notNull().references(() => studios.id, {onDelete:"cascade"}),
@@ -1691,3 +1780,926 @@ export const cycleCommercialTerms = pgTable("cycle_commercial_terms", {
   command: uniqueIndex("commercial_terms_command_unique").on(t.commandId),
   contract: check("commercial_terms_contract",sql`${t.revision}>0 and ${t.cycleVersion}>0 and ${t.currency}='EUR' and ${t.reviewAt}>${t.confirmedAt} and length(trim(${t.reason})) between 3 and 1000 and jsonb_typeof(${t.sourceSnapshot})='object' and ((${t.source}='catalog' and ${t.offerItemId} is null and ${t.amountCents} is not null and ${t.amountCents}>=0) or (${t.source}='offer' and ${t.offerItemId} is not null and ${t.amountCents} is null))`),
 }));
+
+export const CYCLE_MEDICAL_CLEARANCE_DECISIONS = [
+  "CLEARED",
+  "CONSULTATION_REQUIRED",
+  "NOT_CLEARED",
+] as const;
+
+export type CycleMedicalClearanceDecision = typeof CYCLE_MEDICAL_CLEARANCE_DECISIONS[number];
+
+export const cycleMedicalClearances = pgTable("cycle_medical_clearances", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id")
+    .notNull()
+    .references(() => studios.id, { onDelete: "cascade" }),
+  cycleId: uuid("cycle_id")
+    .notNull()
+    .references(() => treatmentCycles.id),
+  medicalRevisionId: uuid("medical_revision_id")
+    .notNull()
+    .references(() => medicalProfileRevisions.id),
+  decisionNumber: integer("decision_number").notNull(),
+  decision: text("decision").$type<CycleMedicalClearanceDecision>().notNull(),
+  reason: text("reason").notNull(),
+  clinicalNotes: text("clinical_notes"),
+  decidedById: text("decided_by_id")
+    .notNull()
+    .references(() => user.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  cycleDecisionUnique: uniqueIndex("cycle_medical_clearances_cycle_decision_unique").on(table.cycleId, table.decisionNumber),
+  studioIdx: index("cycle_medical_clearances_studio_idx").on(table.studioId),
+  medicalRevisionIdx: index("cycle_medical_clearances_medical_revision_idx").on(table.medicalRevisionId),
+  cycleMedicalRevisionIdx: index("cycle_medical_clearances_cycle_medical_revision_idx").on(table.cycleId, table.medicalRevisionId),
+  decisionCheck: check("cycle_medical_clearances_decision_check", sql`${table.decision} in ('CLEARED', 'CONSULTATION_REQUIRED', 'NOT_CLEARED')`),
+  decisionNumberPositive: check("cycle_medical_clearances_decision_number_positive", sql`${table.decisionNumber} > 0`),
+}));
+
+export const consentTemplates = pgTable("consent_templates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id")
+    .notNull()
+    .references(() => studios.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdById: text("created_by_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+}, table => ({
+  studioCodeUnique: uniqueIndex("consent_templates_studio_code_unique").on(table.studioId, table.code),
+  identity: uniqueIndex("consent_templates_identity").on(table.id, table.studioId),
+  studioIdx: index("consent_templates_studio_idx").on(table.studioId),
+  contract: check("consent_templates_contract", sql`length(trim(${table.code})) > 0 and length(trim(${table.name})) > 0`),
+}));
+
+export const consentTemplateVersions = pgTable("consent_template_versions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id")
+    .notNull()
+    .references(() => studios.id, { onDelete: "cascade" }),
+  templateId: uuid("template_id").notNull(),
+  versionNumber: integer("version_number").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  contentHash: text("content_hash").notNull(),
+  createdById: text("created_by_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+}, table => ({
+  templateFk: foreignKey({
+    name: "consent_template_versions_template_fk",
+    columns: [table.templateId, table.studioId],
+    foreignColumns: [consentTemplates.id, consentTemplates.studioId],
+  }).onDelete("restrict"),
+  templateVersionUnique: uniqueIndex("consent_template_versions_template_version_unique").on(table.templateId, table.versionNumber),
+  identity: uniqueIndex("consent_template_versions_identity").on(table.id, table.studioId),
+  studioIdx: index("consent_template_versions_studio_idx").on(table.studioId),
+  templateIdx: index("consent_template_versions_template_idx").on(table.templateId),
+  versionPositive: check("consent_template_versions_version_positive", sql`${table.versionNumber} > 0`),
+  contentCheck: check("consent_template_versions_content_check", sql`length(trim(${table.title})) > 0 and length(trim(${table.body})) > 0 and length(trim(${table.contentHash})) = 64`),
+}));
+
+export const CYCLE_CONSENT_STATUSES = ["DRAFT", "SIGNED"] as const;
+export type CycleConsentStatus = typeof CYCLE_CONSENT_STATUSES[number];
+
+export const CYCLE_CONSENT_SIGNATURE_METHODS = [
+  "in_person_stylus",
+  "draw_on_screen",
+  "remote_link",
+  "biometric",
+] as const;
+export type CycleConsentSignatureMethod = typeof CYCLE_CONSENT_SIGNATURE_METHODS[number];
+
+export const CYCLE_CONSENT_SIGNATORY_ROLES = [
+  "client",
+  "guardian",
+  "representative",
+] as const;
+export type CycleConsentSignatoryRole = typeof CYCLE_CONSENT_SIGNATORY_ROLES[number];
+
+export const cycleConsents = pgTable("cycle_consents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id")
+    .notNull()
+    .references(() => studios.id, { onDelete: "cascade" }),
+  cycleId: uuid("cycle_id").notNull(),
+  clientId: uuid("client_id").notNull(),
+  templateVersionId: uuid("template_version_id").notNull(),
+  status: text("status").$type<CycleConsentStatus>().notNull().default("DRAFT"),
+  mediaId: uuid("media_id"),
+  signedPdfSha256: text("signed_pdf_sha256"),
+  signatureMethod: text("signature_method").$type<CycleConsentSignatureMethod>(),
+  signaturePayload: jsonb("signature_payload").$type<Record<string, unknown>>(),
+  signatoryName: text("signatory_name"),
+  signatoryRole: text("signatory_role").$type<CycleConsentSignatoryRole>(),
+  createdById: text("created_by_id").references(() => user.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  signedAt: timestamp("signed_at", { withTimezone: true }),
+  finalizedById: text("finalized_by_id").references(() => user.id, { onDelete: "restrict" }),
+  finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+}, table => ({
+  cycleFk: foreignKey({
+    name: "cycle_consents_cycle_fk",
+    columns: [table.cycleId, table.studioId],
+    foreignColumns: [treatmentCycles.id, treatmentCycles.studioId],
+  }).onDelete("restrict"),
+  clientFk: foreignKey({
+    name: "cycle_consents_client_fk",
+    columns: [table.clientId, table.studioId],
+    foreignColumns: [clients.id, clients.studioId],
+  }).onDelete("restrict"),
+  templateFk: foreignKey({
+    name: "cycle_consents_template_fk",
+    columns: [table.templateVersionId, table.studioId],
+    foreignColumns: [consentTemplateVersions.id, consentTemplateVersions.studioId],
+  }).onDelete("restrict"),
+  mediaFk: foreignKey({
+    name: "cycle_consents_media_fk",
+    columns: [table.mediaId, table.studioId],
+    foreignColumns: [media.id, media.studioId],
+  }).onDelete("restrict"),
+  identity: uniqueIndex("cycle_consents_identity").on(table.id, table.studioId),
+  studioIdx: index("cycle_consents_studio_idx").on(table.studioId),
+  cycleIdx: index("cycle_consents_cycle_idx").on(table.studioId, table.cycleId),
+  clientIdx: index("cycle_consents_client_idx").on(table.studioId, table.clientId),
+  templateVersionIdx: index("cycle_consents_template_version_idx").on(table.templateVersionId),
+  mediaUnique: uniqueIndex("cycle_consents_media_unique").on(table.mediaId).where(sql`${table.mediaId} is not null`),
+  statusCheck: check("cycle_consents_status_check", sql`${table.status} in ('DRAFT', 'SIGNED')`),
+  signatureMethodCheck: check("cycle_consents_signature_method_check", sql`${table.signatureMethod} is null or ${table.signatureMethod} in ('in_person_stylus', 'draw_on_screen', 'remote_link', 'biometric')`),
+  signatoryRoleCheck: check("cycle_consents_signatory_role_check", sql`${table.signatoryRole} is null or ${table.signatoryRole} in ('client', 'guardian', 'representative')`),
+  lifecycleCheck: check(
+    "cycle_consents_lifecycle_check",
+    sql`(
+      ${table.status} = 'DRAFT'
+      and ${table.signedAt} is null
+      and ${table.mediaId} is null
+      and ${table.signedPdfSha256} is null
+      and ${table.signatureMethod} is null
+      and ${table.signaturePayload} is null
+      and ${table.finalizedById} is null
+      and ${table.finalizedAt} is null
+    ) or (
+      ${table.status} = 'SIGNED'
+      and ${table.signedAt} is not null
+      and ${table.mediaId} is not null
+      and ${table.signedPdfSha256} is not null
+      and ${table.signedPdfSha256} ~ '^[0-9a-f]{64}$'
+      and ${table.signatureMethod} is not null
+      and ${table.signaturePayload} is not null
+      and jsonb_typeof(${table.signaturePayload}) = 'object'
+      and ${table.signatoryName} is not null
+      and length(trim(${table.signatoryName})) > 0
+      and ${table.signatoryRole} is not null
+      and ${table.finalizedById} is not null
+      and ${table.finalizedAt} is not null
+      and ${table.finalizedAt} >= ${table.signedAt}
+    )`
+  ),
+}));
+
+export const cycleConsentZones = pgTable("cycle_consent_zones", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id")
+    .notNull()
+    .references(() => studios.id, { onDelete: "cascade" }),
+  consentId: uuid("consent_id").notNull(),
+  zoneCode: text("zone_code").notNull().references(() => catalogZones.code),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  consentFk: foreignKey({
+    name: "cycle_consent_zones_consent_fk",
+    columns: [table.consentId, table.studioId],
+    foreignColumns: [cycleConsents.id, cycleConsents.studioId],
+  }).onDelete("restrict"),
+  consentZoneUnique: uniqueIndex("cycle_consent_zones_consent_zone_unique").on(table.consentId, table.zoneCode),
+  identity: uniqueIndex("cycle_consent_zones_identity").on(table.id, table.studioId),
+  studioConsentIdx: index("cycle_consent_zones_studio_consent_idx").on(table.studioId, table.consentId),
+  zoneIdx: index("cycle_consent_zones_zone_idx").on(table.zoneCode),
+}));
+
+export const ledgerEntries = pgTable("ledger_entries", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id")
+    .notNull()
+    .references(() => studios.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull(),
+  appointmentId: uuid("appointment_id"),
+  cycleId: uuid("cycle_id"),
+  type: text("type").notNull(),
+  amountMinor: integer("amount_minor").notNull(),
+  currency: text("currency").notNull().default("EUR"),
+  paymentMethod: text("payment_method"),
+  targetPaymentId: uuid("target_payment_id"),
+  reason: text("reason").notNull(),
+  commandId: text("command_id"),
+  createdById: text("created_by_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  clientFk: foreignKey({
+    name: "ledger_entries_client_fk",
+    columns: [table.clientId, table.studioId],
+    foreignColumns: [clients.id, clients.studioId],
+  }).onDelete("restrict"),
+  appointmentFk: foreignKey({
+    name: "ledger_entries_appointment_fk",
+    columns: [table.appointmentId, table.studioId, table.clientId],
+    foreignColumns: [appointments.id, appointments.studioId, appointments.clientId],
+  }).onDelete("restrict"),
+  cycleFk: foreignKey({
+    name: "ledger_entries_cycle_fk",
+    columns: [table.cycleId, table.studioId],
+    foreignColumns: [treatmentCycles.id, treatmentCycles.studioId],
+  }).onDelete("restrict"),
+  targetPaymentFk: foreignKey({
+    name: "ledger_entries_target_payment_fk",
+    columns: [table.targetPaymentId, table.studioId],
+    foreignColumns: [table.id, table.studioId],
+  }).onDelete("restrict"),
+  identity: uniqueIndex("ledger_entries_identity").on(table.id, table.studioId),
+  commandUnique: uniqueIndex("ledger_entries_command_unique").on(table.commandId).where(sql`${table.commandId} is not null`),
+  studioIdx: index("ledger_entries_studio_idx").on(table.studioId),
+  clientIdx: index("ledger_entries_client_idx").on(table.studioId, table.clientId),
+  appointmentIdx: index("ledger_entries_appointment_idx").on(table.studioId, table.appointmentId),
+  cycleIdx: index("ledger_entries_cycle_idx").on(table.studioId, table.cycleId),
+  targetPaymentIdx: index("ledger_entries_target_payment_idx").on(table.studioId, table.targetPaymentId),
+  typeCheck: check("ledger_entries_type_check", sql`${table.type} in ('CHARGE', 'PAYMENT', 'REFUND', 'ADJUSTMENT')`),
+  currencyCheck: check("ledger_entries_currency_check", sql`${table.currency} = 'EUR'`),
+  amountCheck: check("ledger_entries_amount_minor_check", sql`${table.amountMinor} <> 0`),
+  reasonCheck: check("ledger_entries_reason_check", sql`length(trim(${table.reason})) > 0`),
+  refundTargetCheck: check("ledger_entries_refund_target_check", sql`${table.type} != 'REFUND' or ${table.targetPaymentId} is not null or ${table.appointmentId} is not null or ${table.clientId} is not null`),
+}));
+
+export const CONVERSATION_STATUSES = ["OPEN", "CLOSED"] as const;
+export type ConversationStatus = typeof CONVERSATION_STATUSES[number];
+
+export const MESSAGE_DIRECTIONS = ["INBOUND", "OUTBOUND"] as const;
+export type MessageDirection = typeof MESSAGE_DIRECTIONS[number];
+
+export const MESSAGE_CHANNELS = ["MANUAL", "WHATSAPP", "SMS", "EMAIL"] as const;
+export type MessageChannel = typeof MESSAGE_CHANNELS[number];
+
+export const conversations = pgTable("conversations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id")
+    .notNull()
+    .references(() => studios.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull(),
+  cycleId: uuid("cycle_id"),
+  assignedUserId: text("assigned_user_id").references(() => user.id, { onDelete: "set null" }),
+  status: text("status").$type<ConversationStatus>().notNull().default("OPEN"),
+  lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  clientFk: foreignKey({
+    name: "conversations_client_fk",
+    columns: [table.clientId, table.studioId],
+    foreignColumns: [clients.id, clients.studioId],
+  }).onDelete("cascade"),
+  cycleFk: foreignKey({
+    name: "conversations_cycle_fk",
+    columns: [table.cycleId, table.studioId],
+    foreignColumns: [treatmentCycles.id, treatmentCycles.studioId],
+  }).onDelete("set null"),
+  identity: uniqueIndex("conversations_identity").on(table.id, table.studioId),
+  studioClientUnique: uniqueIndex("conversations_studio_client_unique").on(table.studioId, table.clientId),
+  studioIdx: index("conversations_studio_idx").on(table.studioId),
+  clientIdx: index("conversations_client_idx").on(table.clientId),
+  assignedUserIdx: index("conversations_assigned_user_idx").on(table.assignedUserId),
+  lastMessageAtIdx: index("conversations_last_message_at_idx").on(table.studioId, table.lastMessageAt),
+  statusCheck: check("conversations_status_check", sql`${table.status} in ('OPEN', 'CLOSED')`),
+}));
+
+export const conversationMessages = pgTable("conversation_messages", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id")
+    .notNull()
+    .references(() => studios.id, { onDelete: "cascade" }),
+  conversationId: uuid("conversation_id").notNull(),
+  clientId: uuid("client_id").notNull(),
+  cycleId: uuid("cycle_id"),
+  direction: text("direction").$type<MessageDirection>().notNull(),
+  channel: text("channel").$type<MessageChannel>().notNull(),
+  body: text("body").notNull(),
+  senderUserId: text("sender_user_id").references(() => user.id, { onDelete: "set null" }),
+  providerMessageId: text("provider_message_id"),
+  providerMetadata: jsonb("provider_metadata").$type<Record<string, unknown>>(),
+  sentAt: timestamp("sent_at", { withTimezone: true }).defaultNow().notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  conversationFk: foreignKey({
+    name: "conversation_messages_conversation_fk",
+    columns: [table.conversationId, table.studioId],
+    foreignColumns: [conversations.id, conversations.studioId],
+  }).onDelete("cascade"),
+  clientFk: foreignKey({
+    name: "conversation_messages_client_fk",
+    columns: [table.clientId, table.studioId],
+    foreignColumns: [clients.id, clients.studioId],
+  }).onDelete("cascade"),
+  cycleFk: foreignKey({
+    name: "conversation_messages_cycle_fk",
+    columns: [table.cycleId, table.studioId],
+    foreignColumns: [treatmentCycles.id, treatmentCycles.studioId],
+  }).onDelete("set null"),
+  identity: uniqueIndex("conversation_messages_identity").on(table.id, table.studioId),
+  studioConversationIdx: index("conversation_messages_studio_conversation_idx").on(table.studioId, table.conversationId, table.sentAt),
+  studioClientIdx: index("conversation_messages_studio_client_idx").on(table.studioId, table.clientId, table.sentAt),
+  providerMessageUnique: uniqueIndex("conversation_messages_provider_id_unique").on(table.studioId, table.providerMessageId).where(sql`${table.providerMessageId} is not null`),
+  directionCheck: check("conversation_messages_direction_check", sql`${table.direction} in ('INBOUND', 'OUTBOUND')`),
+  channelCheck: check("conversation_messages_channel_check", sql`${table.channel} in ('MANUAL', 'WHATSAPP', 'SMS', 'EMAIL')`),
+  bodyCheck: check("conversation_messages_body_check", sql`length(trim(${table.body})) > 0`),
+}));
+
+export const conversationReadStates = pgTable("conversation_read_states", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id")
+    .notNull()
+    .references(() => studios.id, { onDelete: "cascade" }),
+  conversationId: uuid("conversation_id").notNull(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  lastReadMessageId: uuid("last_read_message_id"),
+  lastReadAt: timestamp("last_read_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  conversationFk: foreignKey({
+    name: "conversation_read_states_conversation_fk",
+    columns: [table.conversationId, table.studioId],
+    foreignColumns: [conversations.id, conversations.studioId],
+  }).onDelete("cascade"),
+  lastReadMessageFk: foreignKey({
+    name: "conversation_read_states_message_fk",
+    columns: [table.lastReadMessageId, table.studioId],
+    foreignColumns: [conversationMessages.id, conversationMessages.studioId],
+  }).onDelete("set null"),
+  conversationUserUnique: uniqueIndex("conversation_read_states_user_unique").on(table.conversationId, table.userId),
+  identity: uniqueIndex("conversation_read_states_identity").on(table.id, table.studioId),
+  studioUserIdx: index("conversation_read_states_studio_user_idx").on(table.studioId, table.userId),
+}));
+
+export const AUTOMATION_TRIGGER_TYPES = [
+  "APPOINTMENT_CREATED",
+  "APPOINTMENT_RESCHEDULED",
+  "APPOINTMENT_CANCELLED",
+  "APPOINTMENT_REMINDER_DUE",
+  "PROCEDURE_COMPLETED",
+  "CONVERSATION_INBOUND_RECEIVED",
+  "CONVERSATION_FOLLOW_UP_DUE",
+  "TREATMENT_CYCLE_STAGE_CHANGED",
+  "MEDICAL_REVIEW_REQUIRED",
+  "CONSENT_REQUIRED",
+] as const;
+export type AutomationTriggerType = typeof AUTOMATION_TRIGGER_TYPES[number];
+
+export const AUTOMATION_ACTION_TYPES = [
+  "CREATE_OPERATIONAL_REMINDER",
+  "CREATE_CONVERSATION_FOLLOW_UP",
+  "RECORD_INTERNAL_MESSAGE",
+  "SURFACE_NEEDS_ATTENTION",
+] as const;
+export type AutomationActionType = typeof AUTOMATION_ACTION_TYPES[number];
+
+export const AUTOMATION_EXECUTION_STATUSES = [
+  "scheduled",
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "skipped",
+] as const;
+export type AutomationExecutionStatus = typeof AUTOMATION_EXECUTION_STATUSES[number];
+
+export const automationRules = pgTable("automation_rules", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id")
+    .notNull()
+    .references(() => studios.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  enabled: boolean("enabled").default(true).notNull(),
+  triggerType: text("trigger_type").$type<AutomationTriggerType>().notNull(),
+  actionType: text("action_type").$type<AutomationActionType>().notNull(),
+  config: jsonb("config").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  createdById: text("created_by_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  studioCodeUnique: uniqueIndex("automation_rules_studio_code_unique").on(table.studioId, table.code),
+  identity: uniqueIndex("automation_rules_identity").on(table.id, table.studioId),
+  studioIdx: index("automation_rules_studio_idx").on(table.studioId, table.triggerType, table.enabled),
+  codeCheck: check("automation_rules_code_check", sql`length(trim(${table.code})) >= 2`),
+  nameCheck: check("automation_rules_name_check", sql`length(trim(${table.name})) >= 2`),
+  triggerCheck: check("automation_rules_trigger_check", sql`${table.triggerType} in ('APPOINTMENT_CREATED', 'APPOINTMENT_RESCHEDULED', 'APPOINTMENT_CANCELLED', 'APPOINTMENT_REMINDER_DUE', 'PROCEDURE_COMPLETED', 'CONVERSATION_INBOUND_RECEIVED', 'CONVERSATION_FOLLOW_UP_DUE', 'TREATMENT_CYCLE_STAGE_CHANGED', 'MEDICAL_REVIEW_REQUIRED', 'CONSENT_REQUIRED')`),
+  actionCheck: check("automation_rules_action_check", sql`${table.actionType} in ('CREATE_OPERATIONAL_REMINDER', 'CREATE_CONVERSATION_FOLLOW_UP', 'RECORD_INTERNAL_MESSAGE', 'SURFACE_NEEDS_ATTENTION')`),
+}));
+
+export const automationExecutions = pgTable("automation_executions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id")
+    .notNull()
+    .references(() => studios.id, { onDelete: "cascade" }),
+  ruleId: uuid("rule_id"),
+  jobId: uuid("job_id"),
+  triggerType: text("trigger_type").$type<AutomationTriggerType>().notNull(),
+  actionType: text("action_type").$type<AutomationActionType>().notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  status: text("status").$type<AutomationExecutionStatus>().default("scheduled").notNull(),
+  attemptCount: integer("attempt_count").default(0).notNull(),
+  scheduledFor: timestamp("scheduled_for", { withTimezone: true }).defaultNow().notNull(),
+  executedAt: timestamp("executed_at", { withTimezone: true }),
+  result: jsonb("result").$type<Record<string, unknown>>(),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  ruleFk: foreignKey({
+    name: "automation_executions_rule_fk",
+    columns: [table.ruleId, table.studioId],
+    foreignColumns: [automationRules.id, automationRules.studioId],
+  }).onDelete("set null"),
+  identity: uniqueIndex("automation_executions_identity").on(table.id, table.studioId),
+  studioCreatedAtIdx: index("automation_executions_studio_created_at_idx").on(table.studioId, table.createdAt),
+  studioEntityIdx: index("automation_executions_studio_entity_idx").on(table.studioId, table.entityType, table.entityId),
+  ruleStatusIdx: index("automation_executions_rule_status_idx").on(table.ruleId, table.status),
+  jobIdIdx: index("automation_executions_job_id_idx").on(table.jobId),
+  statusCheck: check("automation_executions_status_check", sql`${table.status} in ('scheduled', 'running', 'succeeded', 'failed', 'cancelled', 'skipped')`),
+}));
+
+export const GOOGLE_CALENDAR_CONNECTION_STATUSES = [
+  "connected",
+  "needs_reauth",
+  "sync_error",
+  "disconnected",
+] as const;
+export type GoogleCalendarConnectionStatus = typeof GOOGLE_CALENDAR_CONNECTION_STATUSES[number];
+
+export const GOOGLE_CALENDAR_SYNC_DIRECTIONS = [
+  "two_way",
+  "outbound_only",
+] as const;
+export type GoogleCalendarSyncDirection = typeof GOOGLE_CALENDAR_SYNC_DIRECTIONS[number];
+
+export const GOOGLE_CALENDAR_SYNC_STATUSES = [
+  "idle",
+  "syncing",
+  "error",
+] as const;
+export type GoogleCalendarSyncStatus = typeof GOOGLE_CALENDAR_SYNC_STATUSES[number];
+
+export const GOOGLE_CALENDAR_MAPPING_STATUSES = [
+  "synced",
+  "pending",
+  "failed",
+  "deleted",
+] as const;
+export type GoogleCalendarMappingStatus = typeof GOOGLE_CALENDAR_MAPPING_STATUSES[number];
+
+export const googleCalendarConnections = pgTable("google_calendar_connections", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id")
+    .notNull()
+    .references(() => studios.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  masterId: uuid("master_id")
+    .references(() => masters.id, { onDelete: "set null" }),
+  googleAccountId: text("google_account_id"),
+  googleEmail: text("google_email"),
+  calendarId: text("calendar_id").notNull().default("primary"),
+  calendarSummary: text("calendar_summary"),
+  encryptedAccessToken: text("encrypted_access_token"),
+  encryptedRefreshToken: text("encrypted_refresh_token"),
+  tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+  scope: text("scope").notNull().default("https://www.googleapis.com/auth/calendar.events"),
+  status: text("status").$type<GoogleCalendarConnectionStatus>().notNull().default("connected"),
+  syncDirection: text("sync_direction").$type<GoogleCalendarSyncDirection>().notNull().default("two_way"),
+  syncStatus: text("sync_status").$type<GoogleCalendarSyncStatus>().notNull().default("idle"),
+  channelId: text("channel_id"),
+  resourceId: text("resource_id"),
+  channelExpiresAt: timestamp("channel_expires_at", { withTimezone: true }),
+  syncToken: text("sync_token"),
+  lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  identity: uniqueIndex("google_calendar_connections_identity").on(table.id, table.studioId),
+  masterFk: foreignKey({
+    name: "google_calendar_connections_master_fk",
+    columns: [table.masterId, table.studioId],
+    foreignColumns: [masters.id, masters.studioId],
+  }).onDelete("set null"),
+  studioUserCalUnique: uniqueIndex("google_calendar_connections_studio_user_cal_unique").on(table.studioId, table.userId, table.calendarId),
+  studioMasterCalUnique: uniqueIndex("google_calendar_connections_studio_master_cal_unique").on(table.studioId, table.masterId, table.calendarId),
+  studioIdx: index("google_calendar_connections_studio_idx").on(table.studioId, table.status),
+  statusCheck: check("google_calendar_connections_status_check", sql`${table.status} in ('connected', 'needs_reauth', 'sync_error', 'disconnected')`),
+  syncDirectionCheck: check("google_calendar_connections_sync_direction_check", sql`${table.syncDirection} in ('two_way', 'outbound_only')`),
+  syncStatusCheck: check("google_calendar_connections_sync_status_check", sql`${table.syncStatus} in ('idle', 'syncing', 'error')`),
+}));
+
+export const googleCalendarEventMappings = pgTable("google_calendar_event_mappings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id")
+    .notNull()
+    .references(() => studios.id, { onDelete: "cascade" }),
+  connectionId: uuid("connection_id")
+    .notNull()
+    .references(() => googleCalendarConnections.id, { onDelete: "cascade" }),
+  appointmentId: uuid("appointment_id")
+    .notNull()
+    .references(() => appointments.id, { onDelete: "cascade" }),
+  googleEventId: text("google_event_id").notNull(),
+  etag: text("etag"),
+  lastSyncedHash: text("last_synced_hash").notNull(),
+  status: text("status").$type<GoogleCalendarMappingStatus>().notNull().default("synced"),
+  lastError: text("last_error"),
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  identity: uniqueIndex("google_calendar_event_mappings_identity").on(table.id, table.studioId),
+  connectionFk: foreignKey({
+    name: "google_calendar_event_mappings_connection_fk",
+    columns: [table.connectionId, table.studioId],
+    foreignColumns: [googleCalendarConnections.id, googleCalendarConnections.studioId],
+  }).onDelete("cascade"),
+  appointmentFk: foreignKey({
+    name: "google_calendar_event_mappings_appointment_fk",
+    columns: [table.appointmentId, table.studioId],
+    foreignColumns: [appointments.id, appointments.studioId],
+  }).onDelete("cascade"),
+  connApptUnique: uniqueIndex("google_calendar_event_mappings_conn_appt_unique").on(table.connectionId, table.appointmentId),
+  connEventUnique: uniqueIndex("google_calendar_event_mappings_conn_event_unique").on(table.connectionId, table.googleEventId),
+  studioIdx: index("google_calendar_event_mappings_studio_idx").on(table.studioId, table.status),
+  appointmentIdx: index("google_calendar_event_mappings_appointment_idx").on(table.appointmentId),
+  statusCheck: check("google_calendar_event_mappings_status_check", sql`${table.status} in ('synced', 'pending', 'failed', 'deleted')`),
+}));
+
+export const AI_RUN_STATUSES = [
+  "started",
+  "completed",
+  "failed",
+] as const;
+export type AiRunStatus = typeof AI_RUN_STATUSES[number];
+
+export const aiRuns = pgTable("ai_runs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  studioId: uuid("studio_id")
+    .notNull()
+    .references(() => studios.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  feature: text("feature").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  status: text("status").$type<AiRunStatus>().notNull().default("started"),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  promptVersion: text("prompt_version").notNull(),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  requestKey: text("request_key"),
+  result: jsonb("result"),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  identity: uniqueIndex("ai_runs_identity").on(table.id, table.studioId),
+  studioCreatedAtIdx: index("ai_runs_studio_created_at_idx").on(table.studioId, table.createdAt),
+  studioEntityIdx: index("ai_runs_studio_entity_idx").on(table.studioId, table.entityType, table.entityId),
+  studioFeatureIdx: index("ai_runs_studio_feature_idx").on(table.studioId, table.feature),
+  requestKeyUnique: uniqueIndex("ai_runs_studio_request_key_unique").on(table.studioId, table.requestKey),
+  statusCheck: check("ai_runs_status_check", sql`${table.status} in ('started', 'completed', 'failed')`),
+}));
+
+export const HANDOFF_STATUSES = [
+  "PENDING",
+  "ACCEPTED",
+  "REJECTED",
+  "CANCELLED",
+  "COMPLETED",
+] as const;
+export type HandoffStatus = (typeof HANDOFF_STATUSES)[number];
+
+export const HANDOFF_SOURCE_TYPES = [
+  "HUMAN",
+  "AUTOMATION",
+  "AI",
+  "SYSTEM",
+] as const;
+export type HandoffSourceType = (typeof HANDOFF_SOURCE_TYPES)[number];
+
+export const HANDOFF_ENTITY_TYPES = [
+  "CLIENT",
+  "TREATMENT_CYCLE",
+  "CONVERSATION",
+  "APPOINTMENT",
+  "NEEDS_ATTENTION_ITEM",
+] as const;
+export type HandoffEntityType = (typeof HANDOFF_ENTITY_TYPES)[number];
+
+export const HANDOFF_PRIORITIES = [
+  "URGENT",
+  "HIGH",
+  "NORMAL",
+  "LOW",
+] as const;
+export type HandoffPriority = (typeof HANDOFF_PRIORITIES)[number];
+
+export const handoffs = pgTable(
+  "handoffs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "cascade" }),
+    entityType: text("entity_type").$type<HandoffEntityType>().notNull(),
+    entityId: text("entity_id").notNull(),
+    clientId: uuid("client_id").references(() => clients.id, {
+      onDelete: "set null",
+    }),
+    cycleId: uuid("cycle_id").references(() => treatmentCycles.id, {
+      onDelete: "set null",
+    }),
+    conversationId: uuid("conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    appointmentId: uuid("appointment_id").references(() => appointments.id, {
+      onDelete: "set null",
+    }),
+    fromUserId: text("from_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    toUserId: text("to_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    sourceType: text("source_type")
+      .$type<HandoffSourceType>()
+      .notNull()
+      .default("HUMAN"),
+    reasonCode: text("reason_code").notNull(),
+    reasonText: text("reason_text"),
+    status: text("status")
+      .$type<HandoffStatus>()
+      .notNull()
+      .default("PENDING"),
+    priority: text("priority")
+      .$type<HandoffPriority>()
+      .notNull()
+      .default("NORMAL"),
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    requestKey: text("request_key"),
+    metadata: jsonb("metadata"),
+    createdById: text("created_by_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    acceptedById: text("accepted_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    rejectedAt: timestamp("rejected_at", { withTimezone: true }),
+    rejectedById: text("rejected_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    rejectionReason: text("rejection_reason"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    completedById: text("completed_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelledById: text("cancelled_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    cancellationReason: text("cancellation_reason"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    identity: uniqueIndex("handoffs_identity").on(table.id, table.studioId),
+    clientFk: foreignKey({
+      name: "handoffs_client_studio_fk",
+      columns: [table.clientId, table.studioId],
+      foreignColumns: [clients.id, clients.studioId],
+    }).onDelete("set null"),
+    cycleFk: foreignKey({
+      name: "handoffs_cycle_studio_fk",
+      columns: [table.cycleId, table.studioId],
+      foreignColumns: [treatmentCycles.id, treatmentCycles.studioId],
+    }).onDelete("set null"),
+    conversationFk: foreignKey({
+      name: "handoffs_conversation_studio_fk",
+      columns: [table.conversationId, table.studioId],
+      foreignColumns: [conversations.id, conversations.studioId],
+    }).onDelete("set null"),
+    appointmentFk: foreignKey({
+      name: "handoffs_appointment_studio_fk",
+      columns: [table.appointmentId, table.studioId],
+      foreignColumns: [appointments.id, appointments.studioId],
+    }).onDelete("set null"),
+    requestKeyUnique: uniqueIndex("handoffs_studio_request_key_unique").on(
+      table.studioId,
+      table.requestKey
+    ),
+    activeEntityPendingUnique: uniqueIndex("handoffs_active_entity_unique")
+      .on(table.studioId, table.entityType, table.entityId)
+      .where(sql`${table.status} = 'PENDING'`),
+    studioStatusToUserIdx: index("handoffs_studio_status_to_user_idx").on(
+      table.studioId,
+      table.status,
+      table.toUserId
+    ),
+    studioDueAtIdx: index("handoffs_studio_due_at_idx").on(
+      table.studioId,
+      table.dueAt
+    ),
+    studioCreatedAtIdx: index("handoffs_studio_created_at_idx").on(
+      table.studioId,
+      table.createdAt
+    ),
+    studioEntityIdx: index("handoffs_studio_entity_idx").on(
+      table.studioId,
+      table.entityType,
+      table.entityId
+    ),
+    statusCheck: check(
+      "handoffs_status_check",
+      sql`${table.status} in ('PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED', 'COMPLETED')`
+    ),
+    sourceTypeCheck: check(
+      "handoffs_source_type_check",
+      sql`${table.sourceType} in ('HUMAN', 'AUTOMATION', 'AI', 'SYSTEM')`
+    ),
+    priorityCheck: check(
+      "handoffs_priority_check",
+      sql`${table.priority} in ('URGENT', 'HIGH', 'NORMAL', 'LOW')`
+    ),
+    entityTypeCheck: check(
+      "handoffs_entity_type_check",
+      sql`${table.entityType} in ('CLIENT', 'TREATMENT_CYCLE', 'CONVERSATION', 'APPOINTMENT', 'NEEDS_ATTENTION_ITEM')`
+    ),
+  })
+);
+
+export const workerHeartbeats = pgTable(
+  "worker_heartbeats",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workerName: text("worker_name").notNull(),
+    instanceId: text("instance_id").notNull(),
+    lastHeartbeat: timestamp("last_heartbeat", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    version: text("version").default("1.0.0").notNull(),
+    metadata: jsonb("metadata"),
+  },
+  (table) => ({
+    workerInstanceUnique: uniqueIndex("worker_heartbeats_worker_instance_idx").on(
+      table.workerName,
+      table.instanceId
+    ),
+    lastHeartbeatIdx: index("worker_heartbeats_last_heartbeat_idx").on(
+      table.lastHeartbeat
+    ),
+  })
+);
+
+export type PrivacyRequestType = "EXPORT" | "ANONYMIZE" | "DELETE_WHERE_ALLOWED";
+export type PrivacyRequestStatus =
+  | "REQUESTED"
+  | "APPROVED"
+  | "RUNNING"
+  | "COMPLETED"
+  | "FAILED"
+  | "CANCELLED";
+
+export const privacyRequests = pgTable(
+  "privacy_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull(),
+    requestType: text("request_type").$type<PrivacyRequestType>().notNull(),
+    status: text("status")
+      .$type<PrivacyRequestStatus>()
+      .notNull()
+      .default("REQUESTED"),
+    requestedById: text("requested_by_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    requestedAt: timestamp("requested_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    approvedById: text("approved_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    failureReason: text("failure_reason"),
+    commandId: text("command_id"),
+    exportArtifactId: uuid("export_artifact_id").references(() => media.id, {
+      onDelete: "set null",
+    }),
+    exportExpiresAt: timestamp("export_expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    clientFk: foreignKey({
+      name: "privacy_requests_client_studio_fk",
+      columns: [table.clientId, table.studioId],
+      foreignColumns: [clients.id, clients.studioId],
+    }).onDelete("cascade"),
+    studioClientIdx: index("privacy_requests_studio_client_idx").on(
+      table.studioId,
+      table.clientId
+    ),
+    studioStatusIdx: index("privacy_requests_studio_status_idx").on(
+      table.studioId,
+      table.status
+    ),
+    studioCreatedAtIdx: index("privacy_requests_studio_created_at_idx").on(
+      table.studioId,
+      table.createdAt
+    ),
+    commandIdUnique: uniqueIndex("privacy_requests_command_id_idx").on(
+      table.commandId
+    ),
+    requestTypeCheck: check(
+      "privacy_requests_type_check",
+      sql`${table.requestType} in ('EXPORT', 'ANONYMIZE', 'DELETE_WHERE_ALLOWED')`
+    ),
+    statusCheck: check(
+      "privacy_requests_status_check",
+      sql`${table.status} in ('REQUESTED', 'APPROVED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED')`
+    ),
+  })
+);
+
+export const studioPrivacyRetentionPolicies = pgTable(
+  "studio_privacy_retention_policies",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "cascade" }),
+    temporaryUploadRetentionDays: integer("temporary_upload_retention_days")
+      .default(7)
+      .notNull(),
+    privacyExportRetentionDays: integer("privacy_export_retention_days")
+      .default(30)
+      .notNull(),
+    orphanMediaGraceDays: integer("orphan_media_grace_days")
+      .default(14)
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    studioIdUnique: uniqueIndex("studio_retention_policies_studio_id_unique").on(
+      table.studioId
+    ),
+    tempUploadCheck: check(
+      "studio_retention_policies_temp_check",
+      sql`${table.temporaryUploadRetentionDays} > 0`
+    ),
+    exportRetentionCheck: check(
+      "studio_retention_policies_export_check",
+      sql`${table.privacyExportRetentionDays} > 0`
+    ),
+    orphanGraceCheck: check(
+      "studio_retention_policies_orphan_check",
+      sql`${table.orphanMediaGraceDays} > 0`
+    ),
+  })
+);

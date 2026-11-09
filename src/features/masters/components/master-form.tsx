@@ -166,6 +166,7 @@ export function MasterForm({ initialData, availableServices }: MasterFormProps) 
                 <FormLabel>Фото мастера</FormLabel>
                 <FormControl>
                   <ImageUpload
+                    purpose="master_photo"
                     value={field.value}
                     onChange={field.onChange}
                     onRemove={() => field.onChange("")}

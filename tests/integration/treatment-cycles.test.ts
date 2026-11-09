@@ -5,9 +5,15 @@ import { createTestDatabase } from "../support/database";
 import { studioFixture, clientFixture } from "../fixtures/studio";
 import * as s from "@/db/schema";
 import { cycleDraftSchema } from "@/features/treatment-cycles/schemas/cycle.schema";
-const session = vi.hoisted(() => ({ id: "" }));
+const session = vi.hoisted(() => ({ id: "", studioId: "" }));
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession: async () => ({ user: { id: session.id } }) } } }));
-vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers(),
+  cookies: async () => ({
+    get: (name: string) => (name === "pmu_active_studio" && session.studioId ? { value: session.studioId } : undefined),
+  }),
+}));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 let database: Awaited<ReturnType<typeof createTestDatabase>>, db: typeof import("@/db").db;
 let report: typeof import("@/features/treatment-cycles/server/queries");
 let studioId: string, otherStudio: string, clientId: string, otherClient: string, foreignClient: string, masterId: string, serviceId: string;
@@ -22,6 +28,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   session.id = actor;
   [studioId,otherStudio] = (await db.insert(s.studios).values([studioFixture(),studioFixture()]).returning()).map(row=>row.id);
+  session.studioId = studioId;
   await db.insert(s.studioMembers).values({studioId,userId:actor,roleId:roles.OWNER});
   [clientId,otherClient] = (await db.insert(s.clients).values([clientFixture(studioId),clientFixture(studioId)]).returning()).map(row=>row.id);
   [foreignClient] = (await db.insert(s.clients).values(clientFixture(otherStudio)).returning()).map(row=>row.id);

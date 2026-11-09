@@ -22,9 +22,9 @@ test("Owner creates a cycle, retries a lost transition response, and sees guarde
     const submit=page.getByRole("button",{name:"Изменить стадию",exact:true});await submit.click();
     await expect.poll(async()=>(await db.select().from(s.cycleStageHistory).where(eq(s.cycleStageHistory.cycleId,id))).length).toBe(2);
     await expect(submit).toBeEnabled();await page.unroute(`**/deals/${id}`);await submit.click();await expect(page.getByText("Стадия: Квалификация",{exact:true})).toBeVisible();expect(lost).toBe(true);
-    for(const [to,reason] of [["consultation_needed","Qualification reviewed"],["consultation_offered","Consultation offered to client"]]){
-      await page.getByLabel("Следующая стадия").selectOption(to);await page.getByLabel("Причина перехода").fill(reason);await submit.click();await expect(page.getByText(reason,{exact:true})).toBeVisible();
-    }
+    await page.getByLabel("PMU другого мастера").check();await page.getByLabel("Основание квалификации").fill("Qualification reviewed");await page.getByRole("button",{name:"Проверить квалификацию",exact:true}).click();
+    await expect(page.getByText("Стадия: Нужна консультация",{exact:true})).toBeVisible();
+    await page.getByLabel("Следующая стадия").selectOption("consultation_offered");await page.getByLabel("Причина перехода").fill("Consultation offered to client");await submit.click();await expect(page.getByText("Consultation offered to client",{exact:true})).toBeVisible();
     await page.getByLabel("Следующая стадия").selectOption("consultation_scheduled");await expect(page.getByRole("status")).toContainText("календарь");await expect(submit).toBeDisabled();
     expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     const [cycle]=await db.select().from(s.treatmentCycles).where(eq(s.treatmentCycles.id,id));expect(cycle).toMatchObject({version:4,stage:"consultation_offered"});

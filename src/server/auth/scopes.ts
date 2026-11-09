@@ -57,18 +57,3 @@ export async function withBrowserStudioCommand<T>(
     return command(tx, context);
   });
 }
-
-/**
- * @deprecated Transitional legacy command helper. Will be migrated in PHASE 1.1C.
- */
-export async function withStudioCommand<T>(permission: import("@/lib/permissions").PermissionCode,
-  command: (tx: Transaction, context: Context) => Promise<T>) {
-  const { requireStudioPermission } = await import("./context");
-  const { hasPermission } = await import("@/lib/permissions");
-  const context = await requireStudioPermission(permission);
-  return db.transaction(async tx => {
-    await lockStudioAccess(tx, context);
-    if (!await hasPermission(tx, context.userId, context.studioId, permission)) throw new Error("Permission denied");
-    return command(tx, context);
-  });
-}

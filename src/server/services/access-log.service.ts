@@ -5,8 +5,6 @@ import {
   requireAuthenticatedUser,
   requireBrowserStudioContext,
   requireStudioContextFor,
-  readActiveStudioCookieState,
-  requireStudioContext,
 } from "@/server/auth/context";
 import { hasPermission, type PermissionCode } from "@/lib/permissions";
 import { ACCESS_OPERATIONS } from "@/lib/audit-contract";
@@ -44,19 +42,18 @@ export async function sensitiveRead<T>(
       const studioCtx = await requireStudioContextFor(user.id, requestedStudioId);
       context = { studioId: studioCtx.studioId, userId: studioCtx.userId };
     } else {
-      const cookieState = await readActiveStudioCookieState();
-      if (cookieState.kind === "valid") {
-        const studioCtx = await requireBrowserStudioContext();
-        context = { studioId: studioCtx.studioId, userId: studioCtx.userId };
-      } else {
-        context = await requireStudioContext(undefined);
-      }
+      const studioCtx = await requireBrowserStudioContext();
+      context = { studioId: studioCtx.studioId, userId: studioCtx.userId };
     }
   } catch (error) {
     if (
       error instanceof Error &&
       (error.message === "STUDIO_ACCESS_DENIED" ||
         error.name === "StudioAccessDeniedError" ||
+        error.message === "STUDIO_CONTEXT_REQUIRED" ||
+        error.name === "StudioContextRequiredError" ||
+        error.message === "STUDIO_CONTEXT_STALE" ||
+        error.name === "StudioContextStaleError" ||
         error.message === "FORBIDDEN_PERMISSION" ||
         error.name === "ForbiddenPermissionError")
     ) {
@@ -90,7 +87,12 @@ export async function sensitiveRead<T>(
   try {
     result = await read(context);
   } catch (error) {
-    await log(error instanceof Error && error.message === "Permission denied" ? "denied" : "error");
+    const isDenied =
+      error instanceof Error &&
+      (error.message === "Permission denied" ||
+        error.message === "FORBIDDEN_PERMISSION" ||
+        error.name === "ForbiddenPermissionError");
+    await log(isDenied ? "denied" : "error");
     throw error;
   }
   const returned = ids(result);

@@ -64,6 +64,32 @@ export const PERMISSIONS = {
   
   REVIEW_READ: "REVIEW_READ",
   REVIEW_CREATE: "REVIEW_CREATE",
+
+  CONVERSATION_READ: "CONVERSATION_READ",
+  CONVERSATION_WRITE: "CONVERSATION_WRITE",
+  CONVERSATION_ASSIGN: "CONVERSATION_ASSIGN",
+
+  AUTOMATION_READ: "AUTOMATION_READ",
+  AUTOMATION_MANAGE: "AUTOMATION_MANAGE",
+
+  INTEGRATION_READ: "INTEGRATION_READ",
+  INTEGRATION_MANAGE: "INTEGRATION_MANAGE",
+
+  AI_READ: "AI_READ",
+  AI_USE: "AI_USE",
+
+  HANDOFF_READ: "HANDOFF_READ",
+  HANDOFF_CREATE: "HANDOFF_CREATE",
+  HANDOFF_ACCEPT: "HANDOFF_ACCEPT",
+  HANDOFF_ASSIGN: "HANDOFF_ASSIGN",
+  HANDOFF_OVERRIDE: "HANDOFF_OVERRIDE",
+
+  OPERATIONS_READ: "OPERATIONS_READ",
+  OPERATIONS_MANAGE: "OPERATIONS_MANAGE",
+
+  PRIVACY_READ: "PRIVACY_READ",
+  PRIVACY_EXPORT: "PRIVACY_EXPORT",
+  PRIVACY_MANAGE: "PRIVACY_MANAGE",
 } as const;
 
 export type PermissionCode = keyof typeof PERMISSIONS;
@@ -78,6 +104,13 @@ export const ROLE_CAPABILITIES: Readonly<Record<"OWNER" | "ADMIN" | "MASTER" | "
     "MEDIA_READ", "MEDIA_CREATE", "CONSENT_READ", "CONSENT_UPLOAD", "PAYMENT_READ", "PAYMENT_MARK_DEPOSIT",
     "OFFER_READ", "OFFER_MANAGE", "SERVICE_READ", "MASTER_READ", "WHATSAPP_TEMPLATE_READ", "WHATSAPP_TEMPLATE_USE",
     "TASK_READ", "TASK_CREATE", "TASK_UPDATE", "REVIEW_READ", "REVIEW_CREATE",
+    "CONVERSATION_READ", "CONVERSATION_WRITE", "CONVERSATION_ASSIGN",
+    "AUTOMATION_READ", "AUTOMATION_MANAGE",
+    "INTEGRATION_READ", "INTEGRATION_MANAGE",
+    "AI_READ", "AI_USE",
+    "HANDOFF_READ", "HANDOFF_CREATE", "HANDOFF_ACCEPT", "HANDOFF_ASSIGN", "HANDOFF_OVERRIDE",
+    "OPERATIONS_READ", "OPERATIONS_MANAGE",
+    "PRIVACY_READ", "PRIVACY_EXPORT", "PRIVACY_MANAGE",
   ],
   MASTER: [
     "CLIENT_READ", "CLIENT_UPDATE", "MEDICAL_PROFILE_READ", "MEDICAL_PROFILE_UPDATE",
@@ -86,6 +119,11 @@ export const ROLE_CAPABILITIES: Readonly<Record<"OWNER" | "ADMIN" | "MASTER" | "
     "CONSENT_READ", "CONSENT_UPLOAD", "PAYMENT_READ", "PAYMENT_MARK_DEPOSIT", "SERVICE_READ", "MASTER_READ",
     "WHATSAPP_TEMPLATE_READ", "WHATSAPP_TEMPLATE_USE", "TASK_READ", "TASK_CREATE", "TASK_UPDATE",
     "REVIEW_READ", "REVIEW_CREATE",
+    "CONVERSATION_READ", "CONVERSATION_WRITE",
+    "AUTOMATION_READ",
+    "INTEGRATION_READ",
+    "AI_READ", "AI_USE",
+    "HANDOFF_READ", "HANDOFF_CREATE", "HANDOFF_ACCEPT",
   ],
   // No existing generic action is yet an approved AI command. Phase 11 opens typed tools.
   AI_SYSTEM: [],
@@ -177,3 +215,17 @@ export const canViewFinanceAnalytics = (dbInstance: any, userId: string, studioI
 
 export const canManageUsers = (dbInstance: any, userId: string, studioId: string) => hasPermission(dbInstance, userId, studioId, PERMISSIONS.USERS_MANAGE);
 export const canManageRoles = (dbInstance: any, userId: string, studioId: string) => hasPermission(dbInstance, userId, studioId, PERMISSIONS.ROLES_MANAGE);
+
+export const canViewConversations = (dbInstance: any, userId: string, studioId: string) => hasPermission(dbInstance, userId, studioId, PERMISSIONS.CONVERSATION_READ);
+export const canWriteConversations = (dbInstance: any, userId: string, studioId: string) => hasPermission(dbInstance, userId, studioId, PERMISSIONS.CONVERSATION_WRITE);
+export const canAssignConversations = (dbInstance: any, userId: string, studioId: string) => hasPermission(dbInstance, userId, studioId, PERMISSIONS.CONVERSATION_ASSIGN);
+
+export const canViewIntegrations = (dbInstance: any, userId: string, studioId: string) => hasPermission(dbInstance, userId, studioId, PERMISSIONS.INTEGRATION_READ);
+export const canManageIntegrations = (dbInstance: any, userId: string, studioId: string) => hasPermission(dbInstance, userId, studioId, PERMISSIONS.INTEGRATION_MANAGE);
+
+export const canReadAi = (dbInstance: any, userId: string, studioId: string) => hasPermission(dbInstance, userId, studioId, PERMISSIONS.AI_READ);
+export const canUseAi = (dbInstance: any, userId: string, studioId: string) => hasPermission(dbInstance, userId, studioId, PERMISSIONS.AI_USE);
+
+export const canReadPrivacy = (dbInstance: any, userId: string, studioId: string) => hasPermission(dbInstance, userId, studioId, PERMISSIONS.PRIVACY_READ);
+export const canExportPrivacy = (dbInstance: any, userId: string, studioId: string) => hasPermission(dbInstance, userId, studioId, PERMISSIONS.PRIVACY_EXPORT);
+export const canManagePrivacy = (dbInstance: any, userId: string, studioId: string) => hasPermission(dbInstance, userId, studioId, PERMISSIONS.PRIVACY_MANAGE);

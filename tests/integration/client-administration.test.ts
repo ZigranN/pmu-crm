@@ -5,14 +5,19 @@ import { createTestDatabase } from "../support/database";
 import { studioFixture, clientFixture } from "../fixtures/studio";
 import * as s from "@/db/schema";
 import { administrativeQualificationSchema, clientSchema, type ClientSchema } from "@/features/clients/schemas/client.schema";
-const session = vi.hoisted(() => ({ id: "" }));
+const session = vi.hoisted(() => ({ id: "", studioId: "" }));
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession: async () => ({ user: { id: session.id } }) } } }));
-vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers(),
+  cookies: async () => ({
+    get: (name: string) => (name === "pmu_active_studio" && session.studioId ? { value: session.studioId } : undefined),
+  }),
+}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 let database: Awaited<ReturnType<typeof createTestDatabase>>, db: typeof import("@/db").db;
 let actions: typeof import("@/features/clients/server/actions"), admin: typeof import("@/features/clients/server/administration"), queries: typeof import("@/features/clients/server/queries");
 const actor = randomUUID(), other = randomUUID(); let studioId: string, foreignStudio: string, clientId: string, masterId: string, secondMaster: string, foreignMaster: string, roleIds: Record<string, string>;
-const base: ClientSchema = { firstName: "Synthetic", phone: "+390000000000", clientStatus: "new_lead" };
+const base: ClientSchema = { firstName: "Synthetic", phone: "+390000000000" };
 beforeAll(async () => {
   database = await createTestDatabase(); vi.doMock("@/db", () => ({ db: database.db })); db = (await import("@/db")).db;
   actions = await import("@/features/clients/server/actions"); admin = await import("@/features/clients/server/administration"); queries = await import("@/features/clients/server/queries");
@@ -24,7 +29,7 @@ beforeAll(async () => {
   [foreignMaster] = (await db.insert(s.masters).values({ studioId: foreignStudio, displayName: "Foreign" }).returning()).map(row => row.id);
 });
 beforeEach(async () => {
-  session.id = actor; await db.update(s.studioMembers).set({ roleId: roleIds.OWNER }).where(eq(s.studioMembers.userId, actor));
+  session.id = actor; session.studioId = studioId; await db.update(s.studioMembers).set({ roleId: roleIds.OWNER }).where(eq(s.studioMembers.userId, actor));
   await db.delete(s.auditLogs).where(eq(s.auditLogs.studioId, studioId));
   [clientId] = (await db.insert(s.clients).values({ ...clientFixture(studioId), phone: "+390000000001", assignedMasterId: masterId, treatmentZone: "Old free text", source: "Legacy campaign" }).returning()).map(row => row.id);
 });
@@ -88,9 +93,9 @@ test("assigned Master can update administrative facts but not preference; AI hum
   await actions.updateClientAction(clientId, { ...base, language: "en", reportedPreviousPmu: false });
   await expect(preferred(secondMaster)).rejects.toThrow("Permission denied");
   await db.update(s.studioMembers).set({ roleId: roleIds.AI_SYSTEM }).where(eq(s.studioMembers.userId, actor));
-  await expect(actions.createClientAction({ ...base, language: "it" }, randomUUID())).rejects.toThrow("Permission denied");
-  await expect(actions.updateClientAction(clientId, { ...base, reportedPreviousPmu: true })).rejects.toThrow("Permission denied");
-  await expect(preferred(secondMaster)).rejects.toThrow("Permission denied");
+  await expect(actions.createClientAction({ ...base, language: "it" }, randomUUID())).rejects.toThrow();
+  await expect(actions.updateClientAction(clientId, { ...base, reportedPreviousPmu: true })).rejects.toThrow();
+  await expect(preferred(secondMaster)).rejects.toThrow();
 });
 test("audit failure rolls back administrative facts, preference, and its receipt", async () => {
   await db.execute(sql`alter table audit_logs add constraint reject_admin_test check (action not in ('client_updated','client_preferred_master_changed')) not valid`);

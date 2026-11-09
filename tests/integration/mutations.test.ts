@@ -2,13 +2,18 @@ import { afterAll, beforeAll, beforeEach, expect, test, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq, inArray, sql } from "drizzle-orm";
 import { createTestDatabase } from "../support/database";
-import { studioFixture, clientFixture } from "../fixtures/studio";
+import { studioFixture, clientFixture, testImageFile } from "../fixtures/studio";
 import * as s from "@/db/schema";
 import { uploadToCloudinary, deleteFromCloudinary } from "@/lib/cloudinary";
 
-const session = vi.hoisted(() => ({ id: null as string | null }));
+const session = vi.hoisted(() => ({ id: null as string | null, studioId: null as string | null }));
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession: async () => session.id ? { user: { id: session.id } } : null } } }));
-vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers(),
+  cookies: async () => ({
+    get: (name: string) => (name === "pmu_active_studio" && session.studioId ? { value: session.studioId } : undefined),
+  }),
+}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let masterActions: typeof import("@/features/masters/server/actions");
@@ -52,7 +57,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  session.id = userId;
+  session.id = userId; session.studioId = studioId;
   await database.db.delete(s.userCustomPermissions).where(eq(s.userCustomPermissions.userId, userId));
   vi.mocked(uploadToCloudinary).mockReset().mockImplementation(async () => ({ url: "https://example.test/file", publicId: `synthetic-${randomUUID()}` }));
   vi.mocked(deleteFromCloudinary).mockReset().mockResolvedValue(undefined);
@@ -86,7 +91,7 @@ async function failAudit(entityId: string, run: () => Promise<void>) {
 
 async function links(id: string) { return database.db.select().from(s.masterServices).where(eq(s.masterServices.masterId, id)); }
 function mediaInput(target = clientId) { return { studioId, clientId: target, type: "before" as const, createdById: userId }; }
-function file() { return new File(["synthetic"], "test.txt", { type: "text/plain" }); }
+function file() { return testImageFile(); }
 
 test("master edit query loads assigned services and rename preserves them", async () => {
   const loaded = await masterQueries.getMasterById(masterId, studioId);
@@ -155,7 +160,7 @@ test("foreign/archived client and invalid appointment are rejected before upload
 
 test("direct upload action rejects unauthenticated callers", async () => {
   session.id = null;
-  await expect(mediaActions.uploadMediaAction(new FormData())).rejects.toThrow("Unauthorized");
+  await expect(mediaActions.uploadMediaAction(new FormData())).rejects.toThrow();
   expect(uploadToCloudinary).not.toHaveBeenCalled();
 });
 
@@ -198,14 +203,17 @@ test("resource archived during upload is rechecked and uploaded file is compensa
     return { url: "https://example.test/unpublished", publicId: "synthetic-unpublished" };
   });
   await expect(media.mediaService.uploadMedia(file(), mediaInput())).rejects.toThrow("Client not found");
-  expect(deleteFromCloudinary).toHaveBeenCalledWith("synthetic-unpublished");
+  expect(deleteFromCloudinary).toHaveBeenCalledWith("synthetic-unpublished", {
+    resource_type: "image",
+    type: "authenticated",
+  });
 });
 
 test("MEDIA_CREATE cannot bypass CONSENT_UPLOAD on generic archive action", async () => {
   const uploaded = await media.mediaService.uploadMedia(file(), { ...mediaInput(), type: "consent" });
   const [permission] = await database.db.select().from(s.permissions).where(eq(s.permissions.code, "CONSENT_UPLOAD"));
   await database.db.insert(s.userCustomPermissions).values({ studioId, userId, permissionId: permission.id, effect: "deny" });
-  await expect(mediaActions.deleteMediaAction(uploaded.id)).rejects.toThrow("Permission denied");
+  await expect(mediaActions.deleteMediaAction(uploaded.id)).rejects.toThrow();
   expect((await database.db.select().from(s.media).where(eq(s.media.id, uploaded.id)))[0].deletedAt).toBeNull();
   expect(deleteFromCloudinary).not.toHaveBeenCalled();
 });

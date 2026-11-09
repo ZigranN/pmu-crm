@@ -1,30 +1,32 @@
 import React from "react";
 import { EntityCard } from "@/components/shared/entity-card";
-import { StatusBadge, type StatusVariant } from "@/components/shared/status-badge";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { type clients } from "@/db/schema";
 import { Phone, AtSign } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { formatPhone } from "@/lib/phone";
+import { ZONE_LABELS, STAGE_LABELS, type CycleStage } from "@/features/treatment-cycles/stages";
+
+export interface ClientCycleSummary {
+  id: string;
+  zoneCode: string;
+  kind: string;
+  stage: string;
+  updatedAt?: Date;
+}
+
+export type ClientWithCycles = Omit<typeof clients.$inferSelect, "ltvCents"> & {
+  ltvCents: number | null;
+  cycles?: ClientCycleSummary[];
+};
 
 interface ClientCardProps {
-  client: Omit<typeof clients.$inferSelect, "ltvCents"> & { ltvCents: number | null };
+  client: ClientWithCycles;
   onClick?: () => void;
 }
 
-const statusMap: Record<string, { label: string; variant: StatusVariant }> = {
-  new_lead: { label: "Новый лид", variant: "info" },
-  contacted: { label: "Связались", variant: "info" },
-  needs_consultation: { label: "Нужна консультация", variant: "warning" },
-  consultation_booked: { label: "Консультация назначена", variant: "warning" },
-  appointment_booked: { label: "Записан", variant: "success" },
-  procedure_done: { label: "Процедура выполнена", variant: "success" },
-  completed: { label: "Завершено", variant: "muted" },
-  lost: { label: "Потерян", variant: "danger" },
-  returning_client: { label: "Постоянный", variant: "gold" },
-};
-
 export function ClientCard({ client, onClick }: ClientCardProps) {
-  const status = statusMap[client.clientStatus] || { label: client.clientStatus, variant: "muted" };
+  const activeCycles = client.cycles ?? [];
 
   return (
     <EntityCard
@@ -52,7 +54,34 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
       }
       badges={
         <>
-          <StatusBadge label={status.label} variant={status.variant} />
+          {activeCycles.length === 0 && (
+            <StatusBadge label="Нет активных циклов" variant="muted" />
+          )}
+          {activeCycles.length === 1 && (
+            <StatusBadge
+              label={`${ZONE_LABELS[activeCycles[0].zoneCode] ?? activeCycles[0].zoneCode}: ${STAGE_LABELS[activeCycles[0].stage as CycleStage] ?? activeCycles[0].stage}`}
+              variant="info"
+            />
+          )}
+          {activeCycles.length > 1 && (
+            <>
+              {activeCycles.slice(0, 2).map((c) => (
+                <StatusBadge
+                  key={c.id}
+                  label={`${ZONE_LABELS[c.zoneCode] ?? c.zoneCode}: ${STAGE_LABELS[c.stage as CycleStage] ?? c.stage}`}
+                  variant="info"
+                  className="text-[10px]"
+                />
+              ))}
+              {activeCycles.length > 2 && (
+                <StatusBadge
+                  label={`+${activeCycles.length - 2}`}
+                  variant="muted"
+                  className="text-[10px]"
+                />
+              )}
+            </>
+          )}
           {client.tags && (
             <div className="flex gap-1 overflow-hidden">
                {client.tags.split(",").slice(0, 1).map(tag => (

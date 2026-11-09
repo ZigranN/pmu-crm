@@ -5,8 +5,8 @@ import { sensitiveRead, recordIds, optionalRecordId } from "@/server/services/ac
 import { resourceScope } from "@/server/auth/scopes";
 import { db } from "@/db";
 import { hasPermission } from "@/lib/permissions";
-import { clients, clientMedicalProfiles, activityEvents, masters } from "@/db/schema";
-import { eq, and, isNull, ilike, or, desc, ne, SQL, sql } from "drizzle-orm";
+import { clients, clientMedicalProfiles, activityEvents, masters, treatmentCycles } from "@/db/schema";
+import { eq, and, isNull, ilike, or, desc, ne, inArray, exists, SQL, sql } from "drizzle-orm";
 
 export async function getClients(studioId: string, filters?: { search?: string, status?: any }) {
   return sensitiveRead("CLIENT_READ", studioId, { operation: "clients.list" }, async (context) => {
@@ -17,7 +17,21 @@ export async function getClients(studioId: string, filters?: { search?: string, 
     ];
 
     if (filters?.status && filters.status !== "all") {
-      conditions.push(eq(clients.clientStatus, filters.status));
+      conditions.push(
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(treatmentCycles)
+            .where(
+              and(
+                eq(treatmentCycles.clientId, clients.id),
+                eq(treatmentCycles.studioId, clients.studioId),
+                isNull(treatmentCycles.archivedAt),
+                eq(treatmentCycles.stage, filters.status)
+              )
+            )
+        )
+      );
     }
 
     if (filters?.search) {
@@ -37,7 +51,45 @@ export async function getClients(studioId: string, filters?: { search?: string, 
       where: and(...conditions),
       orderBy: [desc(clients.createdAt)],
     });
-    return rows.map(row => ({ ...row, ltvCents: scope.isMaster ? null : row.ltvCents }));
+
+    const clientIds = rows.map((r) => r.id);
+    const cyclesMap = new Map<string, { id: string; zoneCode: string; kind: string; stage: string; updatedAt: Date }[]>();
+
+    if (clientIds.length > 0) {
+      const cycles = await db
+        .select({
+          id: treatmentCycles.id,
+          clientId: treatmentCycles.clientId,
+          zoneCode: treatmentCycles.zoneCode,
+          kind: treatmentCycles.kind,
+          stage: treatmentCycles.stage,
+          updatedAt: treatmentCycles.updatedAt,
+        })
+        .from(treatmentCycles)
+        .where(
+          and(
+            inArray(treatmentCycles.clientId, clientIds),
+            eq(treatmentCycles.studioId, studioId),
+            isNull(treatmentCycles.archivedAt)
+          )
+        )
+        .orderBy(desc(treatmentCycles.updatedAt));
+
+      for (const cycle of cycles) {
+        const list = cyclesMap.get(cycle.clientId);
+        if (list) {
+          list.push(cycle);
+        } else {
+          cyclesMap.set(cycle.clientId, [cycle]);
+        }
+      }
+    }
+
+    return rows.map((row) => ({
+      ...row,
+      ltvCents: scope.isMaster ? null : row.ltvCents,
+      cycles: cyclesMap.get(row.id) ?? [],
+    }));
   }, recordIds);
 }
 
@@ -54,8 +106,59 @@ export async function getClientById(id: string, studioId: string) {
         isNull(clients.deletedAt)
       )
     });
-    return row ? { ...row, ltvCents: scope.isMaster ? null : row.ltvCents } : undefined;
+    if (!row) return undefined;
+
+    const cycles = await db
+      .select({
+        id: treatmentCycles.id,
+        clientId: treatmentCycles.clientId,
+        zoneCode: treatmentCycles.zoneCode,
+        kind: treatmentCycles.kind,
+        stage: treatmentCycles.stage,
+        updatedAt: treatmentCycles.updatedAt,
+      })
+      .from(treatmentCycles)
+      .where(
+        and(
+          eq(treatmentCycles.clientId, row.id),
+          eq(treatmentCycles.studioId, studioId),
+          isNull(treatmentCycles.archivedAt)
+        )
+      )
+      .orderBy(desc(treatmentCycles.updatedAt));
+
+    return {
+      ...row,
+      ltvCents: scope.isMaster ? null : row.ltvCents,
+      cycles,
+    };
   }, optionalRecordId);
+}
+
+export async function getClientCycles(clientId: string, studioId: string) {
+  return sensitiveRead("CLIENT_READ", studioId, { operation: "client.read", targetId: clientId }, async (context) => {
+    const scope = await resourceScope(context);
+    clientId = await canonicalClientId(clientId, studioId);
+    return db
+      .select({
+        id: treatmentCycles.id,
+        clientId: treatmentCycles.clientId,
+        zoneCode: treatmentCycles.zoneCode,
+        kind: treatmentCycles.kind,
+        stage: treatmentCycles.stage,
+        updatedAt: treatmentCycles.updatedAt,
+      })
+      .from(treatmentCycles)
+      .where(
+        and(
+          eq(treatmentCycles.clientId, clientId),
+          eq(treatmentCycles.studioId, studioId),
+          isNull(treatmentCycles.archivedAt),
+          scope.clientReference(sql`${treatmentCycles.clientId}`)
+        )
+      )
+      .orderBy(desc(treatmentCycles.updatedAt));
+  }, recordIds);
 }
 
 export async function getClientMedicalProfile(id: string, studioId: string) {

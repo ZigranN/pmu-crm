@@ -11,13 +11,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Building2, Check, ChevronDown, LogOut, Search } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useState } from "react";
 import { GlobalSearch } from "@/features/search/components/global-search";
 import Link from "next/link";
-import { navItems } from "./navigation-items";
+import { getVisibleNavItems } from "./navigation-items";
 import { setActiveStudioAction } from "@/features/auth/server/actions";
 import type { UserActiveStudio } from "@/server/auth/context";
+import { cn } from "@/lib/utils";
 
 export interface AppHeaderProps {
   studioId?: string;
@@ -29,8 +30,11 @@ export interface AppHeaderProps {
 export function AppHeader({ studioId, studioName, role, activeStudios = [] }: AppHeaderProps) {
   const { data: session } = authClient.useSession();
   const router = useRouter();
+  const pathname = usePathname();
   const [searchOpen, setSearchOpen] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
+
+  const visibleItems = getVisibleNavItems(role);
 
   const handleLogout = async () => {
     await authClient.signOut();
@@ -104,8 +108,25 @@ export function AppHeader({ studioId, studioName, role, activeStudios = [] }: Ap
           )}
         </div>
 
-        <nav aria-label="Основная навигация" className="hidden md:flex items-center gap-4 text-sm">
-          {navItems.map((item) => <Link key={item.href} href={item.href} className="hover:underline">{item.label}</Link>)}
+        <nav aria-label="Основная навигация" className="hidden md:flex items-center gap-1 lg:gap-1.5 xl:gap-2 text-xs lg:text-sm font-medium overflow-x-auto">
+          {visibleItems.map((item) => {
+            const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={isActive ? "page" : undefined}
+                className={cn(
+                  "px-2 lg:px-2.5 py-1.5 rounded-md transition-colors whitespace-nowrap",
+                  isActive
+                    ? "bg-sand text-taupe font-semibold shadow-2xs"
+                    : "text-muted-foreground hover:text-taupe hover:bg-sand/40"
+                )}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
         <div className="flex items-center gap-2 sm:gap-4">
           <Button

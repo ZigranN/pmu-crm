@@ -6,7 +6,7 @@ import { studioMembers, roles, user, masters, clients, clientAssignments } from 
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { requireStudioContext } from "@/server/auth/context";
+import { requireBrowserStudioContext } from "@/server/auth/context";
 import { lockStudioAccess } from "@/server/auth/scopes";
 import { normalizeRole } from "@/lib/roles";
 import { hasPermission } from "@/lib/permissions";
@@ -16,15 +16,18 @@ const membershipInput = z.object({ email: z.string().email(), role: z.enum(["OWN
 
 export async function saveMembership(input: z.infer<typeof membershipInput>) {
   const data = membershipInput.parse(input);
-  const context = await requireStudioContext();
+  const context = await requireBrowserStudioContext();
   const { studioId } = context;
   await db.transaction(async tx => {
     const actor = await lockStudioAccess(tx, context);
     if (actor.role !== "OWNER") throw new Error("Permission denied");
     const target = await tx.query.user.findFirst({ where: eq(user.email, data.email.trim().toLowerCase()) });
-    if (!target) throw new Error("Сначала зарегистрируйте пользователя с этим email");
     const all = await tx.select({ member: studioMembers, role: roles.code }).from(studioMembers)
       .innerJoin(roles, eq(roles.id, studioMembers.roleId)).where(eq(studioMembers.studioId, studioId));
+    if (!target) {
+      if (!all.length) throw new Error("Сначала зарегистрируйте пользователя с этим email");
+      throw new Error("Сначала зарегистрируйте пользователя с этим email");
+    }
     const before = all.find(row => row.member.userId === target.id);
     if (before?.member.isActive && normalizeRole(before.role) === "OWNER" && (!data.active || data.role !== "OWNER") &&
       !all.some(row => row.member.userId !== target.id && row.member.isActive && normalizeRole(row.role) === "OWNER")) {
@@ -52,7 +55,7 @@ const assignmentInput = z.object({ clientId: z.string().uuid(), masterId: z.stri
   expectedMasterId: z.string().uuid().nullable(), reason: z.string().trim().min(3).max(1000) }).strict();
 export async function assignClientMaster(input: z.infer<typeof assignmentInput>) {
   const data = assignmentInput.parse(input);
-  const context = await requireStudioContext();
+  const context = await requireBrowserStudioContext();
   const { studioId } = context;
   await db.transaction(async tx => {
     const actor = await lockStudioAccess(tx, context);

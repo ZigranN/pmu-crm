@@ -5,11 +5,17 @@ import { createTestDatabase } from "../support/database";
 import { studioFixture, clientFixture } from "../fixtures/studio";
 import * as s from "@/db/schema";
 import { CYCLE_STAGES } from "@/features/treatment-cycles/schemas/cycle.schema";
-import { TRANSITIONS, REQUIRED_COMMAND, type CycleStage } from "@/features/treatment-cycles/stages";
+import { TRANSITIONS, REQUIRED_COMMAND, GENERIC_ALLOWED_EDGES, type CycleStage } from "@/features/treatment-cycles/stages";
 import { transitionBlock } from "@/features/treatment-cycles/server/transitions";
-const session=vi.hoisted(()=>({id:""}));
+const session=vi.hoisted(()=>({id:"",studioId:""}));
 vi.mock("@/lib/auth",()=>({auth:{api:{getSession:async()=>({user:{id:session.id}})}}}));
-vi.mock("next/headers",()=>({headers:async()=>new Headers()}));vi.mock("next/cache",()=>({revalidatePath:vi.fn()}));
+vi.mock("next/headers",()=>({
+  headers:async()=>new Headers(),
+  cookies:async()=>({
+    get:(name:string)=>name==="pmu_active_studio"&&session.studioId?{value:session.studioId}:undefined,
+  }),
+}));
+vi.mock("next/cache",()=>({revalidatePath:vi.fn()}));
 let database:Awaited<ReturnType<typeof createTestDatabase>>,db:typeof import("@/db").db;
 let commands:typeof import("@/features/treatment-cycles/server/actions"),queries:typeof import("@/features/treatment-cycles/server/queries");
 let studioId:string,foreignStudio:string,clientId:string,masterId:string,otherMaster:string,roles:Record<string,string>;
@@ -21,7 +27,7 @@ beforeAll(async()=>{
   roles=Object.fromEntries((await db.select().from(s.roles)).map(r=>[r.code,r.id]));
 });
 beforeEach(async()=>{
-  session.id=actor;[studioId,foreignStudio]=(await db.insert(s.studios).values([studioFixture(),studioFixture()]).returning()).map(r=>r.id);
+  session.id=actor;[studioId,foreignStudio]=(await db.insert(s.studios).values([studioFixture(),studioFixture()]).returning()).map(r=>r.id);session.studioId=studioId;
   await db.insert(s.studioMembers).values({studioId,userId:actor,roleId:roles.OWNER});
   [masterId,otherMaster]=(await db.insert(s.masters).values([{studioId,userId:actor,displayName:"Own"},{studioId,displayName:"Other"}]).returning()).map(r=>r.id);
   [clientId]=(await db.insert(s.clients).values({...clientFixture(studioId),assignedMasterId:masterId,language:"it",clientKind:"new",reportedPreviousPmu:false,interestedZones:["brows","eyes","lips"]}).returning()).map(r=>r.id);
@@ -33,17 +39,29 @@ const move=(id:string,expectedVersion:number,to:CycleStage,key=randomUUID())=>co
 const row=async(id:string)=>(await db.select().from(s.treatmentCycles).where(eq(s.treatmentCycles.id,id)))[0];
 async function counts(){return Promise.all([s.cycleStageHistory,s.auditLogs,s.outboxJobs,s.commandReceipts].map(table=>db.select({id:table.id}).from(table).where(eq(table.studioId,studioId)).then(rows=>rows.length)));}
 test("matrix covers all 21 stages: every non-edge and every domain-owned target is blocked",async()=>{
-  const cycle=await row((await create()).id),[client]=await db.select().from(s.clients).where(eq(s.clients.id,clientId));
+  const cycle=await row((await create()).id);
   expect(Object.keys(TRANSITIONS)).toHaveLength(21);
   for(const from of CYCLE_STAGES) for(const to of CYCLE_STAGES){
-    const block=transitionBlock({...cycle,stage:from},to,client);
-    if(!TRANSITIONS[from].includes(to)||REQUIRED_COMMAND[to]) expect(block).not.toBeNull();
+    const block=transitionBlock({...cycle,stage:from},to);
+    if(!TRANSITIONS[from].includes(to)||REQUIRED_COMMAND[to]||!GENERIC_ALLOWED_EDGES.has(`${from}->${to}`)) expect(block).not.toBeNull();
   }
-  expect(transitionBlock(cycle,"qualification",client)).toBeNull();
+  expect(transitionBlock(cycle,"qualification")).toBeNull();
+  expect(transitionBlock({...cycle,stage:"consultation_needed"},"consultation_offered")).toBeNull();
 });
-test("create and three early transitions atomically retain history, receipt, event and audit",async()=>{
+test("create and early transitions atomically retain history, receipt, event and audit",async()=>{
   const created=await create(),eyes=await create("eyes");
-  await move(created.id,1,"qualification");await move(created.id,2,"consultation_needed");await move(created.id,3,"consultation_offered");
+  await move(created.id,1,"qualification");
+  const qualAction=await import("@/features/consultations/server/results");
+  await qualAction.qualifyCycleAction({
+    id: created.id,
+    expectedVersion: 2,
+    otherMasterPmu: false,
+    doubt: false,
+    conditionChanged: false,
+    evaluationRequired: true,
+    reason: "Specialist qualification required consultation",
+  }, randomUUID());
+  await move(created.id,3,"consultation_offered");
   expect(await row(created.id)).toMatchObject({stage:"consultation_offered",version:4});expect(await row(eyes.id)).toMatchObject({stage:"new_lead",version:1});
   expect(await counts()).toEqual([5,5,5,5]);
   const timeline=await queries.getCycleTimeline(created.id);expect(timeline.history.map(r=>r.version)).toEqual([4,3,2,1]);
@@ -52,18 +70,29 @@ test("create and three early transitions atomically retain history, receipt, eve
 });
 test("same-key concurrent retry creates one cycle and later replays historical transition without reverting state",async()=>{
   const key=randomUUID(),results=await Promise.all([create("brows",key),create("brows",key)]);expect(results[0]).toEqual(results[1]);
-  const id=results[0].id,transitionKey=randomUUID();const first=await move(id,1,"qualification",transitionKey);await move(id,2,"consultation_needed");
+  const id=results[0].id,transitionKey=randomUUID();const first=await move(id,1,"qualification",transitionKey);
+  const qualAction=await import("@/features/consultations/server/results");
+  await qualAction.qualifyCycleAction({
+    id,
+    expectedVersion: 2,
+    otherMasterPmu: false,
+    doubt: false,
+    conditionChanged: false,
+    evaluationRequired: true,
+    reason: "Specialist qualification",
+  }, randomUUID());
   expect(await move(id,1,"qualification",transitionKey)).toEqual(first);expect((await row(id)).version).toBe(3);expect(await counts()).toEqual([3,3,3,3]);
   await expect(move(id,1,"lost",transitionKey)).rejects.toThrow("другими данными");
 });
 test("different commands with the same expected version cannot both commit",async()=>{
-  const {id}=await create();const results=await Promise.allSettled([move(id,1,"qualification"),move(id,1,"lost")]);
+  const {id}=await create();const results=await Promise.allSettled([move(id,1,"qualification"),move(id,1,"qualification")]);
   expect(results.filter(r=>r.status==="fulfilled")).toHaveLength(1);expect((await row(id)).version).toBe(2);expect(await counts()).toEqual([2,2,2,2]);
 });
 test("invalid, stale, missing qualification and protected business transitions write nothing",async()=>{
   const {id}=await create();const before=await counts();await expect(move(id,1,"cycle_completed")).rejects.toThrow();expect(await counts()).toEqual(before);
-  await move(id,1,"qualification");await db.update(s.clients).set({language:null}).where(eq(s.clients.id,clientId));const second=await counts();
-  await expect(move(id,2,"consultation_needed")).rejects.toThrow("Заполните");await expect(move(id,1,"lost")).rejects.toThrow("изменён");
+  await move(id,1,"qualification");const second=await counts();
+  await expect(move(id,2,"consultation_needed")).rejects.toThrow("Требуется квалификация специалистом");
+  await expect(move(id,2,"lost")).rejects.toThrow("Требуется закрытие через оценку специалиста");
   await expect(move(id,2,"procedure_slot_selected")).rejects.toThrow("Требуется");expect(await counts()).toEqual(second);
 });
 test("every protected target rejects the public command even from an eligible stage",async()=>{
@@ -99,7 +128,10 @@ test("SQL cannot change a stage without matching evidence or rewrite history",as
 test("worker acknowledges each immutable historical version once, without pretending to send messages",async()=>{
   const {id}=await create();await move(id,1,"qualification");
   const {runWorkerOnce}=await import("@/server/events/worker"),{handlers}=await import("@/server/events/registry");
-  await runWorkerOnce(handlers);await runWorkerOnce(handlers);await runWorkerOnce(handlers);
+  while (await runWorkerOnce(handlers)) {
+    const inbox = await db.select().from(s.eventInbox).where(eq(s.eventInbox.studioId, studioId));
+    if (inbox.length >= 2) break;
+  }
   const inbox=await db.select().from(s.eventInbox).where(eq(s.eventInbox.studioId,studioId));expect(inbox).toHaveLength(2);
   expect(inbox.map(r=>(r.result as {version:number}).version).sort()).toEqual([1,2]);
   expect(await db.select().from(s.outboxJobs).where(and(eq(s.outboxJobs.studioId,studioId),eq(s.outboxJobs.state,"completed")))).toHaveLength(2);
@@ -125,15 +157,14 @@ test("Admin may advance early stages; an explicit capability deny also blocks re
   const key=randomUUID(),{id}=await create("brows",key);await move(id,1,"qualification");
   const [permission]=await db.select().from(s.permissions).where(eq(s.permissions.code,"CLIENT_UPDATE"));
   await db.insert(s.userCustomPermissions).values({studioId,userId:actor,permissionId:permission.id,effect:"deny"});
-  await expect(create("brows",key)).rejects.toThrow();await expect(move(id,2,"lost")).rejects.toThrow();
+  await expect(create("brows",key)).rejects.toThrow();await expect(move(id,1,"qualification",key)).rejects.toThrow();
 });
-test("lost cannot bypass linked appointments; suspension and an inactive master block progression",async()=>{
-  const {id}=await create();const [service]=await db.insert(s.services).values({studioId,name:"Legacy",category:"brows",procedureType:"brows"}).returning();
-  const [visit]=await db.insert(s.appointments).values({studioId,clientId,masterId,serviceId:service.id,startAt:new Date("2026-01-01T10:00:00Z"),endAt:new Date("2026-01-01T11:00:00Z"),source:"phone",createdById:actor,serviceSnapshot:{},clientSnapshot:{},masterSnapshot:{},priceSnapshotCents:0,durationSnapshotMinutes:60}).returning();
-  await db.insert(s.appointmentCycles).values({studioId,clientId,appointmentId:visit.id,cycleId:id,visitKind:"consultation",serviceSnapshot:{}});
-  await expect(move(id,1,"lost")).rejects.toThrow("визиты");await move(id,1,"qualification");
-  await db.update(s.masters).set({isActive:false}).where(eq(s.masters.id,masterId));await expect(move(id,2,"consultation_needed")).rejects.toThrow("мастер недоступен");
-  await db.update(s.treatmentCycles).set({suspendedAt:new Date(),suspensionReason:"Human review"}).where(eq(s.treatmentCycles.id,id));await expect(move(id,2,"consultation_needed")).rejects.toThrow("приостановлен");
+test("generic transition to lost is blocked; review is required",async()=>{
+  const {id}=await create();
+  await expect(move(id,1,"lost")).rejects.toThrow("Требуется закрытие через оценку специалиста");
+  await move(id,1,"qualification");
+  await expect(move(id,2,"lost")).rejects.toThrow("Требуется закрытие через оценку специалиста");
+  await expect(move(id,2,"consultation_needed")).rejects.toThrow("Требуется квалификация специалистом");
 });
 test("strict commands reject caller-supplied stage, master, price and evidence flags",async()=>{
   for(const extra of [{stage:"cycle_completed"},{assignedMasterId:otherMaster},{price:10},{medicalClearance:true}]){
@@ -142,9 +173,15 @@ test("strict commands reject caller-supplied stage, master, price and evidence f
   const {id}=await create();await expect(commands.transitionCycleAction({...{id,expectedVersion:1,to:"qualification" as const,reason:"Human review"},...{paymentConfirmed:true}},randomUUID())).rejects.toThrow();
   expect(await counts()).toEqual([1,1,1,1]);
 });
-test("an initially unassigned lead can qualify after human assignment without replacing existing cycle ownership",async()=>{
+test("an initially unassigned lead can qualify through qualifyCycleAction without replacing existing cycle ownership",async()=>{
   await db.update(s.clients).set({assignedMasterId:null}).where(eq(s.clients.id,clientId));const {id}=await create();await move(id,1,"qualification");
-  await expect(move(id,2,"consultation_needed")).rejects.toThrow("назначьте мастера");
-  await db.update(s.clients).set({assignedMasterId:masterId}).where(eq(s.clients.id,clientId));await move(id,2,"consultation_needed");expect((await row(id)).assignedMasterId).toBe(masterId);
-  const eyes=await create("eyes");await move(eyes.id,1,"qualification");await db.update(s.clients).set({assignedMasterId:otherMaster}).where(eq(s.clients.id,clientId));await move(eyes.id,2,"consultation_needed");expect((await row(eyes.id)).assignedMasterId).toBe(masterId);
+  const qualAction=await import("@/features/consultations/server/results");
+  await expect(qualAction.qualifyCycleAction({id,expectedVersion:2,otherMasterPmu:false,doubt:false,conditionChanged:false,evaluationRequired:true,reason:"Qualify lead"},randomUUID())).rejects.toThrow("активного мастера");
+  await db.update(s.clients).set({assignedMasterId:masterId}).where(eq(s.clients.id,clientId));
+  await qualAction.qualifyCycleAction({id,expectedVersion:2,otherMasterPmu:false,doubt:false,conditionChanged:false,evaluationRequired:true,reason:"Qualify lead"},randomUUID());
+  expect((await row(id)).assignedMasterId).toBe(masterId);
+  const eyes=await create("eyes");await move(eyes.id,1,"qualification");
+  await db.update(s.clients).set({assignedMasterId:otherMaster}).where(eq(s.clients.id,clientId));
+  await qualAction.qualifyCycleAction({id:eyes.id,expectedVersion:2,otherMasterPmu:false,doubt:false,conditionChanged:false,evaluationRequired:true,reason:"Qualify eyes"},randomUUID());
+  expect((await row(eyes.id)).assignedMasterId).toBe(masterId);
 });

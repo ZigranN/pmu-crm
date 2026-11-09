@@ -144,8 +144,20 @@ test("fresh install, upgrade with data, and repeated migrate converge", async (t
   for (const [key, value] of Object.entries(legacyService)) assert.deepEqual(preservedService[key], value);
   assert.equal(preservedService.catalog_version, 0);
   assert.equal(preservedService.catalog_code, null);
-  assert.deepEqual(await upgraded`select * from appointments where id = ${legacyVisit.id}`, [legacyVisit]);
-  assert.deepEqual(await upgraded`select * from procedure_sessions where id = ${legacyProcedure.id}`, [{...legacyProcedure, cycle_id:null}]);
+  assert.deepEqual(await upgraded`select * from appointments where id = ${legacyVisit.id}`, [{...legacyVisit, cancelled_at: null, cancelled_by_id: null}]);
+  assert.deepEqual(await upgraded`select * from procedure_sessions where id = ${legacyProcedure.id}`, [{
+    ...legacyProcedure,
+    cycle_id: null,
+    status: "COMPLETED",
+    started_at: null,
+    completed_at: null,
+    aborted_at: null,
+    abort_reason: null,
+    command_id: null,
+    service_snapshot: null,
+    master_snapshot: null,
+    client_snapshot: null,
+  }]);
   assert.deepEqual(await upgraded`select id from treatment_cycles`, []);
   assert.deepEqual(await upgraded`select id from treatment_packages`, []);
   assert.deepEqual(await upgraded`select id from appointment_cycles`, []);

@@ -80,11 +80,7 @@ export async function readSession() {
 
 export async function readActiveStudioCookieState(): Promise<ActiveStudioCookieState> {
   try {
-    const nextHeaders = await import("next/headers");
-    if (!nextHeaders || typeof nextHeaders.cookies !== "function") {
-      return { kind: "missing" };
-    }
-    const cookieStore = await nextHeaders.cookies();
+    const cookieStore = await cookies();
     if (!cookieStore || typeof cookieStore.get !== "function") {
       return { kind: "missing" };
     }
@@ -96,14 +92,8 @@ export async function readActiveStudioCookieState(): Promise<ActiveStudioCookieS
       return { kind: "invalid" };
     }
     return { kind: "valid", studioId: raw };
-  } catch (err: unknown) {
-    if (err && typeof err === "object" && "message" in err && typeof (err as { message: unknown }).message === "string") {
-      const msg = (err as { message: string }).message;
-      if (msg.includes('No "cookies" export')) {
-        return { kind: "missing" };
-      }
-    }
-    throw err;
+  } catch {
+    return { kind: "missing" };
   }
 }
 
@@ -292,66 +282,6 @@ export async function requireStudioPermissionFor(
   const allowed = await hasPermission(executor, context.userId, context.studioId, permission);
   if (!allowed) {
     throw new ForbiddenPermissionError("FORBIDDEN_PERMISSION");
-  }
-  return context;
-}
-
-// ---------------------------------------------------------------------------
-// TRANSITIONAL / DEPRECATED LEGACY HELPERS
-// (Kept for backwards compatibility until callers are migrated in PHASE 1.1C)
-// ---------------------------------------------------------------------------
-
-/**
- * @deprecated Transitional legacy helper with first-active fallback. Will be removed in PHASE 1.1C.
- */
-async function resolveStudio(userId: string, requestedStudioId?: string) {
-  const memberships = await db.query.studioMembers.findMany({
-    where: and(
-      eq(studioMembers.userId, userId),
-      eq(studioMembers.isActive, true),
-      requestedStudioId ? eq(studioMembers.studioId, requestedStudioId) : undefined
-    ),
-    orderBy: [asc(studioMembers.createdAt), asc(studioMembers.id)],
-  });
-  for (const member of memberships) {
-    const studio = await db.query.studios.findFirst({
-      where: and(eq(studios.id, member.studioId), eq(studios.isActive, true)),
-    });
-    if (studio) return studio.id;
-  }
-  return undefined;
-}
-
-/**
- * @deprecated Transitional legacy helper. Will be removed in PHASE 1.1C.
- */
-export async function currentStudioForSessionUser(userId: string) {
-  const session = await readSession();
-  if (!session || session.user.id !== userId) return undefined;
-  return resolveStudio(session.user.id);
-}
-
-/**
- * @deprecated Transitional legacy helper. Will be removed in PHASE 1.1C.
- */
-export async function requireStudioContext(requestedStudioId?: string) {
-  const session = await readSession();
-  if (!session) throw new Error("Unauthorized");
-  if (requestedStudioId !== undefined && !z.string().uuid().safeParse(requestedStudioId).success) {
-    throw new Error("Permission denied");
-  }
-  const studioId = await resolveStudio(session.user.id, requestedStudioId);
-  if (!studioId) throw new Error("Permission denied");
-  return { userId: session.user.id, studioId };
-}
-
-/**
- * @deprecated Transitional legacy helper. Will be removed in PHASE 1.1C.
- */
-export async function requireStudioPermission(permission: PermissionCode, requestedStudioId?: string) {
-  const context = await requireStudioContext(requestedStudioId);
-  if (!(await hasPermission(db, context.userId, context.studioId, permission))) {
-    throw new Error("Permission denied");
   }
   return context;
 }

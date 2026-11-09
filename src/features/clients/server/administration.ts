@@ -2,7 +2,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { clients, masters } from "@/db/schema";
 import { z } from "zod";
-import { requireStudioPermission } from "@/server/auth/context";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { idempotentCommand } from "@/server/commands/idempotency";
 import { lockClient } from "@/server/commands/ownership";
 import { getStudioRole } from "@/lib/roles";
@@ -11,7 +11,7 @@ import { writeActivity } from "@/server/services/activity.service";
 import { revalidatePath } from "next/cache";
 const preferenceSchema = z.object({ clientId: z.string().uuid(), masterId: z.string().uuid().nullable(), expectedMasterId: z.string().uuid().nullable(), reason: z.string().trim().min(3).max(1000) }).strict();
 export async function setPreferredMaster(input: z.infer<typeof preferenceSchema>, requestKey: string) {
-  const context = await requireStudioPermission("CLIENT_UPDATE"), data = preferenceSchema.parse(input);
+  const context = await requireBrowserStudioPermission("CLIENT_UPDATE"), data = preferenceSchema.parse(input);
   await idempotentCommand(context, "CLIENT_UPDATE", "client.preferred-master.v1", requestKey, data, async tx => {
     const role = await getStudioRole(tx, context.userId, context.studioId);
     if (role !== "OWNER" && role !== "ADMIN") throw new Error("Permission denied");

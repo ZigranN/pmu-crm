@@ -1,10 +1,14 @@
 import { notFound, redirect } from "next/navigation";
 import { getMasterById } from "@/features/masters/server/queries";
 import { requireBrowserStudioPermission } from "@/server/auth/context";
+import { hasPermission } from "@/lib/permissions";
+import { db } from "@/db";
+import { masterAvailability } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Calendar } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { MasterScheduleForm } from "@/features/calendar/components/master-schedule-form";
 
 export default async function MasterSchedulePage({
   params,
@@ -20,8 +24,30 @@ export default async function MasterSchedulePage({
   }
 
   const master = await getMasterById(id, context.studioId);
-
   if (!master) notFound();
+
+  const canEdit =
+    (await hasPermission(db, context.userId, context.studioId, "MASTER_UPDATE")) ||
+    (await hasPermission(db, context.userId, context.studioId, "STUDIO_MANAGE")) ||
+    (master.userId === context.userId);
+
+  const workingHoursRows = await db
+    .select()
+    .from(masterAvailability)
+    .where(
+      and(
+        eq(masterAvailability.studioId, context.studioId),
+        eq(masterAvailability.masterId, id)
+      )
+    );
+
+  const initialWorkingHours = workingHoursRows.map((r) => ({
+    id: r.id,
+    weekday: r.weekday,
+    startTime: r.startTime,
+    endTime: r.endTime,
+    isActive: r.isActive,
+  }));
 
   return (
     <div className="container max-w-4xl py-6 space-y-6">
@@ -37,40 +63,11 @@ export default async function MasterSchedulePage({
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            Управление расписанием
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="py-12">
-          <div className="text-center space-y-4">
-            <div className="flex justify-center">
-              <div className="w-16 h-16 rounded-full bg-taupe/10 flex items-center justify-center">
-                <Calendar className="h-8 w-8 text-taupe" />
-              </div>
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold mb-2">
-                Расписание мастера будет доступно в Phase 3
-              </h3>
-              <p className="text-sm text-textMuted max-w-md mx-auto">
-                Функционал управления расписанием, рабочими часами, перерывами и
-                выходными будет реализован в следующей фазе разработки вместе с
-                Calendar Engine и системой записей.
-              </p>
-            </div>
-            <div className="pt-4">
-              <Link href={`/masters/${master.id}`}>
-                <Button variant="outline">
-                  Вернуться к профилю мастера
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <MasterScheduleForm
+        masterId={master.id}
+        initialWorkingHours={initialWorkingHours}
+        canEdit={canEdit}
+      />
     </div>
   );
 }

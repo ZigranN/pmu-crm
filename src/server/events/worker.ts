@@ -29,31 +29,33 @@ const nextTime = (attempts: number) => sql`now() + ${Math.min(300, 5 * 2 ** Math
 
 async function claim(registry: Registry): Promise<Job | null> {
   return db.transaction(async tx => {
-    const [job] = await tx.select().from(outboxJobs).where(and(
-      sql`exists(select 1 from studios where studios.id = ${outboxJobs.studioId} and studios.is_active = true)`,
-      sql`((${outboxJobs.state} = 'pending' and ${outboxJobs.availableAt} <= now())
-        or (${outboxJobs.state} in ('processing','reconciling') and ${outboxJobs.leaseUntil} <= now())
-        or (${outboxJobs.state} = 'uncertain' and ${outboxJobs.attempts} < ${outboxJobs.maxAttempts} and ${outboxJobs.availableAt} <= now()))`,
-    )).orderBy(asc(outboxJobs.availableAt), asc(outboxJobs.id)).limit(1).for("update", { skipLocked: true });
-    if (!job) return null;
-    const handler = Object.hasOwn(registry, job.handler) ? registry[job.handler] : undefined;
-    let state = job.state;
-    if (state === "processing" || state === "reconciling") {
-      await tx.update(jobAttempts).set({ outcome: "expired", errorCode: "lease_expired", finishedAt: dbNow }).where(eq(jobAttempts.id, job.leaseToken!));
-      state = job.effectType === "external" || state === "reconciling" ? "uncertain" : "pending";
+    while (true) {
+      const [job] = await tx.select().from(outboxJobs).where(and(
+        sql`exists(select 1 from studios where studios.id = ${outboxJobs.studioId} and studios.is_active = true)`,
+        sql`((${outboxJobs.state} = 'pending' and ${outboxJobs.availableAt} <= now())
+          or (${outboxJobs.state} in ('processing','reconciling') and ${outboxJobs.leaseUntil} <= now())
+          or (${outboxJobs.state} = 'uncertain' and ${outboxJobs.attempts} < ${outboxJobs.maxAttempts} and ${outboxJobs.availableAt} <= now()))`,
+      )).orderBy(asc(outboxJobs.availableAt), asc(outboxJobs.id)).limit(1).for("update", { skipLocked: true });
+      if (!job) return null;
+      const handler = Object.hasOwn(registry, job.handler) ? registry[job.handler] : undefined;
+      let state = job.state;
+      if (state === "processing" || state === "reconciling") {
+        await tx.update(jobAttempts).set({ outcome: "expired", errorCode: "lease_expired", finishedAt: dbNow }).where(eq(jobAttempts.id, job.leaseToken!));
+        state = job.effectType === "external" || state === "reconciling" ? "uncertain" : "pending";
+      }
+      const invalidHandler = !handler || handler.kind !== job.effectType || (state === "uncertain" && handler.kind !== "external");
+      if (invalidHandler || job.attempts >= job.maxAttempts) {
+        await tx.update(outboxJobs).set({ state: state === "uncertain" ? "uncertain" : "dead", leaseToken: null, leaseUntil: null,
+          lastError: !handler ? "unknown_handler" : invalidHandler ? "handler_kind_mismatch" : "attempts_exhausted",
+          attempts: invalidHandler ? job.maxAttempts : job.attempts, updatedAt: dbNow }).where(eq(outboxJobs.id, job.id));
+        continue;
+      }
+      const token = randomUUID(), mode = state === "uncertain" ? "reconciling" : "processing";
+      const [claimed] = await tx.update(outboxJobs).set({ state: mode, attempts: job.attempts + 1, leaseToken: token,
+        leaseUntil: sql`now() + interval '60 seconds'`, updatedAt: dbNow }).where(eq(outboxJobs.id, job.id)).returning();
+      await tx.insert(jobAttempts).values({ id: token, jobId: job.id, mode });
+      return claimed;
     }
-    const invalidHandler = !handler || handler.kind !== job.effectType || (state === "uncertain" && handler.kind !== "external");
-    if (invalidHandler || job.attempts >= job.maxAttempts) {
-      await tx.update(outboxJobs).set({ state: state === "uncertain" ? "uncertain" : "dead", leaseToken: null, leaseUntil: null,
-        lastError: !handler ? "unknown_handler" : invalidHandler ? "handler_kind_mismatch" : "attempts_exhausted",
-        attempts: invalidHandler ? job.maxAttempts : job.attempts, updatedAt: dbNow }).where(eq(outboxJobs.id, job.id));
-      return null;
-    }
-    const token = randomUUID(), mode = state === "uncertain" ? "reconciling" : "processing";
-    const [claimed] = await tx.update(outboxJobs).set({ state: mode, attempts: job.attempts + 1, leaseToken: token,
-      leaseUntil: sql`now() + interval '60 seconds'`, updatedAt: dbNow }).where(eq(outboxJobs.id, job.id)).returning();
-    await tx.insert(jobAttempts).values({ id: token, jobId: job.id, mode });
-    return claimed;
   });
 }
 async function finish(tx: Transaction, job: Job, state: string, errorCode: string | null, externalId?: string) {
@@ -71,9 +73,12 @@ async function bounded<T>(fn: (signal: AbortSignal) => Promise<T>, timeoutMs: nu
     })]);
   } finally { if (timer) clearTimeout(timer); }
 }
+import { recordWorkerHeartbeat } from "./heartbeat";
+
 // Called by a protected scheduler, never an unauthenticated user action.
 export async function runWorkerOnce(registry: Registry, timeoutMs = 10000): Promise<boolean> {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 10000) throw new Error("Invalid worker timeout");
+  await recordWorkerHeartbeat("outbox-worker");
   const job = await claim(registry);
   if (!job) return false;
   const handler = registry[job.handler];

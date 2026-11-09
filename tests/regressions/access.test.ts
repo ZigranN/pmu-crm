@@ -6,14 +6,19 @@ import { studioFixture, clientFixture } from "../fixtures/studio";
 import * as schema from "@/db/schema";
 import { hasPermission } from "@/lib/permissions";
 
-const state = vi.hoisted(() => ({ userId: null as string | null }));
+const state = vi.hoisted(() => ({ userId: null as string | null, cookieStudioId: null as string | null }));
 vi.mock("@/lib/auth", () => ({ auth: { api: {
   getSession: vi.fn(async () => state.userId ? { user: { id: state.userId } } : null),
 } } }));
-vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers(),
+  cookies: async () => ({
+    get: (name: string) => (name === "pmu_active_studio" && state.cookieStudioId ? { value: state.cookieStudioId } : undefined),
+  }),
+}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
-let actions: typeof import("@/features/auth/server/actions");
+let authContext: typeof import("@/server/auth/context");
 let search: typeof import("@/features/search/server/actions");
 let queries: typeof import("@/features/clients/server/queries");
 let serviceQueries: typeof import("@/features/services/server/queries");
@@ -31,7 +36,7 @@ beforeAll(async () => {
   database = await createTestDatabase();
   const db = database.db;
   vi.doMock("@/db", () => ({ db }));
-  actions = await import("@/features/auth/server/actions");
+  authContext = await import("@/server/auth/context");
   search = await import("@/features/search/server/actions");
   queries = await import("@/features/clients/server/queries");
   serviceQueries = await import("@/features/services/server/queries");
@@ -68,6 +73,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   state.userId = userId;
+  state.cookieStudioId = studioId;
   await database.db.delete(schema.userCustomPermissions).where(eq(schema.userCustomPermissions.userId, userId));
   await database.db.update(schema.studioMembers).set({ isActive: true }).where(eq(schema.studioMembers.userId, userId));
   await database.db.update(schema.studios).set({ isActive: true }).where(eq(schema.studios.id, studioId));
@@ -91,7 +97,8 @@ async function override(code: string, effect: "allow" | "deny") {
 
 test("P0-ACCESS-01: non-member receives no fallback studio", async () => {
   state.userId = outsider;
-  expect(await actions.getCurrentStudioId(outsider)).toBeUndefined();
+  expect(await authContext.getActiveStudioMembership(outsider, studioId)).toBeNull();
+  await expect(authContext.requireBrowserStudioContext()).rejects.toThrow();
   await expect(search.searchClientsAction(studioId, "Synthetic")).rejects.toThrow("Permission denied");
 });
 
@@ -102,7 +109,8 @@ test("P0-ACCESS-02: unauthenticated direct search is rejected", async () => {
 });
 
 test("active member can read own studio, search and medical profile", async () => {
-  expect(await actions.getCurrentStudioId(userId)).toBe(studioId);
+  expect((await authContext.getActiveStudioMembership(userId, studioId))?.studioId).toBe(studioId);
+  expect((await authContext.requireBrowserStudioContext()).studioId).toBe(studioId);
   expect((await queries.getClients(studioId)).map((c) => c.id)).toEqual([clientId]);
   expect((await search.searchClientsAction(studioId, "Synthetic")).map((c) => c.id)).toEqual([clientId]);
   expect((await search.globalSearchAction(studioId, "Synthetic")).clients.map((c) => c.id)).toEqual([clientId]);
@@ -110,7 +118,8 @@ test("active member can read own studio, search and medical profile", async () =
 });
 
 test("caller cannot impersonate another user or choose a foreign studio", async () => {
-  expect(await actions.getCurrentStudioId(outsider)).toBeUndefined();
+  expect(await authContext.getActiveStudioMembership(outsider, studioId)).toBeNull();
+  expect(await authContext.getActiveStudioMembership(userId, foreignStudioId)).toBeNull();
   await expect(search.searchClientsAction(foreignStudioId, "Synthetic")).rejects.toThrow("Permission denied");
   await expect(search.globalSearchAction(foreignStudioId, "Synthetic")).rejects.toThrow("Permission denied");
   await expect(search.searchClientsAction("invalid-id", "Synthetic")).rejects.toThrow("Permission denied");
@@ -118,13 +127,15 @@ test("caller cannot impersonate another user or choose a foreign studio", async 
 
 test("inactive membership blocks context and reads", async () => {
   await database.db.update(schema.studioMembers).set({ isActive: false }).where(eq(schema.studioMembers.userId, userId));
-  expect(await actions.getCurrentStudioId(userId)).toBeUndefined();
+  expect(await authContext.getActiveStudioMembership(userId, studioId)).toBeNull();
+  await expect(authContext.requireBrowserStudioContext()).rejects.toThrow();
   await expect(queries.getClients(studioId)).rejects.toThrow("Permission denied");
 });
 
 test("inactive studio blocks context even with an active membership", async () => {
   await database.db.update(schema.studios).set({ isActive: false }).where(eq(schema.studios.id, studioId));
-  expect(await actions.getCurrentStudioId(userId)).toBeUndefined();
+  expect(await authContext.getActiveStudioMembership(userId, studioId)).toBeNull();
+  await expect(authContext.requireBrowserStudioContext()).rejects.toThrow();
   await expect(queries.getClients(studioId)).rejects.toThrow("Permission denied");
 });
 

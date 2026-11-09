@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { sql } from "drizzle-orm";
 import { cycleCommercialTerms } from "@/db/schema";
-import { requireStudioPermission } from "@/server/auth/context";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { idempotentCommand } from "@/server/commands/idempotency";
 import { writeAudit } from "@/server/services/audit-log.service";
 import { lockCycle } from "@/features/treatment-cycles/server/scope";
@@ -10,7 +10,7 @@ import { termsSchema, type TermsInput } from "../contract";
 import { latestTerms, termsBlocker, termsSource, canConfirmTerms } from "./service";
 
 export async function confirmTermsAction(input: TermsInput, requestKey: string) {
-  const data = termsSchema.parse(input), context = await requireStudioPermission("OFFER_MANAGE");
+  const data = termsSchema.parse(input), context = await requireBrowserStudioPermission("OFFER_MANAGE");
   const result = await idempotentCommand(context, "OFFER_MANAGE", "cycle.terms-confirm.v1", requestKey, data, async (tx, commandId) => {
     if (!await canConfirmTerms(tx, context)) throw new Error("Permission denied");
     const cycle = await lockCycle(tx, context, data.cycleId), before = await latestTerms(tx, cycle.id);

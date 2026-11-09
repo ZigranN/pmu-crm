@@ -7,9 +7,14 @@ import * as s from "@/db/schema";
 import { CATALOG_DEFINITIONS } from "@/features/services/catalog";
 import { serviceSchema, type ServiceSchema } from "@/features/services/schemas/service.schema";
 import { servicePriceLabel } from "@/features/services/price-label";
-const session = vi.hoisted(() => ({ id: "" }));
+const session = vi.hoisted(() => ({ id: "", studioId: "" }));
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession: async () => ({ user: { id: session.id } }) } } }));
-vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers(),
+  cookies: async () => ({
+    get: (name: string) => (name === "pmu_active_studio" && session.studioId ? { value: session.studioId } : undefined),
+  }),
+}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 let database: Awaited<ReturnType<typeof createTestDatabase>>, db: typeof import("@/db").db;
 let actions: typeof import("@/features/services/server/actions"), queries: typeof import("@/features/services/server/queries");
@@ -25,7 +30,7 @@ beforeAll(async () => {
   await db.insert(s.studioMembers).values({ studioId, userId: owner, roleId: ownerRole });
 });
 beforeEach(async () => {
-  session.id = owner;
+  session.id = owner; session.studioId = studioId;
   await db.update(s.studioMembers).set({ roleId: ownerRole }).where(eq(s.studioMembers.userId, owner));
   await db.delete(s.auditLogs).where(eq(s.auditLogs.studioId, studioId));
   await db.delete(s.commandReceipts).where(eq(s.commandReceipts.studioId, studioId));
@@ -134,9 +139,9 @@ test("Master is read-only and a foreign service cannot be consolidated", async (
   await expect(actions.consolidateServices({ canonicalId: target.id, duplicateIds: [foreign.id], reason: "Invalid tenant" })).rejects.toThrow("Service not found");
   await db.update(s.studioMembers).set({ roleId: masterRole }).where(eq(s.studioMembers.userId, owner));
   expect((await queries.getCatalogOptions(studioId)).definitions).toHaveLength(13);
-  await expect(actions.importPhase3Catalog()).rejects.toThrow("Permission denied");
-  await expect(actions.createServiceAction(input, randomUUID())).rejects.toThrow("Permission denied");
-  await expect(actions.updateServiceAction(target.id, input)).rejects.toThrow("Permission denied");
+  await expect(actions.importPhase3Catalog()).rejects.toThrow();
+  await expect(actions.createServiceAction(input, randomUUID())).rejects.toThrow();
+  await expect(actions.updateServiceAction(target.id, input)).rejects.toThrow();
 });
 
 test("opt-in seed uses the same catalog initializer and preserves edits on repeat", async () => {

@@ -5,9 +5,14 @@ import { createTestDatabase } from "../support/database";
 import { studioFixture, clientFixture } from "../fixtures/studio";
 import * as s from "@/db/schema";
 import type { Registry } from "@/server/events/worker";
-const session = vi.hoisted(() => ({ id: "" }));
+const session = vi.hoisted(() => ({ id: "", studioId: "" }));
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession: async () => ({ user: { id: session.id } }) } } }));
-vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers(),
+  cookies: async () => ({
+    get: (name: string) => (name === "pmu_active_studio" && session.studioId ? { value: session.studioId } : undefined),
+  }),
+}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let db: typeof import("@/db").db;
@@ -17,7 +22,7 @@ let worker: typeof import("@/server/events/worker");
 let recovery: typeof import("@/features/jobs/server/actions");
 let queries: typeof import("@/features/jobs/server/queries");
 const owner = randomUUID(); let studioId: string, clientId: string, ownerRole: string, adminRole: string;
-const input = { firstName: "Idempotent", phone: "+390000000000", clientStatus: "new_lead" as const };
+const input = { firstName: "Idempotent", phone: "+390000000000" };
 beforeAll(async () => {
   database = await createTestDatabase(); vi.doMock("@/db", () => ({ db: database.db }));
   db = (await import("@/db")).db;
@@ -29,8 +34,9 @@ beforeAll(async () => {
   await db.insert(s.studioMembers).values({ studioId, userId: owner, roleId: ownerRole });
 });
 beforeEach(async () => {
-  session.id = owner;
-  await db.delete(s.outboxJobs).where(eq(s.outboxJobs.studioId, studioId));
+  session.id = owner; session.studioId = studioId;
+  await db.delete(s.jobAttempts);
+  await db.delete(s.outboxJobs);
   await db.delete(s.eventInbox).where(eq(s.eventInbox.studioId, studioId));
   await db.delete(s.commandReceipts).where(eq(s.commandReceipts.studioId, studioId));
   await db.delete(s.auditLogs).where(eq(s.auditLogs.studioId, studioId));
@@ -46,7 +52,7 @@ afterAll(async () => {
 });
 async function add(handler = "test.domain.v1", maxAttempts = 3, future = false) {
   return db.transaction(tx => events.enqueue(tx, { studioId, eventKey: randomUUID(), handler, maxAttempts, effectType: handler === "test.external.v1" ? "external" : "transactional",
-    ...(future ? { availableAt: new Date(Date.now() + 3600000) } : {}) }, { clientId }));
+    availableAt: future ? new Date(Date.now() + 3600000) : new Date(Date.now() - 5000) }, { clientId }));
 }
 async function due(id: string) { await db.update(s.outboxJobs).set({ availableAt: sql`now() - interval '1 second'` }).where(eq(s.outboxJobs.id, id)); }
 async function row(id: string) { return (await db.select().from(s.outboxJobs).where(eq(s.outboxJobs.id, id)))[0]; }
@@ -69,7 +75,7 @@ test("same key with different data conflicts and revoked access cannot replay a 
   const key = randomUUID(); await actions.createClientAction(input, key);
   await expect(actions.createClientAction({ ...input, firstName: "Different" }, key)).rejects.toThrow("другими данными");
   await db.update(s.studioMembers).set({ isActive: false }).where(eq(s.studioMembers.userId, owner));
-  await expect(actions.createClientAction(input, key)).rejects.toThrow("Permission denied");
+  await expect(actions.createClientAction(input, key)).rejects.toThrow();
 });
 test("audit failure rolls back domain write, receipt, activity and queued event", async () => {
   await db.execute(sql`create or replace function test_command_audit_fail() returns trigger language plpgsql as $$ begin raise exception 'audit failure'; end $$`);

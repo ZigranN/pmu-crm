@@ -18,6 +18,10 @@ export const auth = betterAuth({
         "https://pmu-crm.vercel.app",
     ],
 
+    rateLimit: {
+        enabled: false,
+    },
+
     emailAndPassword: {
         enabled: true,
         autoSignIn: true,

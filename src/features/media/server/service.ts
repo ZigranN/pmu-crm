@@ -5,12 +5,17 @@ import { writeAudit } from "@/server/services/audit-log.service";
 import "server-only";
 import { resourceScope } from "@/server/auth/scopes";
 import { db } from "@/db";
-import { media, consents, mediaTypeEnum } from "@/db/schema";
+import { media, consents, cycleConsents, mediaTypeEnum } from "@/db/schema";
 import { eq, and, isNull, ne, sql } from "drizzle-orm";
 import { uploadToCloudinary, deleteFromCloudinary } from "@/lib/cloudinary";
-import { requireStudioPermission } from "@/server/auth/context";
+import { requireStudioPermissionFor } from "@/server/auth/context";
 import { validateMediaLinks, lockClient, entityId, type Transaction } from "@/server/commands/ownership";
 import { z } from "zod";
+import {
+  validateFile,
+  FILE_SIZE_LIMITS,
+  ALLOWED_FORMATS,
+} from "@/lib/file-validation";
 
 export interface CreateMediaInput {
   studioId: string;
@@ -27,11 +32,23 @@ export interface CreateMediaInput {
 export async function withMediaUpload<T>(file: File, input: CreateMediaInput,
   persist: (tx: Transaction, record: typeof media.$inferSelect) => Promise<T>): Promise<T> {
   const type = z.enum(mediaTypeEnum.enumValues).parse(input.type);
-  const context = await requireStudioPermission(type === "consent" ? "CONSENT_UPLOAD" : "MEDIA_CREATE", input.studioId);
+  const context = await requireStudioPermissionFor(input.createdById, input.studioId, type === "consent" ? "CONSENT_UPLOAD" : "MEDIA_CREATE");
   if (context.userId !== input.createdById) throw new Error("Permission denied");
   if (!(file instanceof File) || !file.size) throw new Error("File is required");
+
+  // Validate magic bytes and size bounds before any I/O
+  const validation = await validateFile(file, {
+    maxBytes: type === "consent" ? FILE_SIZE_LIMITS.CONSENT_MAX_BYTES : FILE_SIZE_LIMITS.MEDIA_MAX_BYTES,
+    allowedTypes: type === "consent" ? ALLOWED_FORMATS.CONSENT_DOCUMENT : ALLOWED_FORMATS.CLIENT_MEDIA,
+  });
+  const resource_type = validation.fileType === "pdf" ? "raw" : "image";
+
   await db.transaction((tx) => validateMediaLinks(tx, input));
-  const { url, publicId } = await uploadToCloudinary(file, { folder: `crm-pmu/${input.studioId}/${type}` });
+  const { url, publicId } = await uploadToCloudinary(file, {
+    folder: `crm-pmu/${input.studioId}/${type}`,
+    resource_type,
+    type: "authenticated",
+  });
   try {
     return await db.transaction(async (tx) => {
       await validateMediaLinks(tx, input);
@@ -42,7 +59,7 @@ export async function withMediaUpload<T>(file: File, input: CreateMediaInput,
     });
   } catch (error) {
     if (publicId) {
-      try { await deleteFromCloudinary(publicId); }
+      try { await deleteFromCloudinary(publicId, { resource_type, type: "authenticated" }); }
       catch { console.error("Media upload rollback: provider cleanup failed", { publicId }); }
     }
     throw error;
@@ -60,9 +77,25 @@ export const mediaService = {
     entityId.parse(mediaId);
     const record = await this.getMediaById(mediaId, studioId, "archive");
     if (!record || (expectedClientId && record.clientId !== expectedClientId)) throw new Error("Media not found");
-    const context = await requireStudioPermission(record.type === "consent" ? "CONSENT_UPLOAD" : "MEDIA_CREATE", studioId);
+    const context = await requireStudioPermissionFor(userId, studioId, record.type === "consent" ? "CONSENT_UPLOAD" : "MEDIA_CREATE");
     if (context.userId !== userId) throw new Error("Permission denied");
     await db.transaction(async (tx) => {
+      const [signedCycleConsent] = await tx
+        .select({ id: cycleConsents.id })
+        .from(cycleConsents)
+        .where(
+          and(
+            eq(cycleConsents.mediaId, mediaId),
+            eq(cycleConsents.studioId, studioId),
+            eq(cycleConsents.status, "SIGNED")
+          )
+        )
+        .limit(1);
+
+      if (signedCycleConsent) {
+        throw new Error("Cannot archive media referenced by signed cycle consent");
+      }
+
       await lockClient(tx, record.clientId, studioId, userId, false, record.type === "consent" ? "CONSENT_UPLOAD" : "MEDIA_CREATE");
       const [archived] = await tx.update(media).set({ deletedAt: new Date(), deletedById: userId })
         .where(and(eq(media.id, mediaId), eq(media.studioId, studioId), eq(media.clientId, record.clientId), isNull(media.deletedAt))).returning();
@@ -84,20 +117,24 @@ export const mediaService = {
     return sensitiveRead(kind === "consent" ? "CONSENT_READ" : "MEDIA_READ", studioId, { operation: "media.list", targetId: clientId }, async (context) => {
       clientId = await canonicalClientId(clientId, studioId);
       const scope = await resourceScope(context);
-      return db.query.media.findMany({
+      const rows = await db.query.media.findMany({
         where: and(scope.clientReference(sql`${media.clientId}`), eq(media.clientId, clientId), eq(media.studioId, studioId), isNull(media.deletedAt),
           kind === "consent" ? eq(media.type, "consent") : ne(media.type, "consent")),
         orderBy: (media, { desc }) => [desc(media.createdAt)],
       });
+      return rows.map((item) => ({
+        ...item,
+        url: `/api/media/${item.id}/content`,
+      }));
     }, recordIds);
   },
 
   async getMediaById(mediaId: string, studioId: string, intent: "read" | "archive" = "read") {
-    return sensitiveRead(null, studioId, { operation: "media.read", targetId: mediaId }, async () => {
+    return sensitiveRead(null, studioId, { operation: "media.read", targetId: mediaId }, async (context) => {
       const record = await db.query.media.findFirst({ where: and(eq(media.id, mediaId), eq(media.studioId, studioId), isNull(media.deletedAt)) });
       if (!record) return undefined;
-      const context = await requireStudioPermission(record.type === "consent" ? (intent === "archive" ? "CONSENT_UPLOAD" : "CONSENT_READ") : (intent === "archive" ? "MEDIA_CREATE" : "MEDIA_READ"), studioId);
-      const scope = await resourceScope(context);
+      const permContext = await requireStudioPermissionFor(context.userId, studioId, record.type === "consent" ? (intent === "archive" ? "CONSENT_UPLOAD" : "CONSENT_READ") : (intent === "archive" ? "MEDIA_CREATE" : "MEDIA_READ"));
+      const scope = await resourceScope(permContext);
       return db.query.media.findFirst({ where: and(eq(media.id, record.id), eq(media.studioId, studioId), isNull(media.deletedAt), scope.clientReference(sql`${media.clientId}`)) });
     }, optionalRecordId);
   },

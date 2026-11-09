@@ -38,7 +38,6 @@ export function ClientForm({ initialData }: ClientFormProps) {
     defaultValues: initialData ? {
       firstName: initialData.firstName,
       phone: initialData.phone,
-      clientStatus: initialData.clientStatus,
       leadStatus: initialData.leadStatus ?? "",
       language: initialData.language ?? null,
       interestedZones: initialData.interestedZones ?? null,
@@ -66,7 +65,6 @@ export function ClientForm({ initialData }: ClientFormProps) {
       email: "",
       instagram: "",
       source: "",
-      clientStatus: "new_lead",
       leadStatus: "",
       birthDate: null,
       notes: "",
@@ -350,40 +348,6 @@ export function ClientForm({ initialData }: ClientFormProps) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField
               control={form.control}
-              name="clientStatus"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Статус</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Выберите статус" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="new_lead">Новый лид</SelectItem>
-                      <SelectItem value="contacted">Связались</SelectItem>
-                      <SelectItem value="needs_consultation">Нужна консультация</SelectItem>
-                      <SelectItem value="consultation_booked">Консультация назначена</SelectItem>
-                      <SelectItem value="no_reply">Нет ответа</SelectItem>
-                      <SelectItem value="appointment_booked">Записан на процедуру</SelectItem>
-                      <SelectItem value="procedure_done">Процедура выполнена</SelectItem>
-                      <SelectItem value="follow_up">Поддержка (follow-up)</SelectItem>
-                      <SelectItem value="second_session_needed">Нужен второй сеанс</SelectItem>
-                      <SelectItem value="correction_needed">Нужна коррекция</SelectItem>
-                      <SelectItem value="completed">Завершено</SelectItem>
-                      <SelectItem value="returning_client">Постоянный клиент</SelectItem>
-                      <SelectItem value="refresh_needed">Нужен рефреш</SelectItem>
-                      <SelectItem value="lost">Потерян</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
               name="source"
               render={({ field }) => (
                 <FormItem>
@@ -408,21 +372,21 @@ export function ClientForm({ initialData }: ClientFormProps) {
                 </FormItem>
               )}
             />
-          </div>
 
-          <FormField
-            control={form.control}
-            name="leadStatus"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Статус лида</FormLabel>
-                <FormControl>
-                  <Input placeholder="Например: горячий, холодный, в процессе" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            <FormField
+              control={form.control}
+              name="leadStatus"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Статус лида</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Например: горячий, холодный, в процессе" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
 
           <FormField
             control={form.control}

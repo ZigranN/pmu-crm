@@ -9,18 +9,10 @@ import {
   requireAuthenticatedUser,
   requireActiveStudioMembership,
   getUserActiveStudios,
-  currentStudioForSessionUser,
 } from "@/server/auth/context";
 
 export async function getSession() {
   return readSession();
-}
-
-/**
- * @deprecated Transitional legacy helper.
- */
-export async function getCurrentStudioId(userId: string) {
-  return currentStudioForSessionUser(userId);
 }
 
 export async function setActiveStudioAction(studioId: string) {

@@ -102,6 +102,7 @@ export function StudioSettingsForm({ initialData, readonly = false }: StudioSett
                     <FormLabel>Логотип студии</FormLabel>
                     <FormControl>
                       <ImageUpload
+                        purpose="studio_logo"
                         value={field.value}
                         onChange={field.onChange}
                         onRemove={() => field.onChange("")}

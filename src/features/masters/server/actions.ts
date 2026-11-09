@@ -6,7 +6,7 @@ import { hasPermission } from "@/lib/permissions";
 import { db } from "@/db";
 import { masters, masterServices, services } from "@/db/schema";
 import { masterSchema, type MasterSchema } from "../schemas/master.schema";
-import { requireStudioPermission } from "@/server/auth/context";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { entityId, type Transaction } from "@/server/commands/ownership";
 import { revalidatePath } from "next/cache";
 import { eq, and, inArray, asc } from "drizzle-orm";
@@ -23,7 +23,7 @@ async function validateServices(tx: Transaction, studioId: string, ids: string[]
 }
 
 export async function createMasterAction(input: MasterSchema) {
-  const { studioId, userId } = await requireStudioPermission("MASTER_CREATE");
+  const { studioId, userId } = await requireBrowserStudioPermission("MASTER_CREATE");
   const { serviceIds = [], ...masterData } = masterSchema.parse(input);
   const master = await db.transaction(async (tx) => {
     await lockStudioAccess(tx, { studioId, userId });
@@ -39,7 +39,7 @@ export async function createMasterAction(input: MasterSchema) {
 }
 
 export async function updateMasterAction(id: string, input: MasterSchema) {
-  const { studioId, userId } = await requireStudioPermission("MASTER_UPDATE");
+  const { studioId, userId } = await requireBrowserStudioPermission("MASTER_UPDATE");
   entityId.parse(id);
   const { serviceIds, ...masterData } = masterSchema.parse(input);
   const master = await db.transaction(async (tx) => {
@@ -67,7 +67,7 @@ export async function updateMasterAction(id: string, input: MasterSchema) {
 }
 
 async function changeArchiveState(id: string, archived: boolean) {
-  const { studioId, userId } = await requireStudioPermission(archived ? "MASTER_ARCHIVE" : "MASTER_UPDATE");
+  const { studioId, userId } = await requireBrowserStudioPermission(archived ? "MASTER_ARCHIVE" : "MASTER_UPDATE");
   entityId.parse(id);
   await db.transaction(async (tx) => {
     await lockStudioAccess(tx, { studioId, userId });

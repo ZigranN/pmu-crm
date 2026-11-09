@@ -13,6 +13,7 @@ interface ImageUploadProps {
   disabled?: boolean;
   maxSizeMB?: number;
   mode?: "generic" | "media"; // generic = simple upload (master/studio), media = requires clientId
+  purpose?: "master_photo" | "studio_logo" | "profile_image"; // for generic mode
   clientId?: string; // only for media mode
   type?: string; // for media mode
 }
@@ -24,6 +25,7 @@ export function ImageUpload({
   disabled = false,
   maxSizeMB = 5,
   mode = "generic",
+  purpose = "master_photo",
   clientId,
   type = "other",
 }: ImageUploadProps) {
@@ -54,6 +56,9 @@ export function ImageUpload({
       formData.append("file", file);
 
       let endpoint = "/api/upload/image"; // default generic upload
+      if (mode === "generic") {
+        formData.append("purpose", purpose);
+      }
 
       if (mode === "media") {
         if (!clientId) {
@@ -96,6 +101,7 @@ export function ImageUpload({
             src={value}
             alt="Uploaded image"
             fill
+            unoptimized
             className="object-cover"
           />
           {!disabled && onRemove && (

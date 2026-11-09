@@ -1,7 +1,7 @@
 import { z } from "zod";
 export const MERGE_FIELDS = {
   firstName: "Имя", lastName: "Фамилия", phone: "Телефон", whatsapp: "WhatsApp", email: "Email", instagram: "Instagram", birthDate: "Дата рождения",
-  source: "Источник", clientStatus: "Статус", leadStatus: "Статус лида", notes: "Заметки", tags: "Теги", referredByName: "Рекомендатель", interest: "Интерес",
+  source: "Источник", leadStatus: "Статус лида", notes: "Заметки", tags: "Теги", referredByName: "Рекомендатель", interest: "Интерес",
   treatmentZone: "Прежняя зона", nextContactAt: "Следующий контакт", campaignTag: "Кампания", serviceTag: "Тег услуги", language: "Язык", interestedZones: "Зоны интереса",
   clientKind: "Тип клиента", reportedPreviousPmu: "Предыдущий PMU со слов клиента", preferredMasterId: "Предпочтительный мастер", assignedMasterId: "Назначенный мастер",
 } as const;
@@ -17,5 +17,5 @@ export const MERGE_RELATION_LABELS: Record<string, string> = {
   client_assignments: "История назначений мастера", client_status_history: "История статусов", appointments: "Визиты", procedure_sessions: "Процедуры",
   media: "Медиафайлы", consents: "Согласия", payments: "Оплаты", payment_transactions: "Финансовые операции", tasks: "Задачи", notifications: "Уведомления",
   activity_events: "События", questionnaire_responses: "Ответы анкет", reviews: "Отзывы", custom_offers: "Индивидуальные предложения",
-  client_duplicate_decisions: "Решения о совпадениях", client_medical_profiles: "Медицинские профили",
+  client_duplicate_decisions: "Решения о совпадениях", client_medical_profiles: "Медицинские профили", ledger_entries: "Финансовый леджер",
 };

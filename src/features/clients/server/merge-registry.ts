@@ -2,8 +2,8 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import type { Transaction } from "@/server/commands/ownership";
 // Every direct client FK is classified here. The schema coverage test fails when a new module adds one.
-export const MOVABLE_CLIENT_TABLES = ["treatment_packages", "treatment_cycles", "appointment_cycles", "client_assignments", "client_status_history", "appointments", "procedure_sessions", "media", "consents", "payments", "payment_transactions", "tasks", "notifications", "activity_events", "questionnaire_responses", "reviews", "custom_offers", "client_duplicate_decisions"] as const;
-export const SPECIAL_CLIENT_TABLES = ["clients", "client_medical_profiles", "client_merges"] as const;
+export const MOVABLE_CLIENT_TABLES = ["treatment_packages", "treatment_cycles", "appointment_cycles", "client_assignments", "client_status_history", "appointments", "procedure_sessions", "media", "consents", "payments", "payment_transactions", "tasks", "notifications", "activity_events", "questionnaire_responses", "reviews", "custom_offers", "client_duplicate_decisions", "handoffs"] as const;
+export const SPECIAL_CLIENT_TABLES = ["clients", "client_medical_profiles", "medical_profile_revisions", "client_merges", "cycle_consents", "ledger_entries", "conversations", "conversation_messages", "privacy_requests"] as const;
 export async function mergeRelations(tx: Transaction, sourceId: string, targetId: string, studioId: string) {
   const records: Record<string, { id: string; [key: string]: unknown }[]> = {};
   for (const table of [...MOVABLE_CLIENT_TABLES, "client_medical_profiles"]) {

@@ -30,6 +30,9 @@ const serverAppEnvSchema = z.object({
     CLOUDINARY_CLOUD_NAME: z.string().min(1),
     CLOUDINARY_API_KEY: z.string().min(1),
     CLOUDINARY_API_SECRET: z.string().min(1),
+    OPENAI_API_KEY: z.string().optional(),
+    GOOGLE_CLIENT_ID: z.string().optional(),
+    GOOGLE_CLIENT_SECRET: z.string().optional(),
 });
 
 export function getServerAppEnv() {
@@ -40,6 +43,9 @@ export function getServerAppEnv() {
         CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
         CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
         CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
+        OPENAI_API_KEY: process.env.OPENAI_API_KEY || process.env.AI_API_KEY,
+        GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || process.env.IDCLIENT_GOOGLE_CALENDARE,
+        GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || process.env.SECRET_CLIENT_ID_GOOGLE_CALENDARE,
     });
 }
 

@@ -1,6 +1,6 @@
 import "server-only";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
-import { clients, masters, clientMedicalProfiles, clientMerges, clientAssignments, clientStatusHistory } from "@/db/schema";
+import { clients, masters, clientMedicalProfiles, clientMerges, clientAssignments } from "@/db/schema";
 import { lockClient, type Transaction } from "@/server/commands/ownership";
 import { hasPermission } from "@/lib/permissions";
 import { getStudioRole } from "@/lib/roles";
@@ -25,7 +25,7 @@ export async function inspectMerge(tx: Transaction, context: Context, sourceId: 
   const aliases = await tx.select().from(clients).where(and(eq(clients.studioId, context.studioId), or(eq(clients.mergedIntoId, sourceId), eq(clients.mergedIntoId, targetId)))).orderBy(clients.id);
   const masterRows = await tx.select({ id: masters.id, name: masters.displayName }).from(masters).where(eq(masters.studioId, context.studioId));
   const fields = (Object.keys(MERGE_FIELDS) as MergeField[]).map(field => ({ field, label: MERGE_FIELDS[field], source: json(source[field]), target: json(target[field]), sourceDisplay: field.endsWith("MasterId") ? masterRows.find(row => row.id === source[field])?.name ?? "Не назначен" : null, targetDisplay: field.endsWith("MasterId") ? masterRows.find(row => row.id === target[field])?.name ?? "Не назначен" : null, conflict: JSON.stringify(source[field]) !== JSON.stringify(target[field]) }));
-  const token = payloadHash(json({ context, source, target, records, aliases }));
+  const token = payloadHash(json({ context: { userId: context.userId, studioId: context.studioId }, source, target, records, aliases }));
   const counts = Object.fromEntries(Object.entries(records).map(([name, rows]) => [name, rows.filter(row => row.client_id === source.id).length]));
   const medicalConflict = records.client_medical_profiles.filter(row => row.superseded_at === null).length > 1;
   return { source, target, records, aliases, preview: { sourceId, targetId, sourceName: source.fullName, targetName: target.fullName, token, fields, counts, medicalConflict } };
@@ -54,7 +54,7 @@ export async function executeMerge(tx: Transaction, context: Context, input: Mer
   const [after] = await tx.update(clients).set(changes).where(eq(clients.id, target.id)).returning();
   await tx.update(clients).set({ mergedIntoId: target.id, deletedAt: new Date(), deletedById: context.userId, updatedAt: new Date() }).where(eq(clients.id, source.id));
   await tx.update(clients).set({ mergedIntoId: target.id }).where(and(eq(clients.studioId, context.studioId), eq(clients.mergedIntoId, source.id)));
-  const [merge] = await tx.insert(clientMerges).values({ ...context, sourceId: source.id, targetId: target.id, actorId: context.userId, reason: input.reason, reviewToken: input.token,
+  const [merge] = await tx.insert(clientMerges).values({ studioId: context.studioId, sourceId: source.id, targetId: target.id, actorId: context.userId, reason: input.reason, reviewToken: input.token,
     sourceSnapshot: json(source), targetSnapshot: json(target), resultSnapshot: json(after), provenance, movedRecords: moved }).returning();
 
   for (const table of MOVABLE_CLIENT_TABLES) {
@@ -68,8 +68,7 @@ export async function executeMerge(tx: Transaction, context: Context, input: Mer
   }
   moved.client_medical_profiles = records.client_medical_profiles.filter(row => row.client_id === source.id).map(row => row.id);
   await tx.update(clientMedicalProfiles).set({ clientId: target.id }).where(eq(clientMedicalProfiles.clientId, source.id));
-  if (after.assignedMasterId !== target.assignedMasterId) await tx.insert(clientAssignments).values({ ...context, clientId: target.id, previousMasterId: target.assignedMasterId, masterId: after.assignedMasterId, changedById: context.userId, reason: input.reason });
-  if (after.clientStatus !== target.clientStatus) await tx.insert(clientStatusHistory).values({ studioId: context.studioId, clientId: target.id, oldStatus: target.clientStatus, newStatus: after.clientStatus, changedById: context.userId, note: input.reason });
+  if (after.assignedMasterId !== target.assignedMasterId) await tx.insert(clientAssignments).values({ studioId: context.studioId, clientId: target.id, previousMasterId: target.assignedMasterId, masterId: after.assignedMasterId, changedById: context.userId, reason: input.reason });
   await writeAudit(tx, { ...context, action: "client_merged", entityType: "client", entityId: target.id, before: { source, target }, after: { client: after, mergeId: merge.id, provenance, moved }, reason: input.reason, reasonSource: "user", metadata: { commandId, sourceId: source.id } });
   await writeActivity(tx, { ...context, clientId: target.id, type: "client_updated", title: "Карточки клиентов объединены", description: input.reason, metadata: { sourceId: source.id, mergeId: merge.id } });
   return { id: target.id, mergeId: merge.id };

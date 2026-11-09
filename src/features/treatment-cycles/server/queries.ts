@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { and, eq, isNull, desc, getTableColumns } from "drizzle-orm";
-import { clients, treatmentCycles, cycleStageHistory, user } from "@/db/schema";
+import { clients, treatmentCycles, cycleStageHistory, user, procedureSessions, procedurePigments, masters, services } from "@/db/schema";
 import { resourceScope } from "@/server/auth/scopes";
 import { cycleScope, lockCycle } from "./scope";
 import { guardedTransition } from "./transitions";
@@ -38,8 +38,75 @@ export async function getCycleTimeline(id:string) {
     const cycle=await lockCycle(tx,context,id);
     const [client]=await tx.select().from(clients).where(eq(clients.id,cycle.clientId));
     const history=await tx.select({...getTableColumns(cycleStageHistory),actorName:user.name}).from(cycleStageHistory).leftJoin(user,eq(user.id,cycleStageHistory.actorId)).where(and(eq(cycleStageHistory.cycleId,id),eq(cycleStageHistory.studioId,context.studioId))).orderBy(desc(cycleStageHistory.version)).limit(1001);
-    return {id:cycle.id,clientId:cycle.clientId,name:client.fullName,zone:cycle.zoneCode,stage:cycle.stage,version:cycle.version,
-      choices:await Promise.all(TRANSITIONS[cycle.stage as CycleStage].map(async to=>({to,blocked:await guardedTransition(tx,cycle,to,client)}))),
-      history:history.slice(0,1000),truncated:history.length>1000,canWrite:await hasPermission(tx,context.userId,context.studioId,"CLIENT_UPDATE")};
+
+    const procedureRows = await tx
+      .select({
+        id: procedureSessions.id,
+        status: procedureSessions.status,
+        startedAt: procedureSessions.startedAt,
+        completedAt: procedureSessions.completedAt,
+        abortedAt: procedureSessions.abortedAt,
+        abortReason: procedureSessions.abortReason,
+        procedureArea: procedureSessions.procedureArea,
+        procedureType: procedureSessions.procedureType,
+        sessionType: procedureSessions.sessionType,
+        healingStage: procedureSessions.healingStage,
+        painLevel: procedureSessions.painLevel,
+        skinReaction: procedureSessions.skinReaction,
+        notes: procedureSessions.notes,
+        recommendations: procedureSessions.recommendations,
+        nextStep: procedureSessions.nextStep,
+        nextRecommendedDate: procedureSessions.nextRecommendedDate,
+        anesthesia: procedureSessions.anesthesia,
+        cartridge: procedureSessions.cartridge,
+        needle: procedureSessions.needle,
+        voltage: procedureSessions.voltage,
+        machine: procedureSessions.machine,
+        createdAt: procedureSessions.createdAt,
+        masterDisplayName: masters.displayName,
+        serviceName: services.name,
+      })
+      .from(procedureSessions)
+      .leftJoin(masters, eq(masters.id, procedureSessions.masterId))
+      .leftJoin(services, eq(services.id, procedureSessions.serviceId))
+      .where(
+        and(
+          eq(procedureSessions.cycleId, id),
+          eq(procedureSessions.studioId, context.studioId),
+          isNull(procedureSessions.deletedAt)
+        )
+      )
+      .orderBy(desc(procedureSessions.createdAt), desc(procedureSessions.id));
+
+    const sessionIds = procedureRows.map((r) => r.id);
+    const pigmentsMap: Record<string, any[]> = {};
+    if (sessionIds.length > 0) {
+      for (const sId of sessionIds) {
+        const pRows = await tx
+          .select()
+          .from(procedurePigments)
+          .where(eq(procedurePigments.procedureSessionId, sId));
+        pigmentsMap[sId] = pRows;
+      }
+    }
+
+    const procedures = procedureRows.map((r) => ({
+      ...r,
+      pigments: pigmentsMap[r.id] || [],
+    }));
+
+    return {
+      id:cycle.id,
+      clientId:cycle.clientId,
+      name:client.fullName,
+      zone:cycle.zoneCode,
+      stage:cycle.stage,
+      version:cycle.version,
+      choices:await Promise.all(TRANSITIONS[cycle.stage as CycleStage].map(async to=>({to,blocked:await guardedTransition(tx,cycle,to)}))),
+      history:history.slice(0,1000),
+      procedures,
+      truncated:history.length>1000,
+      canWrite:await hasPermission(tx,context.userId,context.studioId,"CLIENT_UPDATE"),
+    };
   }),result=>[result.id,...result.history.map(row=>row.id)]);
 }

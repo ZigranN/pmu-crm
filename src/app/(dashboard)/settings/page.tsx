@@ -3,7 +3,7 @@ import { requireBrowserStudioContext } from "@/server/auth/context";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ChevronRight, Settings, Users, Scissors } from "lucide-react";
+import { ChevronRight, Settings, Users, Scissors, Zap, Calendar } from "lucide-react";
 import Link from "next/link";
 
 export default async function SettingsPage() {
@@ -11,7 +11,10 @@ export default async function SettingsPage() {
   const role = context.role;
 
   const settingsLinks = [
+    { title: "Google Календарь", description: "Синхронизация записей с личными календарями Google", icon: Calendar, href: "/settings/integrations/google-calendar" },
+    { title: "Автоматизации", description: "Правила напоминаний, контроль диалогов и фоновые задачи", icon: Zap, href: "/automations" },
     { title: "Циклы процедур", description: "Стадии и история по каждой зоне", icon: Settings, href: "/deals" },
+    ...(role === "OWNER" || role === "ADMIN" ? [{ title: "Конфиденциальность (DSAR)", description: "Запросы на экспорт, анонимизацию и политики хранения", icon: Settings, href: "/settings/privacy" }] : []),
     ...(role === "OWNER" ? [{ title: "Разбор старых записей", description: "Записи без привязки к циклу процедуры", icon: Settings, href: "/settings/cycle-migration" }] : []),
     ...(role === "OWNER" ? [{ title: "Обработка событий", description: "Ошибки, повторные попытки и восстановление", icon: Settings, href: "/settings/jobs" }] : []),
     ...(role === "OWNER" ? [{ title: "История изменений и доступа", description: "Аудит действий и чтения данных", icon: Settings, href: "/settings/audit" }] : []),

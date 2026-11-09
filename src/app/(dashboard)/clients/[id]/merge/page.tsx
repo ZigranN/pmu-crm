@@ -18,7 +18,10 @@ export default async function ClientMergePage({ params }: { params: Promise<{ id
   const client = await getClientById(id, context.studioId);
   if (!client) notFound();
   if (client.id !== id) redirect(`/clients/${client.id}/merge`);
-  const [rows, history] = await Promise.all([getMergeCandidates(id), getClientMergeHistory(id)]);
+  const [rows, history] = await Promise.all([
+    getMergeCandidates(id, context.studioId),
+    getClientMergeHistory(id, context.studioId),
+  ]);
   return <div className="space-y-6"><PageHeader title="Объединение клиентов" description={client.fullName} backHref={`/clients/${id}`} />
     <MergeDialog targetId={id} targetName={client.fullName} candidates={rows.map(row => ({ id: row.id, fullName: row.fullName, phone: row.phone, archived: !!row.archivedAt }))} />
     {history.map(row => <details key={row.id} className="rounded border p-3 break-words"><summary>Объединение {row.createdAt.toISOString().slice(0,10)} · {row.reason}</summary>

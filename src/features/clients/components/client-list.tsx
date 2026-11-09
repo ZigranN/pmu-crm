@@ -4,27 +4,29 @@ import React, { useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
 import { EmptyState } from "@/components/shared/empty-state";
-import { ClientCard } from "./client-card";
+import { ClientCard, type ClientWithCycles } from "./client-card";
 import { Button } from "@/components/ui/button";
 import { Plus, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type clients } from "@/db/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CYCLE_STAGES, STAGE_LABELS, type CycleStage } from "@/features/treatment-cycles/stages";
 
 interface ClientListProps {
-  initialClients: (Omit<typeof clients.$inferSelect, "ltvCents"> & { ltvCents: number | null })[];
+  initialClients: ClientWithCycles[];
 }
 
 export function ClientList({ initialClients }: ClientListProps) {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [stageFilter, setStageFilter] = useState("all");
   const router = useRouter();
 
   const filteredClients = initialClients.filter((c) => {
     const matchesSearch = c.fullName.toLowerCase().includes(search.toLowerCase()) || 
                           c.phone.includes(search);
-    const matchesStatus = statusFilter === "all" ? true : c.clientStatus === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesStage = stageFilter === "all"
+      ? true
+      : (c.cycles ?? []).some((cycle) => cycle.stage === stageFilter);
+    return matchesSearch && matchesStage;
   });
 
   return (
@@ -47,17 +49,17 @@ export function ClientList({ initialClients }: ClientListProps) {
             placeholder="Поиск по имени или телефону..."
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="h-11 sm:w-[200px]">
-            <SelectValue placeholder="Все статусы" />
+        <Select value={stageFilter} onValueChange={setStageFilter}>
+          <SelectTrigger className="h-11 sm:w-[240px]">
+            <SelectValue placeholder="Все стадии" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Все статусы</SelectItem>
-            <SelectItem value="new_lead">Новый лид</SelectItem>
-            <SelectItem value="contacted">Связались</SelectItem>
-            <SelectItem value="appointment_booked">Записан</SelectItem>
-            <SelectItem value="procedure_done">Процедура выполнена</SelectItem>
-            <SelectItem value="returning_client">Постоянный</SelectItem>
+            <SelectItem value="all">Все стадии</SelectItem>
+            {CYCLE_STAGES.map((stage: CycleStage) => (
+              <SelectItem key={stage} value={stage}>
+                {STAGE_LABELS[stage] ?? stage}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

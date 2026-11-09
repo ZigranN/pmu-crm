@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { z } from "zod";
 import { consultations, consultationResults, followUpClosures, followUpRevisions, tasks } from "@/db/schema";
 import { rescheduleFollowUpSchema } from "@/features/consultations/contracts";
-import { requireStudioPermission } from "@/server/auth/context";
+import { requireBrowserStudioPermission } from "@/server/auth/context";
 import { hasPermission } from "@/lib/permissions";
 import { idempotentCommand } from "@/server/commands/idempotency";
 import { enqueue } from "@/server/events/outbox";
@@ -12,7 +12,7 @@ import { lockCycle } from "./scope";
 import { recordCycleChange } from "./mutation";
 
 export async function rescheduleFollowUpAction(input:z.infer<typeof rescheduleFollowUpSchema>,key:string) {
-  const data=rescheduleFollowUpSchema.parse(input),context=await requireStudioPermission("MEDICAL_PROFILE_UPDATE");
+  const data=rescheduleFollowUpSchema.parse(input),context=await requireBrowserStudioPermission("MEDICAL_PROFILE_UPDATE");
   const response=await idempotentCommand(context,"MEDICAL_PROFILE_UPDATE","cycle.follow-up-reschedule.v1",key,data,async(tx,commandId)=>{
     if(!await hasPermission(tx,context.userId,context.studioId,"CLIENT_UPDATE"))throw new Error("Permission denied");
     const cycle=await lockCycle(tx,context,data.id);

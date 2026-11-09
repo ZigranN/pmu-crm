@@ -6,14 +6,21 @@ import { studioFixture,clientFixture } from "../fixtures/studio";
 import * as s from "@/db/schema";
 import { OUTCOMES } from "@/features/consultations/contracts";
 import { withinTwoCalendarYears,evaluateQualification } from "@/features/consultations/server/qualification";
-const session=vi.hoisted(()=>({id:""}));
-vi.mock("@/lib/auth",()=>({auth:{api:{getSession:async()=>({user:{id:session.id}})}}}));vi.mock("next/headers",()=>({headers:async()=>new Headers()}));vi.mock("next/cache",()=>({revalidatePath:vi.fn()}));
+const session=vi.hoisted(()=>({id:"",studioId:""}));
+vi.mock("@/lib/auth",()=>({auth:{api:{getSession:async()=>({user:{id:session.id}})}}}));
+vi.mock("next/headers",()=>({
+  headers:async()=>new Headers(),
+  cookies:async()=>({
+    get:(name:string)=>name==="pmu_active_studio"&&session.studioId?{value:session.studioId}:undefined,
+  }),
+}));
+vi.mock("next/cache",()=>({revalidatePath:vi.fn()}));
 let database:Awaited<ReturnType<typeof createTestDatabase>>,db:typeof import("@/db").db;
 let actions:typeof import("@/features/consultations/server/results"),queries:typeof import("@/features/consultations/server/queries");
 let studioId:string,foreignStudio:string,clientId:string,masterId:string,serviceId:string,roles:Record<string,string>;
 const actor=randomUUID(),risks={otherMasterPmu:false,doubt:false,conditionChanged:false,evaluationRequired:false};
 beforeAll(async()=>{database=await createTestDatabase();vi.doMock("@/db",()=>({db:database.db}));db=(await import("@/db")).db;actions=await import("@/features/consultations/server/results");queries=await import("@/features/consultations/server/queries");await db.insert(s.user).values({id:actor,name:"Synthetic Specialist",email:`${actor}@example.test`,emailVerified:false,createdAt:new Date(),updatedAt:new Date()});roles=Object.fromEntries((await db.select().from(s.roles)).map(r=>[r.code,r.id]));});
-beforeEach(async()=>{session.id=actor;[studioId,foreignStudio]=(await db.insert(s.studios).values([studioFixture(),studioFixture()]).returning()).map(r=>r.id);await db.insert(s.studioMembers).values({studioId,userId:actor,roleId:roles.OWNER});[masterId]=(await db.insert(s.masters).values({studioId,userId:actor,displayName:"Assigned"}).returning()).map(r=>r.id);[clientId]=(await db.insert(s.clients).values({...clientFixture(studioId),assignedMasterId:masterId,language:"it",clientKind:"returning",reportedPreviousPmu:true,interestedZones:["brows","eyes","lips"]}).returning()).map(r=>r.id);[serviceId]=(await db.insert(s.services).values({studioId,name:"Synthetic",category:"consultation",procedureType:"consultation"}).returning()).map(r=>r.id);});
+beforeEach(async()=>{session.id=actor;[studioId,foreignStudio]=(await db.insert(s.studios).values([studioFixture(),studioFixture()]).returning()).map(r=>r.id);session.studioId=studioId;await db.insert(s.studioMembers).values({studioId,userId:actor,roleId:roles.OWNER});[masterId]=(await db.insert(s.masters).values({studioId,userId:actor,displayName:"Assigned"}).returning()).map(r=>r.id);[clientId]=(await db.insert(s.clients).values({...clientFixture(studioId),assignedMasterId:masterId,language:"it",clientKind:"returning",reportedPreviousPmu:true,interestedZones:["brows","eyes","lips"]}).returning()).map(r=>r.id);[serviceId]=(await db.insert(s.services).values({studioId,name:"Synthetic",category:"consultation",procedureType:"consultation"}).returning()).map(r=>r.id);});
 afterEach(async()=>{await db.delete(s.studios).where(eq(s.studios.id,studioId));await db.delete(s.studios).where(eq(s.studios.id,foreignStudio));});
 afterAll(async()=>{try{await db.delete(s.user).where(eq(s.user.id,actor));}finally{await database.close();}});
 async function cycle(extra:Partial<typeof s.treatmentCycles.$inferInsert>={}){return(await db.insert(s.treatmentCycles).values({studioId,clientId,zoneCode:"brows",kind:"pmu",stage:"qualification",assignedMasterId:masterId,...extra}).returning())[0];}
@@ -87,6 +94,8 @@ test("outbox failure rolls back result, linked Remover, history, suspension and 
 });
 test("overdue job creates one task, replay cannot duplicate it, and result closes it",async()=>{
  const done=await completed(),{runWorkerOnce}=await import("@/server/events/worker"),{handlers}=await import("@/server/events/registry");
+ const [job0]=await db.select().from(s.outboxJobs).where(and(eq(s.outboxJobs.studioId,studioId),eq(s.outboxJobs.handler,"consultation.decision-due.v1")));
+ if(job0) await db.update(s.outboxJobs).set({availableAt:new Date(0)}).where(eq(s.outboxJobs.id,job0.id));
  for(let i=0;i<4;i++)await runWorkerOnce(handlers);
  const panel=await queries.getConsultationPanel(done.id);expect(panel.task?.status).toBe("pending");
  const [job]=await db.select().from(s.outboxJobs).where(and(eq(s.outboxJobs.studioId,studioId),eq(s.outboxJobs.handler,"consultation.decision-due.v1")));await db.update(s.outboxJobs).set({state:"pending",availableAt:new Date(0)}).where(eq(s.outboxJobs.id,job.id));await runWorkerOnce(handlers);
