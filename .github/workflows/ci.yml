@@ -31,6 +31,14 @@ jobs:
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Install PostgreSQL 17 Client
+        run: |
+          sudo install -d /etc/apt/keyrings
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --yes -o /etc/apt/keyrings/postgresql.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> $GITHUB_PATH
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -42,6 +50,11 @@ jobs:
         run: node --conditions=react-server --import tsx -e 'require("./src/db/seed-core.ts")'
       - run: npm run typecheck
       - run: npm run lint
+      - name: Verify PostgreSQL 17 CLI tools
+        run: |
+          pg_dump --version
+          pg_restore --version
+          psql --version
       - run: npm test
       - run: npm run build:test
       - run: npx playwright install --with-deps chromium
