@@ -75,13 +75,13 @@ export async function runDisasterRecoveryRehearsal() {
     sourceClient = postgres(sourceDbUrl, { max: 4 });
     const sourceDb = drizzle(sourceClient);
 
-    // 2. Run migrations through current head (0038)
-    console.log(`[STEP 2/10] Running migrations to baseline head (0038)...`);
+    // 2. Run migrations through current head (0039)
+    console.log(`[STEP 2/10] Running migrations to baseline head (0039)...`);
     await migrate(sourceDb, { migrationsFolder });
 
     const migrationRows = await sourceClient`SELECT id, hash, created_at FROM drizzle."__drizzle_migrations" ORDER BY id ASC`;
-    assert.strictEqual(migrationRows.length, 39, `Expected exactly 39 migrations, found ${migrationRows.length}`);
-    console.log(`[MIGRATION_OK] Applied ${migrationRows.length} migrations. Head: 0038_freezing_spyke`);
+    assert.strictEqual(migrationRows.length, 40, `Expected exactly 40 migrations, found ${migrationRows.length}`);
+    console.log(`[MIGRATION_OK] Applied ${migrationRows.length} migrations. Head: 0039_instagram_conversation_channel`);
 
     // 3. Seed representative authoritative records
     console.log(`[STEP 3/10] Seeding representative authoritative cross-phase dataset...`);
@@ -685,7 +685,7 @@ export async function runDisasterRecoveryRehearsal() {
       backupFormat: "pg_dump Custom Archive (-Fc)",
       backupChecksumSha256: backupMetadata.checksumSha256,
       migrationsApplied: migrationRows.length,
-      migrationHead: "0038_freezing_spyke",
+      migrationHead: "0039_instagram_conversation_channel",
       recordsPreserved: {
         studios: studiosCount.count,
         clients: clientsCount.count,

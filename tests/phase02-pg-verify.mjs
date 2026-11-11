@@ -884,20 +884,20 @@ test("total face packages & remover lifecycle & constraints (0031)", async (t) =
 });
 
 // ─── 20. DETERMINISTIC SCHEMA DRIFT VERIFICATION ──────────────────
-test("deterministic schema drift verification against 0038_snapshot.json", async (t) => {
+test("deterministic schema drift verification against 0039_snapshot.json", async (t) => {
   const sql = await createTestDb(t, "drift");
   await migrate(drizzle(sql), { migrationsFolder });
 
   // 1. Verify migration head
   const migrationHistory = await sql`SELECT * FROM drizzle."__drizzle_migrations" ORDER BY id`;
-  assert.equal(migrationHistory.length, 39, "Migration history must contain exactly 39 entries");
+  assert.equal(migrationHistory.length, 40, "Migration history must contain exactly 40 entries");
   const migrationFiles = readMigrationFiles({ migrationsFolder });
-  assert.equal(migrationFiles.length, 39);
-  assert.equal(migrationHistory[38].hash, migrationFiles[38].hash, "Migration head hash must match 0038 migration file hash");
+  assert.equal(migrationFiles.length, 40);
+  assert.equal(migrationHistory[39].hash, migrationFiles[39].hash, "Migration head hash must match 0039 migration file hash");
   const journal = await readJson(path.join(migrationsFolder, "meta/_journal.json"));
-  assert.equal(journal.entries[38].tag, "0038_freezing_spyke", "Migration head tag must be 0038_freezing_spyke");
+  assert.equal(journal.entries[39].tag, "0039_instagram_conversation_channel", "Migration head tag must be 0039_instagram_conversation_channel");
 
-  const snap = await readJson(path.join(migrationsFolder, "meta/0038_snapshot.json"));
+  const snap = await readJson(path.join(migrationsFolder, "meta/0039_snapshot.json"));
   assert.ok(Object.values(snap.tables).some(t => t.name === "privacy_requests"), "0038 snapshot must define privacy_requests");
   assert.ok(Object.values(snap.tables).some(t => t.name === "studio_privacy_retention_policies"), "0038 snapshot must define studio_privacy_retention_policies");
   assert.ok(Object.values(snap.tables).some(t => t.name === "worker_heartbeats"), "0037 snapshot must define worker_heartbeats");

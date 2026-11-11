@@ -1,5 +1,8 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import type {
+  InstagramWebhookPayload,
+} from "../domain/types";
 
 export interface VerifySignatureResult {
   valid: boolean;
@@ -52,45 +55,6 @@ export function verifyInstagramWebhookSignature(
     const message = err instanceof Error ? err.message : String(err);
     return { valid: false, reason: `Signature verification failed: ${message}` };
   }
-}
-
-export interface InstagramWebhookMessagingEvent {
-  sender?: { id?: string };
-  recipient?: { id?: string };
-  timestamp?: number;
-  message?: {
-    mid?: string;
-    is_echo?: boolean;
-    attachments?: unknown[];
-  };
-  reaction?: {
-    mid?: string;
-    reaction?: string;
-  };
-  read?: {
-    watermark?: number;
-  };
-  postback?: {
-    title?: string;
-    payload?: string;
-  };
-}
-
-export interface InstagramWebhookChange {
-  field: string;
-  value?: Record<string, unknown>;
-}
-
-export interface InstagramWebhookEntry {
-  id: string;
-  time?: number;
-  messaging?: InstagramWebhookMessagingEvent[];
-  changes?: InstagramWebhookChange[];
-}
-
-export interface InstagramWebhookPayload {
-  object: string;
-  entry: InstagramWebhookEntry[];
 }
 
 /**

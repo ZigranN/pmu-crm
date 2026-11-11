@@ -58,12 +58,12 @@ async function runMigrationVerification() {
     targetClient = postgres(targetDbUrl, { max: 5 });
     const targetDb = drizzle(targetClient, { schema: s });
 
-    console.log(`[STEP 1/7] Running canonical migrations to baseline (0038)...`);
+    console.log(`[STEP 1/7] Running canonical migrations to baseline (0039)...`);
     await migrate(targetDb, { migrationsFolder });
 
     const migrationRows = await targetClient`SELECT id, hash FROM drizzle."__drizzle_migrations" ORDER BY id ASC`;
-    assert.strictEqual(migrationRows.length, 39, `Expected 39 migrations, found ${migrationRows.length}`);
-    console.log(`[OK] Applied ${migrationRows.length} migrations. Head: 0038_freezing_spyke`);
+    assert.strictEqual(migrationRows.length, 40, `Expected 40 migrations, found ${migrationRows.length}`);
+    console.log(`[OK] Applied ${migrationRows.length} migrations. Head: 0039_instagram_conversation_channel`);
 
     // Setup base studio and staff in target DB
     const studioId = randomUUID();

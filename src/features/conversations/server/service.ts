@@ -19,6 +19,7 @@ import {
   dispatchAutomationTrigger,
   cancelPendingAutomations,
 } from "@/features/automations/server/engine";
+import { getInstagramClient } from "@/features/instagram/server/client";
 import {
   sendManualMessageSchema,
   recordInboundMessageSchema,
@@ -222,7 +223,63 @@ export async function sendManualMessage(
       }
     }
 
+    const [clientData] = await tx
+      .select({
+        id: clients.id,
+        instagram: clients.instagram,
+        phone: clients.phone,
+        whatsapp: clients.whatsapp,
+      })
+      .from(clients)
+      .where(eq(clients.id, parsed.clientId))
+      .limit(1);
+
     const now = new Date();
+
+    const outboundChannel = parsed.channel || "MANUAL";
+    let providerMessageId: string | null = null;
+    let providerMetadata: Record<string, unknown> | null = null;
+
+    if (outboundChannel === "INSTAGRAM") {
+      const [lastInboundIg] = await tx
+        .select()
+        .from(conversationMessages)
+        .where(
+          and(
+            eq(conversationMessages.conversationId, conv.id),
+            eq(conversationMessages.direction, "INBOUND"),
+            eq(conversationMessages.channel, "INSTAGRAM")
+          )
+        )
+        .orderBy(desc(conversationMessages.sentAt))
+        .limit(1);
+
+      const recipientId =
+        (lastInboundIg?.providerMetadata as { senderId?: string })?.senderId ||
+        clientData?.instagram?.replace(/^@/, "");
+
+      if (recipientId && (process.env.INSTAGRAM_PAGE_ACCESS_TOKEN || process.env.META_PAGE_ACCESS_TOKEN || process.env.META_ACCESS_TOKEN)) {
+        try {
+          const igClient = getInstagramClient();
+          const sendRes = await igClient.sendTextMessage({
+            recipientId,
+            text: parsed.body,
+          });
+          providerMessageId = sendRes.messageId;
+          providerMetadata = {
+            recipientId,
+            sentViaApi: true,
+          };
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          providerMetadata = {
+            recipientId,
+            sendError: msg,
+            sentViaApi: false,
+          };
+        }
+      }
+    }
 
     // Insert immutable message evidence
     const [msg] = await tx
@@ -233,9 +290,11 @@ export async function sendManualMessage(
         clientId: parsed.clientId,
         cycleId: targetCycleId,
         direction: "OUTBOUND",
-        channel: "MANUAL",
+        channel: outboundChannel,
         body: parsed.body,
         senderUserId: context.userId,
+        providerMessageId,
+        providerMetadata,
         sentAt: now,
       })
       .returning();
@@ -280,7 +339,7 @@ export async function sendManualMessage(
         conversationId: conv.id,
         clientId: parsed.clientId,
         direction: "OUTBOUND",
-        channel: "MANUAL",
+        channel: outboundChannel,
         sentAt: now.toISOString(),
       },
       reason: "manual_message_sent",

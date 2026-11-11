@@ -2040,7 +2040,7 @@ export type ConversationStatus = typeof CONVERSATION_STATUSES[number];
 export const MESSAGE_DIRECTIONS = ["INBOUND", "OUTBOUND"] as const;
 export type MessageDirection = typeof MESSAGE_DIRECTIONS[number];
 
-export const MESSAGE_CHANNELS = ["MANUAL", "WHATSAPP", "SMS", "EMAIL"] as const;
+export const MESSAGE_CHANNELS = ["MANUAL", "WHATSAPP", "INSTAGRAM", "SMS", "EMAIL"] as const;
 export type MessageChannel = typeof MESSAGE_CHANNELS[number];
 
 export const conversations = pgTable("conversations", {
@@ -2113,7 +2113,7 @@ export const conversationMessages = pgTable("conversation_messages", {
   studioClientIdx: index("conversation_messages_studio_client_idx").on(table.studioId, table.clientId, table.sentAt),
   providerMessageUnique: uniqueIndex("conversation_messages_provider_id_unique").on(table.studioId, table.providerMessageId).where(sql`${table.providerMessageId} is not null`),
   directionCheck: check("conversation_messages_direction_check", sql`${table.direction} in ('INBOUND', 'OUTBOUND')`),
-  channelCheck: check("conversation_messages_channel_check", sql`${table.channel} in ('MANUAL', 'WHATSAPP', 'SMS', 'EMAIL')`),
+  channelCheck: check("conversation_messages_channel_check", sql`${table.channel} in ('MANUAL', 'WHATSAPP', 'INSTAGRAM', 'SMS', 'EMAIL')`),
   bodyCheck: check("conversation_messages_body_check", sql`length(trim(${table.body})) > 0`),
 }));
 

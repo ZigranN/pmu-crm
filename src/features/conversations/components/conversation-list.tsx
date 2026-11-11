@@ -30,6 +30,8 @@ export function ConversationList({
 }: ConversationListProps) {
   const getChannelBadge = (channel: MessageChannel | null) => {
     switch (channel) {
+      case "INSTAGRAM":
+        return <Badge variant="outline" className="text-pink-600 border-pink-300 bg-pink-50 text-[10px] px-1.5 py-0">Instagram</Badge>;
       case "WHATSAPP":
         return <Badge variant="outline" className="text-emerald-600 border-emerald-300 bg-emerald-50 text-[10px] px-1.5 py-0">WhatsApp</Badge>;
       case "SMS":

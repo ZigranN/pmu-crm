@@ -4,6 +4,7 @@ export const sendManualMessageSchema = z.object({
   clientId: z.string().uuid("Invalid client ID"),
   conversationId: z.string().uuid("Invalid conversation ID").optional(),
   cycleId: z.string().uuid("Invalid treatment cycle ID").optional(),
+  channel: z.enum(["MANUAL", "WHATSAPP", "INSTAGRAM", "SMS", "EMAIL"]).optional(),
   body: z.string().trim().min(1, "Message body cannot be empty").max(5000, "Message body is too long"),
   requestKey: z.string().uuid("Invalid request key").optional(),
 });
@@ -15,7 +16,7 @@ export const recordInboundMessageSchema = z.object({
   clientId: z.string().uuid("Invalid client ID"),
   conversationId: z.string().uuid("Invalid conversation ID").optional(),
   cycleId: z.string().uuid("Invalid treatment cycle ID").optional(),
-  channel: z.enum(["MANUAL", "WHATSAPP", "SMS", "EMAIL"]),
+  channel: z.enum(["MANUAL", "WHATSAPP", "INSTAGRAM", "SMS", "EMAIL"]),
   body: z.string().trim().min(1, "Message body cannot be empty").max(10000, "Message body is too long"),
   providerMessageId: z.string().trim().min(1).optional(),
   providerMetadata: z.record(z.string(), z.unknown()).optional(),

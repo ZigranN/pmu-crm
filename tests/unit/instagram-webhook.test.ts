@@ -7,6 +7,16 @@ import {
   validateInstagramWebhookPayload,
   extractSafeInstagramEventSummary,
 } from "@/features/instagram/server/webhook";
+import { processInboundInstagramMessage } from "@/features/instagram/server/orchestrator";
+
+vi.mock("@/features/instagram/server/orchestrator", () => ({
+  processInboundInstagramMessage: vi.fn().mockResolvedValue({
+    success: true,
+    deduplicated: false,
+    isEcho: false,
+    messageId: "mid.mock_msg_1",
+  }),
+}));
 
 describe("Instagram Webhook Endpoint & Security", () => {
   const originalEnv = process.env;
@@ -341,6 +351,49 @@ describe("Instagram Webhook Endpoint & Security", () => {
 
       const json = await response.json();
       expect(json.error).toContain("Invalid webhook payload structure");
+    });
+
+    it("returns 500 when database processing encounters an unhandled error", async () => {
+      process.env.META_APP_SECRET = secret;
+      vi.mocked(processInboundInstagramMessage).mockResolvedValueOnce({
+        success: false,
+        deduplicated: false,
+        isEcho: false,
+        error: "PostgreSQL connection timeout",
+      });
+
+      const payload = {
+        object: "instagram",
+        entry: [
+          {
+            id: "17841400000000000",
+            messaging: [
+              {
+                sender: { id: "user_999" },
+                recipient: { id: "ig_account_111" },
+                message: { mid: "mid.abc123xyz", text: "Hello" },
+              },
+            ],
+          },
+        ],
+      };
+
+      const rawBody = JSON.stringify(payload);
+      const hmac = createHmac("sha256", secret).update(rawBody).digest("hex");
+
+      const req = new NextRequest("http://localhost:3000/api/webhooks/instagram", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": `sha256=${hmac}`,
+        },
+        body: rawBody,
+      });
+
+      const response = await POST(req);
+      expect(response.status).toBe(500);
+      const json = await response.json();
+      expect(json.error).toContain("Database error");
     });
   });
 });

@@ -4,6 +4,8 @@ import {
   validateInstagramWebhookPayload,
   extractSafeInstagramEventSummary,
 } from "@/features/instagram/server/webhook";
+import { parseInstagramWebhookMessages } from "@/features/instagram/server/parser";
+import { processInboundInstagramMessage } from "@/features/instagram/server/orchestrator";
 
 export const runtime = "nodejs";
 
@@ -40,6 +42,8 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/webhooks/instagram
  * Inbound Webhook Event Receiver for Meta Instagram Graph API.
+ * Validates HMAC-SHA256 signature, parses messages/attachments, deduplicates by MID,
+ * and persists messages and contacts into PostgreSQL /conversations.
  */
 export async function POST(request: NextRequest) {
   const signature = request.headers.get("x-hub-signature-256");
@@ -88,9 +92,34 @@ export async function POST(request: NextRequest) {
   const safeSummary = extractSafeInstagramEventSummary(validation.data);
   console.log("[Instagram Webhook] Event received:", JSON.stringify(safeSummary));
 
-  // Acknowledge receipt to Meta immediately (200 OK) without side effects
+  // 5. Parse and process inbound messaging events
+  const messages = parseInstagramWebhookMessages(validation.data);
+  const processResults = [];
+
+  for (const msg of messages) {
+    const result = await processInboundInstagramMessage(msg);
+    processResults.push(result);
+
+    // If an unhandled database error occurred (not an ignored echo/unmapped studio), fail with 500 so Meta retries
+    if (!result.success && !result.ignored) {
+      console.error("[Instagram Webhook] Failed to process message in database:", result.error);
+      return NextResponse.json(
+        {
+          error: "Database error processing inbound message",
+          details: result.error,
+          processedCount: processResults.length,
+          results: processResults,
+        },
+        { status: 500 }
+      );
+    }
+  }
+
+  // Acknowledge receipt to Meta immediately (200 OK)
   return NextResponse.json({
     status: "EVENT_RECEIVED",
     entryCount: safeSummary.entryCount,
+    processedCount: processResults.length,
+    results: processResults,
   });
 }

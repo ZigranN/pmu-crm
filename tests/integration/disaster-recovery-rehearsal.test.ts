@@ -6,8 +6,8 @@ describe("Phase 18 Disaster Recovery Rehearsal Integration", () => {
     const report = await runDisasterRecoveryRehearsal();
 
     expect(report.rehearsalResult).toBe("SUCCESS");
-    expect(report.migrationsApplied).toBe(39);
-    expect(report.migrationHead).toBe("0038_freezing_spyke");
+    expect(report.migrationsApplied).toBe(40);
+    expect(report.migrationHead).toBe("0039_instagram_conversation_channel");
     expect(report.backupChecksumSha256).toMatch(/^[0-9a-f]{64}$/);
 
     // Records integrity
