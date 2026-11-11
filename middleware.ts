@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 const publicPaths = [
   "/login",
   "/register",
+  "/privacy",
+  "/terms",
+  "/data-deletion",
 ];
 
 function isPublicPath(pathname: string) {
