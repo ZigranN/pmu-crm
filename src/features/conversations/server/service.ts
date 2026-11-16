@@ -223,20 +223,9 @@ export async function sendManualMessage(
       }
     }
 
-    const [clientData] = await tx
-      .select({
-        id: clients.id,
-        instagram: clients.instagram,
-        phone: clients.phone,
-        whatsapp: clients.whatsapp,
-      })
-      .from(clients)
-      .where(eq(clients.id, parsed.clientId))
-      .limit(1);
-
     const now = new Date();
 
-    const outboundChannel = parsed.channel || "MANUAL";
+    const outboundChannel = parsed.channel ?? "MANUAL";
     let providerMessageId: string | null = null;
     let providerMetadata: Record<string, unknown> | null = null;
 
@@ -254,31 +243,51 @@ export async function sendManualMessage(
         .orderBy(desc(conversationMessages.sentAt))
         .limit(1);
 
-      const recipientId =
-        (lastInboundIg?.providerMetadata as { senderId?: string })?.senderId ||
-        clientData?.instagram?.replace(/^@/, "");
-
-      if (recipientId && (process.env.INSTAGRAM_PAGE_ACCESS_TOKEN || process.env.META_PAGE_ACCESS_TOKEN || process.env.META_ACCESS_TOKEN)) {
-        try {
-          const igClient = getInstagramClient();
-          const sendRes = await igClient.sendTextMessage({
-            recipientId,
-            text: parsed.body,
-          });
-          providerMessageId = sendRes.messageId;
-          providerMetadata = {
-            recipientId,
-            sentViaApi: true,
-          };
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          providerMetadata = {
-            recipientId,
-            sendError: msg,
-            sentViaApi: false,
-          };
-        }
+      if (!lastInboundIg) {
+        throw new Error(
+          "Instagram: входящая переписка с клиентом не найдена."
+        );
       }
+
+      const metadata = lastInboundIg.providerMetadata as
+        | { senderId?: string }
+        | null;
+
+      const recipientId = metadata?.senderId;
+
+      if (!recipientId || !/^\d+$/.test(recipientId)) {
+        throw new Error(
+          "Instagram: отсутствует действительный ID клиента."
+        );
+      }
+
+      const accessToken =
+        process.env.INSTAGRAM_PAGE_ACCESS_TOKEN ||
+        process.env.META_PAGE_ACCESS_TOKEN ||
+        process.env.META_ACCESS_TOKEN;
+
+      if (!accessToken) {
+        throw new Error(
+          "Instagram: Access Token не настроен."
+        );
+      }
+
+      const sendRes = await getInstagramClient().sendTextMessage({
+        recipientId,
+        text: parsed.body,
+      });
+
+      if (!sendRes.messageId) {
+        throw new Error(
+          "Instagram API не подтвердил отправку сообщения."
+        );
+      }
+
+      providerMessageId = sendRes.messageId;
+      providerMetadata = {
+        recipientId,
+        sentViaApi: true,
+      };
     }
 
     // Insert immutable message evidence
