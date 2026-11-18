@@ -20,6 +20,7 @@ import {
   cancelPendingAutomations,
 } from "@/features/automations/server/engine";
 import { getInstagramClient } from "@/features/instagram/server/client";
+import { getActiveInstagramTokenForStudio } from "@/features/instagram/server/service";
 import {
   sendManualMessageSchema,
   recordInboundMessageSchema,
@@ -261,7 +262,9 @@ export async function sendManualMessage(
         );
       }
 
+      const studioIgConnection = await getActiveInstagramTokenForStudio(context.studioId);
       const accessToken =
+        studioIgConnection?.accessToken ||
         process.env.INSTAGRAM_PAGE_ACCESS_TOKEN ||
         process.env.META_PAGE_ACCESS_TOKEN ||
         process.env.META_ACCESS_TOKEN;
@@ -272,9 +275,14 @@ export async function sendManualMessage(
         );
       }
 
-      const sendRes = await getInstagramClient().sendTextMessage({
+      const sendRes = await getInstagramClient({
+        defaultAccessToken: accessToken,
+        defaultAccountId: studioIgConnection?.instagramAccountId,
+      }).sendTextMessage({
         recipientId,
         text: parsed.body,
+        pageAccessToken: accessToken,
+        instagramAccountId: studioIgConnection?.instagramAccountId,
       });
 
       if (!sendRes.messageId) {

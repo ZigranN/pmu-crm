@@ -228,7 +228,10 @@ export class InstagramApiClient {
 
 let defaultInstagramClientInstance: InstagramApiClient | null = null;
 
-export function getInstagramClient(): InstagramApiClient {
+export function getInstagramClient(config?: InstagramClientConfig): InstagramApiClient {
+  if (config) {
+    return new InstagramApiClient(config);
+  }
   if (!defaultInstagramClientInstance) {
     defaultInstagramClientInstance = new InstagramApiClient();
   }

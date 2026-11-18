@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ChevronRight, Settings, Users, Scissors, Zap, Calendar } from "lucide-react";
+import { InstagramIcon } from "@/features/instagram/components/instagram-icon";
 import Link from "next/link";
 
 export default async function SettingsPage() {
@@ -11,6 +12,7 @@ export default async function SettingsPage() {
   const role = context.role;
 
   const settingsLinks = [
+    { title: "Instagram Direct", description: "Meta Unified Login и приём сообщений Instagram", icon: InstagramIcon, href: "/settings/integrations/instagram" },
     { title: "Google Календарь", description: "Синхронизация записей с личными календарями Google", icon: Calendar, href: "/settings/integrations/google-calendar" },
     { title: "Автоматизации", description: "Правила напоминаний, контроль диалогов и фоновые задачи", icon: Zap, href: "/automations" },
     { title: "Циклы процедур", description: "Стадии и история по каждой зоне", icon: Settings, href: "/deals" },

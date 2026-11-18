@@ -2345,6 +2345,63 @@ export const googleCalendarEventMappings = pgTable("google_calendar_event_mappin
   statusCheck: check("google_calendar_event_mappings_status_check", sql`${table.status} in ('synced', 'pending', 'failed', 'deleted')`),
 }));
 
+export const INSTAGRAM_CONNECTION_STATUSES = [
+  "connected",
+  "needs_reauth",
+  "error",
+  "disconnected",
+] as const;
+export type InstagramConnectionStatus = (typeof INSTAGRAM_CONNECTION_STATUSES)[number];
+
+export const instagramConnections = pgTable(
+  "instagram_connections",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    instagramAccountId: text("instagram_account_id").notNull(),
+    instagramUsername: text("instagram_username"),
+    instagramName: text("instagram_name"),
+    pageId: text("page_id"),
+    pageName: text("page_name"),
+    encryptedAccessToken: text("encrypted_access_token").notNull(),
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    scope: text("scope"),
+    status: text("status")
+      .$type<InstagramConnectionStatus>()
+      .notNull()
+      .default("connected"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    identity: uniqueIndex("instagram_connections_identity").on(
+      table.id,
+      table.studioId
+    ),
+    studioAccountUnique: uniqueIndex(
+      "instagram_connections_studio_account_unique"
+    ).on(table.studioId, table.instagramAccountId),
+    studioIdx: index("instagram_connections_studio_idx").on(
+      table.studioId,
+      table.status
+    ),
+    statusCheck: check(
+      "instagram_connections_status_check",
+      sql`${table.status} in ('connected', 'needs_reauth', 'error', 'disconnected')`
+    ),
+  })
+);
+
 export const AI_RUN_STATUSES = [
   "started",
   "completed",
