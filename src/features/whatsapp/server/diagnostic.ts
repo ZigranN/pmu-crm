@@ -18,7 +18,25 @@ export interface WhatsAppDiagnosticResult {
   error?: SanitizedMetaError | null;
 }
 
+export interface WhatsAppSubscribeResult {
+  tokenConfigured: boolean;
+  graphApiSuccess: boolean;
+  subscribed: boolean;
+  appSubscribed: boolean;
+  verified: boolean;
+  wabaId: string;
+  targetAppId: string;
+  error?: SanitizedMetaError | null;
+}
+
 export interface CheckWhatsAppSubscribedAppsOptions {
+  wabaId?: string;
+  targetAppId?: string;
+  token?: string;
+  fetchFn?: typeof fetch;
+}
+
+export interface SubscribeWhatsAppAppToWabaOptions {
   wabaId?: string;
   targetAppId?: string;
   token?: string;
@@ -168,6 +186,131 @@ export async function checkWhatsAppSubscribedApps(
       tokenConfigured: true,
       graphApiSuccess: false,
       appSubscribed: false,
+      error: {
+        message: sanitizeMetaErrorMessage(errorMessage),
+      },
+    };
+  }
+}
+
+/**
+ * Admin action to subscribe Meta App ID to WhatsApp Business Account (WABA).
+ * Performs POST request to /subscribed_apps, then verifies subscription with GET /subscribed_apps.
+ * Never logs or exposes tokens or secrets.
+ */
+export async function subscribeWhatsAppAppToWaba(
+  options: SubscribeWhatsAppAppToWabaOptions = {}
+): Promise<WhatsAppSubscribeResult> {
+  const token = options.token ?? process.env.WHATSAPP_ACCESS_TOKEN;
+  const wabaId = (options.wabaId ?? process.env.WHATSAPP_BUSINESS_ACCOUNT_ID ?? DEFAULT_WABA_ID).trim();
+  const targetAppId = (options.targetAppId ?? process.env.META_APP_ID ?? DEFAULT_TARGET_APP_ID).trim();
+  const fetchFn = options.fetchFn ?? fetch;
+
+  const isConfigured = Boolean(token && token.trim().length > 0);
+
+  if (!isConfigured) {
+    return {
+      tokenConfigured: false,
+      graphApiSuccess: false,
+      subscribed: false,
+      appSubscribed: false,
+      verified: false,
+      wabaId,
+      targetAppId,
+      error: {
+        message: "WHATSAPP_ACCESS_TOKEN is not configured in environment",
+      },
+    };
+  }
+
+  const cleanToken = token!.trim();
+  const endpointUrl = `https://graph.facebook.com/${GRAPH_API_VERSION}/${wabaId}/subscribed_apps`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetchFn(endpointUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cleanToken}`,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const rawBody = await response.text();
+    let json: Record<string, unknown> | null = null;
+    try {
+      json = JSON.parse(rawBody);
+    } catch {
+      json = null;
+    }
+
+    if (!response.ok) {
+      const metaError = (json && typeof json.error === "object" ? json.error : null) as Record<string, unknown> | null;
+
+      const code = metaError?.code !== undefined ? Number(metaError.code) : response.status;
+      const subcode = metaError?.error_subcode !== undefined ? Number(metaError.error_subcode) : undefined;
+      const type = typeof metaError?.type === "string" ? metaError.type : undefined;
+      const rawMessage = typeof metaError?.message === "string" ? metaError.message : `Meta Graph API returned status ${response.status}`;
+
+      return {
+        tokenConfigured: true,
+        graphApiSuccess: false,
+        subscribed: false,
+        appSubscribed: false,
+        verified: false,
+        wabaId,
+        targetAppId,
+        error: {
+          code,
+          ...(subcode !== undefined ? { subcode } : {}),
+          ...(type ? { type } : {}),
+          message: sanitizeMetaErrorMessage(rawMessage),
+        },
+      };
+    }
+
+    const postSuccess = Boolean(json?.success ?? true);
+
+    // After successful subscription POST, recheck GET /subscribed_apps to verify targetAppId is present
+    const verificationCheck = await checkWhatsAppSubscribedApps({
+      wabaId,
+      targetAppId,
+      token: cleanToken,
+      fetchFn,
+    });
+
+    const isVerified = verificationCheck.appSubscribed;
+
+    return {
+      tokenConfigured: true,
+      graphApiSuccess: true,
+      subscribed: postSuccess,
+      appSubscribed: verificationCheck.appSubscribed,
+      verified: isVerified,
+      wabaId,
+      targetAppId,
+      error: !isVerified
+        ? verificationCheck.error ?? {
+            message: "Subscription POST was accepted by Meta, but app ID was not found in GET /subscribed_apps verification check",
+          }
+        : null,
+    };
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : "Network error contacting Meta Graph API";
+    return {
+      tokenConfigured: true,
+      graphApiSuccess: false,
+      subscribed: false,
+      appSubscribed: false,
+      verified: false,
+      wabaId,
+      targetAppId,
       error: {
         message: sanitizeMetaErrorMessage(errorMessage),
       },
