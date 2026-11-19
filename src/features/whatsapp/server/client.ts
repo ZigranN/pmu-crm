@@ -174,8 +174,8 @@ export class MetaWhatsAppCloudApiClient implements IWhatsAppClient {
 
     return {
       messagingProduct: data?.messaging_product || "whatsapp",
-      contacts: data?.contacts || [{ input: to, wa_id: to }],
-      messages: data?.messages || [{ id: `wamid.mock.${Date.now()}` }],
+      contacts: Array.isArray(data?.contacts) ? data.contacts : [],
+      messages: Array.isArray(data?.messages) ? data.messages : [],
     };
   }
 
@@ -202,8 +202,8 @@ export class MetaWhatsAppCloudApiClient implements IWhatsAppClient {
 
     return {
       messagingProduct: data?.messaging_product || "whatsapp",
-      contacts: data?.contacts || [{ input: to, wa_id: to }],
-      messages: data?.messages || [{ id: `wamid.mock.${Date.now()}` }],
+      contacts: Array.isArray(data?.contacts) ? data.contacts : [],
+      messages: Array.isArray(data?.messages) ? data.messages : [],
     };
   }
 }

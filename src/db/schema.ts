@@ -2037,6 +2037,9 @@ export const ledgerEntries = pgTable("ledger_entries", {
 export const CONVERSATION_STATUSES = ["OPEN", "CLOSED"] as const;
 export type ConversationStatus = typeof CONVERSATION_STATUSES[number];
 
+export const AUTO_REPLY_MODES = ["AUTO", "HUMAN", "PAUSED"] as const;
+export type AutoReplyMode = typeof AUTO_REPLY_MODES[number];
+
 export const MESSAGE_DIRECTIONS = ["INBOUND", "OUTBOUND"] as const;
 export type MessageDirection = typeof MESSAGE_DIRECTIONS[number];
 
@@ -2052,6 +2055,8 @@ export const conversations = pgTable("conversations", {
   cycleId: uuid("cycle_id"),
   assignedUserId: text("assigned_user_id").references(() => user.id, { onDelete: "set null" }),
   status: text("status").$type<ConversationStatus>().notNull().default("OPEN"),
+  autoReplyMode: text("auto_reply_mode").$type<AutoReplyMode>().notNull().default("AUTO"),
+  lastStaffInterventionAt: timestamp("last_staff_intervention_at", { withTimezone: true }),
   lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -2073,6 +2078,7 @@ export const conversations = pgTable("conversations", {
   assignedUserIdx: index("conversations_assigned_user_idx").on(table.assignedUserId),
   lastMessageAtIdx: index("conversations_last_message_at_idx").on(table.studioId, table.lastMessageAt),
   statusCheck: check("conversations_status_check", sql`${table.status} in ('OPEN', 'CLOSED')`),
+  autoReplyModeCheck: check("conversations_auto_reply_mode_check", sql`${table.autoReplyMode} in ('AUTO', 'HUMAN', 'PAUSED')`),
 }));
 
 export const conversationMessages = pgTable("conversation_messages", {
@@ -2757,6 +2763,86 @@ export const studioPrivacyRetentionPolicies = pgTable(
     orphanGraceCheck: check(
       "studio_retention_policies_orphan_check",
       sql`${table.orphanMediaGraceDays} > 0`
+    ),
+  })
+);
+
+export const PMU_KNOWLEDGE_CATEGORIES = [
+  "brows",
+  "lips",
+  "eyeliner",
+  "touch_up",
+  "removal",
+  "consultation",
+  "aftercare",
+  "pricing",
+  "policies",
+] as const;
+export type PmuKnowledgeCategory = (typeof PMU_KNOWLEDGE_CATEGORIES)[number];
+
+export const studioKnowledgeBase = pgTable(
+  "studio_knowledge_base",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "cascade" }),
+    category: text("category").$type<PmuKnowledgeCategory>().notNull(),
+    title: text("title").notNull(),
+    contentIt: text("content_it").notNull(),
+    keywords: jsonb("keywords").$type<string[]>().default([]).notNull(),
+    isApproved: boolean("is_approved").default(true).notNull(),
+    version: integer("version").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    studioCategoryIdx: index("studio_kb_studio_category_idx").on(
+      table.studioId,
+      table.category
+    ),
+    studioApprovedIdx: index("studio_kb_studio_approved_idx").on(
+      table.studioId,
+      table.isApproved
+    ),
+    categoryCheck: check(
+      "studio_kb_category_check",
+      sql`${table.category} in ('brows', 'lips', 'eyeliner', 'touch_up', 'removal', 'consultation', 'aftercare', 'pricing', 'policies')`
+    ),
+    versionPositiveCheck: check("studio_kb_version_check", sql`${table.version} > 0`),
+  })
+);
+
+export const studioAiSettings = pgTable(
+  "studio_ai_settings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "cascade" }),
+    autoReplyEnabled: boolean("auto_reply_enabled").default(false).notNull(),
+    emergencyKillSwitch: boolean("emergency_kill_switch").default(false).notNull(),
+    defaultMode: text("default_mode").$type<AutoReplyMode>().default("HUMAN").notNull(),
+    italianStrictValidation: boolean("italian_strict_validation").default(true).notNull(),
+    allowedQuoteServices: jsonb("allowed_quote_services").$type<string[]>().default([]).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    studioIdUnique: uniqueIndex("studio_ai_settings_studio_id_unique").on(
+      table.studioId
+    ),
+    defaultModeCheck: check(
+      "studio_ai_settings_default_mode_check",
+      sql`${table.defaultMode} in ('AUTO', 'HUMAN', 'PAUSED')`
     ),
   })
 );

@@ -8,6 +8,7 @@ import {
   WhatsAppApiError,
   type IWhatsAppClient,
   classifyWhatsAppError,
+  MetaWhatsAppCloudApiClient,
 } from "@/features/whatsapp/server/client";
 import type {
   SendWhatsAppTextMessageInput,
@@ -604,5 +605,83 @@ describe("Manual WhatsApp Outbound Messaging from CRM Inbox", () => {
     expect(classified.sanitizedMessage).toContain("[REDACTED_SECRET]");
     expect(classified.sanitizedMessage).toContain("[REDACTED_PHONE]");
     expect(classified.errorType).toBe("INVALID_PARAMETER");
+  });
+
+  it("11. MetaWhatsAppCloudApiClient dispatches real POST request to Meta Graph API", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        messaging_product: "whatsapp",
+        contacts: [{ input: "393331234567", wa_id: "393331234567" }],
+        messages: [{ id: "wamid.HBgLMzkzMzMxMjM0NTY3FQIAERgSQTA5RjQ1NkE3MkEyNDAwOTk3AA==" }],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new MetaWhatsAppCloudApiClient({
+      accessToken: "test-meta-access-token",
+      phoneNumberId: "109876543210987",
+      apiVersion: "v21.0",
+    });
+
+    const res = await client.sendTextMessage({
+      to: "+39 333 1234567",
+      text: "Ciao! Confermiamo il tuo appuntamento.",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://graph.facebook.com/v21.0/109876543210987/messages");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toMatchObject({
+      Authorization: "Bearer test-meta-access-token",
+      "Content-Type": "application/json",
+    });
+
+    const body = JSON.parse(init.body);
+    expect(body).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "393331234567",
+      type: "text",
+      text: {
+        preview_url: false,
+        body: "Ciao! Confermiamo il tuo appuntamento.",
+      },
+    });
+
+    expect(res.messages[0].id).toBe("wamid.HBgLMzkzMzMxMjM0NTY3FQIAERgSQTA5RjQ1NkE3MkEyNDAwOTk3AA==");
+    expect(res.contacts[0].wa_id).toBe("393331234567");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("12. MetaWhatsAppCloudApiClient does not invent mock message IDs on empty responses", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        messaging_product: "whatsapp",
+        contacts: [],
+        messages: [],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new MetaWhatsAppCloudApiClient({
+      accessToken: "test-meta-access-token",
+      phoneNumberId: "109876543210987",
+    });
+
+    const res = await client.sendTextMessage({
+      to: "+393331234567",
+      text: "Test empty message array",
+    });
+
+    expect(res.messages).toEqual([]);
+    expect(res.contacts).toEqual([]);
+
+    vi.unstubAllGlobals();
   });
 });
