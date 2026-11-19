@@ -3,7 +3,7 @@ import { requireBrowserStudioContext } from "@/server/auth/context";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ChevronRight, Settings, Users, Scissors, Zap, Calendar } from "lucide-react";
+import { ChevronRight, Settings, Users, Scissors, Zap, Calendar, Radio } from "lucide-react";
 import { InstagramIcon } from "@/features/instagram/components/instagram-icon";
 import Link from "next/link";
 
@@ -16,6 +16,7 @@ export default async function SettingsPage() {
     { title: "Google Календарь", description: "Синхронизация записей с личными календарями Google", icon: Calendar, href: "/settings/integrations/google-calendar" },
     { title: "Автоматизации", description: "Правила напоминаний, контроль диалогов и фоновые задачи", icon: Zap, href: "/automations" },
     { title: "Циклы процедур", description: "Стадии и история по каждой зоне", icon: Settings, href: "/deals" },
+    ...(role === "OWNER" || role === "ADMIN" ? [{ title: "WhatsApp Webhooks", description: "Диагностика WABA и подписка на вебхуки WhatsApp", icon: Radio, href: "/settings/integrations/whatsapp-diagnostics" }] : []),
     ...(role === "OWNER" || role === "ADMIN" ? [{ title: "Конфиденциальность (DSAR)", description: "Запросы на экспорт, анонимизацию и политики хранения", icon: Settings, href: "/settings/privacy" }] : []),
     ...(role === "OWNER" ? [{ title: "Разбор старых записей", description: "Записи без привязки к циклу процедуры", icon: Settings, href: "/settings/cycle-migration" }] : []),
     ...(role === "OWNER" ? [{ title: "Обработка событий", description: "Ошибки, повторные попытки и восстановление", icon: Settings, href: "/settings/jobs" }] : []),

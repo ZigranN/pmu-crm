@@ -93,3 +93,31 @@ export interface WhatsAppServiceWindowStatus {
   lastInboundAt: Date | null;
   windowExpiresAt: Date | null;
 }
+
+export const DEFAULT_WABA_ID = "107183208737515";
+export const DEFAULT_TARGET_APP_ID = "1763936925735072";
+
+export interface SanitizedMetaError {
+  code?: number | string;
+  subcode?: number | string;
+  type?: string;
+  message?: string;
+}
+
+export interface WhatsAppDiagnosticStatusResponse {
+  tokenConfigured: boolean;
+  graphApiSuccess: boolean;
+  appSubscribed: boolean;
+  error?: SanitizedMetaError | null;
+}
+
+export interface WhatsAppSubscribeApiResponse {
+  tokenConfigured: boolean;
+  graphApiSuccess: boolean;
+  subscribed: boolean;
+  appSubscribed: boolean;
+  verified: boolean;
+  wabaId: string;
+  targetAppId: string;
+  error?: SanitizedMetaError | null;
+}
