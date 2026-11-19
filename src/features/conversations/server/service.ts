@@ -21,6 +21,8 @@ import {
 } from "@/features/automations/server/engine";
 import { getInstagramClient } from "@/features/instagram/server/client";
 import { getActiveInstagramTokenForStudio } from "@/features/instagram/server/service";
+import { getWhatsAppClient } from "@/features/whatsapp/server/client";
+import { canonicalPhone } from "@/lib/phone";
 import {
   sendManualMessageSchema,
   recordInboundMessageSchema,
@@ -40,6 +42,15 @@ export type ConversationContext = {
   studioId: string;
   userId: string;
 };
+
+function isPlaceholderPhone(phone: string): boolean {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 15) return true;
+  if (/^0+$/.test(digits)) return true;
+  if (/^(\d)\1+$/.test(digits)) return true;
+  if (/^1234567\d*$/.test(digits)) return true;
+  return false;
+}
 
 async function executeInTransaction<T>(
   dbExecutor: typeof db | Transaction,
@@ -295,6 +306,104 @@ export async function sendManualMessage(
       providerMetadata = {
         recipientId,
         sentViaApi: true,
+      };
+    } else if (outboundChannel === "WHATSAPP") {
+      const [lastInboundWa] = await tx
+        .select()
+        .from(conversationMessages)
+        .where(
+          and(
+            eq(conversationMessages.conversationId, conv.id),
+            eq(conversationMessages.direction, "INBOUND"),
+            eq(conversationMessages.channel, "WHATSAPP")
+          )
+        )
+        .orderBy(desc(conversationMessages.sentAt))
+        .limit(1);
+
+      const [clientRecord] = await tx
+        .select({ id: clients.id, phone: clients.phone, whatsapp: clients.whatsapp })
+        .from(clients)
+        .where(
+          and(
+            eq(clients.id, parsed.clientId),
+            eq(clients.studioId, context.studioId)
+          )
+        );
+
+      const rawRecipient =
+        (lastInboundWa?.providerMetadata as { from?: string; senderPhone?: string } | null)?.from ||
+        (lastInboundWa?.providerMetadata as { senderPhone?: string } | null)?.senderPhone ||
+        clientRecord?.whatsapp ||
+        clientRecord?.phone;
+
+      const recipientPhone = canonicalPhone(rawRecipient);
+
+      if (!recipientPhone || isPlaceholderPhone(recipientPhone)) {
+        throw new Error(
+          "WhatsApp: отсутствует действительный подтвержденный номер телефона клиента."
+        );
+      }
+
+      const waClient = getWhatsAppClient();
+      if (!waClient.isConfigured()) {
+        throw new Error(
+          "WhatsApp: Access Token или Phone Number ID не настроены."
+        );
+      }
+
+      const serviceWindow = waClient.checkServiceWindow(lastInboundWa?.sentAt);
+
+      let sendRes;
+      if (serviceWindow.isWithin24hWindow) {
+        if (parsed.templateName) {
+          sendRes = await waClient.sendTemplateMessage({
+            to: recipientPhone,
+            templateName: parsed.templateName,
+            languageCode: parsed.templateLanguage || "ru",
+            components: parsed.templateComponents as Array<Record<string, unknown>> | undefined,
+          });
+        } else {
+          sendRes = await waClient.sendTextMessage({
+            to: recipientPhone,
+            text: parsed.body,
+          });
+        }
+      } else {
+        if (!parsed.templateName) {
+          throw new Error(
+            "WhatsApp: 24-часовое окно для сообщений в свободной форме истекло. Для отправки вне окна требуется утвержденный шаблон."
+          );
+        }
+
+        sendRes = await waClient.sendTemplateMessage({
+          to: recipientPhone,
+          templateName: parsed.templateName,
+          languageCode: parsed.templateLanguage || "ru",
+          components: parsed.templateComponents as Array<Record<string, unknown>> | undefined,
+        });
+      }
+
+      const returnedMessageId = sendRes.messages?.[0]?.id;
+      if (!returnedMessageId) {
+        throw new Error(
+          "WhatsApp API не подтвердил отправку сообщения."
+        );
+      }
+
+      providerMessageId = returnedMessageId;
+      providerMetadata = {
+        recipientPhone,
+        sentViaApi: true,
+        deliveryStatus: "sent",
+        messagingProduct: sendRes.messagingProduct || "whatsapp",
+        isTemplate: Boolean(parsed.templateName),
+        templateName: parsed.templateName ?? null,
+        serviceWindow: {
+          isWithin24hWindow: serviceWindow.isWithin24hWindow,
+          lastInboundAt: serviceWindow.lastInboundAt?.toISOString() ?? null,
+          windowExpiresAt: serviceWindow.windowExpiresAt?.toISOString() ?? null,
+        },
       };
     }
 

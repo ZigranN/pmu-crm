@@ -32,7 +32,7 @@ export interface ProcessWebhookResult {
 /**
  * Standard studio knowledge base guidelines for PMU consultations.
  */
-const STUDIO_KNOWLEDGE_BASE = {
+export const STUDIO_KNOWLEDGE_BASE = {
   browsPreparation:
     "Подготовка к перманентному макияжу бровей:\n" +
     "1. За 24 часа исключите алкоголь, кофеин и энергетики.\n" +
@@ -54,6 +54,70 @@ const STUDIO_KNOWLEDGE_BASE = {
     "Наша студия выполняет профессиональный перманентный макияж (брови, губы, веки). " +
     "Процедура проводится в стерильных условиях одноразовыми картриджами высшего качества.",
 };
+
+/**
+ * Generates an advisory AI consultation reply draft using approved studio knowledge base and guardrails.
+ * Safe for offline review and CRM copilot assistance without autonomous external dispatch.
+ */
+export async function generateWhatsAppConsultationDraft(body: string): Promise<string> {
+  let replyText = "";
+  const lowerBody = body.toLowerCase();
+
+  // Attempt real AI generation if provider is configured and available
+  const aiProvider = getAiProvider();
+  if (aiProvider && aiProvider.isConfigured()) {
+    try {
+      const systemPrompt =
+        `Вы — интеллектуальный ассистент студии перманентного макияжа (PMU Studio). ` +
+        `Отвечайте клиенту вежливо, профессионально и кратко, основываясь СТРОГО на утвержденной базе знаний студии:\n\n` +
+        `УТВЕРЖДЕННЫЕ ЗНАНИЯ СТУДИИ:\n` +
+        `- Брови (подготовка):\n${STUDIO_KNOWLEDGE_BASE.browsPreparation}\n\n` +
+        `- Губы (подготовка):\n${STUDIO_KNOWLEDGE_BASE.lipsPreparation}\n\n` +
+        `- Уход после процедуры:\n${STUDIO_KNOWLEDGE_BASE.aftercare}\n\n` +
+        `- Общая информация:\n${STUDIO_KNOWLEDGE_BASE.generalInfo}\n\n` +
+        `ПРАВИЛА БЕЗОПАСНОСТИ:\n` +
+        `1. Не выдумывайте медицинские диагнозы, противопоказания или клинические рекомендации.\n` +
+        `2. Не утверждайте, что вы оформили запись, изменили медицинский допуск или вернули деньги.\n` +
+        `3. При индивидуальных медицинских вопросах рекомендуйте проконсультироваться с мастером или врачом.\n` +
+        `4. Не навязывайте запись, отвечайте строго на вопрос клиента.`;
+
+      const aiResponse = await aiProvider.generateText(
+        {
+          systemPrompt,
+          prompt: `Сообщение клиента: "${body}"\nСформируйте полезный ответ клиенту:`,
+          temperature: 0.2,
+          maxTokens: 500,
+        },
+        "whatsapp_consultation.v1"
+      );
+
+      const sanitized = sanitizeReplyDraft(aiResponse.text);
+      if (sanitized.isSafe && sanitized.sanitizedReply.trim().length > 0 && !sanitized.sanitizedReply.includes("Fake generated text")) {
+        replyText = sanitized.sanitizedReply.trim();
+      }
+    } catch {
+      // Graceful fallback to deterministic knowledge base
+    }
+  }
+
+  // Fallback to deterministic knowledge base if AI not configured or output empty
+  if (!replyText) {
+    if (lowerBody.includes("губ") || lowerBody.includes("губы")) {
+      replyText = STUDIO_KNOWLEDGE_BASE.lipsPreparation;
+    } else if (lowerBody.includes("уход") || lowerBody.includes("после")) {
+      replyText = STUDIO_KNOWLEDGE_BASE.aftercare;
+    } else if (lowerBody.includes("подготов") || lowerBody.includes("бров")) {
+      replyText = STUDIO_KNOWLEDGE_BASE.browsPreparation;
+    } else {
+      replyText =
+        `${STUDIO_KNOWLEDGE_BASE.generalInfo}\n\n` +
+        `${STUDIO_KNOWLEDGE_BASE.browsPreparation}\n\n` +
+        `Если у вас есть индивидуальные особенности или вопросы по противопоказаниям, пожалуйста, дайте знать!`;
+    }
+  }
+
+  return replyText;
+}
 
 /**
  * Resolves the Studio for an incoming WhatsApp webhook.
@@ -218,10 +282,12 @@ export async function processInboundWhatsAppMessage(
   options: {
     whatsappClient?: IWhatsAppClient;
     database?: any;
+    enableAutoReply?: boolean;
   } = {}
 ): Promise<ProcessWebhookResult> {
   const database = options.database ?? db;
   const whatsappClient = options.whatsappClient ?? getWhatsAppClient();
+  const isAutoReplyEnabled = options.enableAutoReply === true;
 
   // 1. Resolve Studio context
   const studio = await resolveStudioForInbound(inbound, database);
@@ -301,7 +367,19 @@ export async function processInboundWhatsAppMessage(
       });
     }
 
-    // Mark conversation with attention signal
+    // STRICT SAFETY GUARD: Auto-replies disabled by default unless explicitly authorized
+    if (!isAutoReplyEnabled) {
+      return {
+        handled: true,
+        scenario: "SCENARIO_C_HUMAN_TAKEOVER",
+        studioId: studio.id,
+        clientId: client.id,
+        conversationId: conv.id,
+        inboundMessageId: inboundResult.message.id,
+        reason: "Inbound human takeover request recorded; staff task created; outbound auto-reply disabled by default for MVP safety.",
+      };
+    }
+
     const replyText =
       "Здравствуйте! Ваш запрос передан администратору студии. Специалист свяжется с вами и ответит на все вопросы в ближайшее время.";
 
@@ -343,6 +421,19 @@ export async function processInboundWhatsAppMessage(
 
   // 6. SCENARIO B: Booking availability inquiry
   if (isBookingInquiry(inbound.body)) {
+    // STRICT SAFETY GUARD: Auto-replies disabled by default unless explicitly authorized
+    if (!isAutoReplyEnabled) {
+      return {
+        handled: true,
+        scenario: "SCENARIO_B_BOOKING",
+        studioId: studio.id,
+        clientId: client.id,
+        conversationId: conv.id,
+        inboundMessageId: inboundResult.message.id,
+        reason: "Inbound booking inquiry recorded; outbound auto-reply disabled by default for MVP safety.",
+      };
+    }
+
     // Check available slots / masters in studio
     const studioMasters = await database
       .select({ id: masters.id, displayName: masters.displayName })
@@ -394,61 +485,20 @@ export async function processInboundWhatsAppMessage(
 
   // 7. SCENARIO A: General Consultation without Booking
   // Client asks about preparation, care, prices, or general information
-  let replyText = "";
-  const lowerBody = inbound.body.toLowerCase();
-
-  // Attempt real AI generation if provider is configured and available
-  const aiProvider = getAiProvider();
-  if (aiProvider && aiProvider.isConfigured()) {
-    try {
-      const systemPrompt =
-        `Вы — интеллектуальный ассистент студии перманентного макияжа (PMU Studio). ` +
-        `Отвечайте клиенту вежливо, профессионально и кратко, основываясь СТРОГО на утвержденной базе знаний студии:\n\n` +
-        `УТВЕРЖДЕННЫЕ ЗНАНИЯ СТУДИИ:\n` +
-        `- Брови (подготовка):\n${STUDIO_KNOWLEDGE_BASE.browsPreparation}\n\n` +
-        `- Губы (подготовка):\n${STUDIO_KNOWLEDGE_BASE.lipsPreparation}\n\n` +
-        `- Уход после процедуры:\n${STUDIO_KNOWLEDGE_BASE.aftercare}\n\n` +
-        `- Общая информация:\n${STUDIO_KNOWLEDGE_BASE.generalInfo}\n\n` +
-        `ПРАВИЛА БЕЗОПАСНОСТИ:\n` +
-        `1. Не выдумывайте медицинские диагнозы, противопоказания или клинические рекомендации.\n` +
-        `2. Не утверждайте, что вы оформили запись, изменили медицинский допуск или вернули деньги.\n` +
-        `3. При индивидуальных медицинских вопросах рекомендуйте проконсультироваться с мастером или врачом.\n` +
-        `4. Не навязывайте запись, отвечайте строго на вопрос клиента.`;
-
-      const aiResponse = await aiProvider.generateText(
-        {
-          systemPrompt,
-          prompt: `Сообщение клиента: "${inbound.body}"\nСформируйте полезный ответ клиенту:`,
-          temperature: 0.2,
-          maxTokens: 500,
-        },
-        "whatsapp_consultation.v1"
-      );
-
-      const sanitized = sanitizeReplyDraft(aiResponse.text);
-      if (sanitized.isSafe && sanitized.sanitizedReply.trim().length > 0 && !sanitized.sanitizedReply.includes("Fake generated text")) {
-        replyText = sanitized.sanitizedReply.trim();
-      }
-    } catch {
-      // Graceful fallback to deterministic knowledge base
-    }
+  // STRICT SAFETY GUARD: Auto-replies disabled by default unless explicitly authorized
+  if (!isAutoReplyEnabled) {
+    return {
+      handled: true,
+      scenario: "SCENARIO_A_CONSULTATION",
+      studioId: studio.id,
+      clientId: client.id,
+      conversationId: conv.id,
+      inboundMessageId: inboundResult.message.id,
+      reason: "Inbound consultation message recorded; outbound auto-reply disabled by default for MVP safety.",
+    };
   }
 
-  // Fallback to deterministic knowledge base if AI not configured or output empty
-  if (!replyText) {
-    if (lowerBody.includes("губ") || lowerBody.includes("губы")) {
-      replyText = STUDIO_KNOWLEDGE_BASE.lipsPreparation;
-    } else if (lowerBody.includes("уход") || lowerBody.includes("после")) {
-      replyText = STUDIO_KNOWLEDGE_BASE.aftercare;
-    } else if (lowerBody.includes("подготов") || lowerBody.includes("бров")) {
-      replyText = STUDIO_KNOWLEDGE_BASE.browsPreparation;
-    } else {
-      replyText =
-        `${STUDIO_KNOWLEDGE_BASE.generalInfo}\n\n` +
-        `${STUDIO_KNOWLEDGE_BASE.browsPreparation}\n\n` +
-        `Если у вас есть индивидуальные особенности или вопросы по противопоказаниям, пожалуйста, дайте знать!`;
-    }
-  }
+  const replyText = await generateWhatsAppConsultationDraft(inbound.body);
 
   // Send WhatsApp reply
   await whatsappClient.sendTextMessage({

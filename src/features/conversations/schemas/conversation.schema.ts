@@ -7,6 +7,9 @@ export const sendManualMessageSchema = z.object({
   channel: z.enum(["MANUAL", "WHATSAPP", "INSTAGRAM", "SMS", "EMAIL"]).optional(),
   body: z.string().trim().min(1, "Message body cannot be empty").max(5000, "Message body is too long"),
   requestKey: z.string().uuid("Invalid request key").optional(),
+  templateName: z.string().trim().min(1).optional(),
+  templateLanguage: z.string().trim().min(2).max(10).optional(),
+  templateComponents: z.array(z.record(z.string(), z.unknown())).optional(),
 });
 
 export type SendManualMessageInput = z.infer<typeof sendManualMessageSchema>;

@@ -108,18 +108,19 @@ export function ConversationsInbox({
   const handleSendMessage = async (body: string) => {
     if (!activeConversation || isSending || !body.trim()) return;
 
-    const lastInstagramInbound = [...messages]
+    const lastInboundMessage = [...messages]
         .reverse()
-        .find(
-            (message) =>
-                message.channel === "INSTAGRAM" &&
-                message.direction === "INBOUND"
-        );
+        .find((message) => message.direction === "INBOUND");
 
-    const isInstagramConversation = Boolean(lastInstagramInbound);
+    const channel: "INSTAGRAM" | "WHATSAPP" | "MANUAL" =
+        lastInboundMessage?.channel === "INSTAGRAM"
+            ? "INSTAGRAM"
+            : lastInboundMessage?.channel === "WHATSAPP"
+            ? "WHATSAPP"
+            : "MANUAL";
 
-    if (isInstagramConversation) {
-      const metadata = lastInstagramInbound?.providerMetadata as
+    if (channel === "INSTAGRAM") {
+      const metadata = lastInboundMessage?.providerMetadata as
           | { senderId?: string }
           | null
           | undefined;
@@ -141,7 +142,7 @@ export function ConversationsInbox({
         clientId: activeConversation.clientId,
         conversationId: activeConversation.id,
         cycleId: activeConversation.cycleId ?? undefined,
-        channel: isInstagramConversation ? "INSTAGRAM" : "MANUAL",
+        channel,
         body: body.trim(),
       });
 
@@ -176,7 +177,7 @@ export function ConversationsInbox({
           )
       );
 
-      if (isInstagramConversation) {
+      if (channel === "INSTAGRAM") {
         if (
             metadata?.sentViaApi === true &&
             res.message.providerMessageId
@@ -188,6 +189,20 @@ export function ConversationsInbox({
           toast.error(
               metadata?.sendError ||
               "Instagram API не подтвердил отправку. Проверь настройки интеграции."
+          );
+        }
+      } else if (channel === "WHATSAPP") {
+        if (
+            metadata?.sentViaApi === true &&
+            res.message.providerMessageId
+        ) {
+          toast.success(
+              "WhatsApp Cloud API подтвердил отправку сообщения."
+          );
+        } else {
+          toast.error(
+              metadata?.sendError ||
+              "WhatsApp API не подтвердил отправку. Проверь настройки интеграции."
           );
         }
       } else {

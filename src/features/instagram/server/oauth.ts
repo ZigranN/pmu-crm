@@ -2,6 +2,10 @@ import "server-only";
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
+import { and, eq, gt } from "drizzle-orm";
+import { db } from "@/db";
+import { verification } from "@/db/schema";
+import type { Transaction } from "@/server/commands/ownership";
 
 const META_GRAPH_VERSION = process.env.META_GRAPH_API_VERSION || "v21.0";
 const META_AUTH_ENDPOINT = `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth`;
@@ -16,6 +20,8 @@ export const META_INSTAGRAM_DEFAULT_SCOPES = [
   "business_management",
 ];
 
+export const OAUTH_STATE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
 const statePayloadSchema = z.object({
   studioId: z.string().uuid(),
   userId: z.string().min(1),
@@ -25,14 +31,36 @@ const statePayloadSchema = z.object({
 
 export type InstagramAuthStatePayload = z.infer<typeof statePayloadSchema>;
 
-function resolveSecret(customSecret?: string): string {
-  return (
+export class InstagramOAuthConfigurationError extends Error {
+  public readonly code = "OAUTH_CONFIGURATION_ERROR";
+  constructor(message = "Instagram OAuth state secret is not configured") {
+    super(message);
+    this.name = "InstagramOAuthConfigurationError";
+  }
+}
+
+export class InstagramOAuthStateError extends Error {
+  public readonly code: string;
+  constructor(message: string, code: string = "invalid_state") {
+    super(message);
+    this.name = "InstagramOAuthStateError";
+    this.code = code;
+  }
+}
+
+export function resolveSecret(customSecret?: string): string {
+  const secret =
     customSecret ||
     process.env.INSTAGRAM_STATE_SECRET ||
     process.env.META_APP_SECRET ||
-    process.env.BETTER_AUTH_SECRET ||
-    "pmu-crm-instagram-oauth-state-signing-secret-key"
-  );
+    process.env.BETTER_AUTH_SECRET;
+
+  if (!secret || secret.trim().length === 0) {
+    throw new InstagramOAuthConfigurationError(
+      "Instagram OAuth state secret is not configured. Please set INSTAGRAM_STATE_SECRET, META_APP_SECRET, or BETTER_AUTH_SECRET in server environment."
+    );
+  }
+  return secret.trim();
 }
 
 export function getMetaOAuthCredentials(custom?: { clientId?: string; clientSecret?: string }) {
@@ -59,14 +87,15 @@ export function getMetaOAuthCredentials(custom?: { clientId?: string; clientSecr
  * Creates a cryptographically signed, tamper-proof state parameter for OAuth CSRF protection.
  */
 export function generateInstagramAuthState(
-  payload: Omit<InstagramAuthStatePayload, "timestamp" | "nonce">,
+  payload: Omit<InstagramAuthStatePayload, "timestamp" | "nonce"> & { nonce?: string },
   secretKey?: string
 ): string {
   const secret = resolveSecret(secretKey);
   const data: InstagramAuthStatePayload = {
-    ...payload,
+    studioId: payload.studioId,
+    userId: payload.userId,
     timestamp: Date.now(),
-    nonce: randomBytes(16).toString("hex"),
+    nonce: payload.nonce || randomBytes(16).toString("hex"),
   };
 
   const encodedPayload = Buffer.from(JSON.stringify(data)).toString("base64url");
@@ -76,14 +105,64 @@ export function generateInstagramAuthState(
 }
 
 /**
- * Verifies and decodes the OAuth state parameter.
- * Rejects expired tokens (> 15 minutes) or tampered signatures.
+ * Stores the OAuth state nonce with TTL in the database for single-use verification.
+ */
+export async function storeInstagramOAuthNonce(
+  nonce: string,
+  studioId: string,
+  userId: string,
+  executor: typeof db | Transaction = db
+): Promise<void> {
+  const key = `instagram_oauth:${nonce}`;
+  const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
+  await executor
+    .insert(verification)
+    .values({
+      id: key,
+      identifier: `instagram_oauth:${studioId}:${userId}`,
+      value: nonce,
+      expiresAt,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .onConflictDoNothing();
+}
+
+/**
+ * Atomically consumes an OAuth state nonce.
+ * Returns true if the nonce was valid, unexpired, and successfully claimed; false if replayed or expired.
+ */
+export async function consumeInstagramOAuthNonce(
+  nonce: string,
+  studioId: string,
+  userId: string,
+  executor: typeof db | Transaction = db
+): Promise<boolean> {
+  const key = `instagram_oauth:${nonce}`;
+  const now = new Date();
+  const deleted = await executor
+    .delete(verification)
+    .where(
+      and(
+        eq(verification.id, key),
+        eq(verification.identifier, `instagram_oauth:${studioId}:${userId}`),
+        gt(verification.expiresAt, now)
+      )
+    )
+    .returning();
+
+  return deleted.length > 0;
+}
+
+/**
+ * Verifies and decodes the OAuth state parameter cryptographically.
+ * Rejects expired tokens (> 15 minutes), malformed payloads, or tampered signatures.
  */
 export function verifyInstagramAuthState(state: string, secretKey?: string): InstagramAuthStatePayload {
   const secret = resolveSecret(secretKey);
   const parts = state.split(".");
   if (parts.length !== 2) {
-    throw new Error("Invalid OAuth state format");
+    throw new InstagramOAuthStateError("Invalid OAuth state format", "invalid_state");
   }
 
   const [encodedPayload, providedSignature] = parts;
@@ -93,31 +172,75 @@ export function verifyInstagramAuthState(state: string, secretKey?: string): Ins
   const expectedBuf = Buffer.from(expectedSignature);
 
   if (providedBuf.length !== expectedBuf.length || !timingSafeEqual(providedBuf, expectedBuf)) {
-    throw new Error("OAuth state signature verification failed");
+    throw new InstagramOAuthStateError("OAuth state signature verification failed", "invalid_state");
   }
 
   let parsedJson: unknown;
   try {
     parsedJson = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
   } catch {
-    throw new Error("Invalid OAuth state JSON payload");
+    throw new InstagramOAuthStateError("Invalid OAuth state JSON payload", "invalid_state");
   }
 
-  const validated = statePayloadSchema.parse(parsedJson);
+  const parseResult = statePayloadSchema.safeParse(parsedJson);
+  if (!parseResult.success) {
+    throw new InstagramOAuthStateError("Invalid OAuth state schema", "invalid_state");
+  }
+
+  const validated = parseResult.data;
 
   // Expiration check (15 minutes max lifetime, with 1 min clock skew allowance)
   const ageMs = Date.now() - validated.timestamp;
-  if (ageMs > 15 * 60 * 1000 || ageMs < -60 * 1000) {
-    throw new Error("OAuth state has expired");
+  if (ageMs > OAUTH_STATE_TTL_MS || ageMs < -60 * 1000) {
+    throw new InstagramOAuthStateError("OAuth state has expired", "state_expired");
   }
 
   return validated;
 }
 
 /**
+ * Verifies the OAuth state signature, checks timestamp expiration, validates user/studio matching,
+ * and atomically claims the single-use nonce in PostgreSQL.
+ */
+export async function verifyAndConsumeInstagramAuthState(
+  state: string,
+  options?: {
+    secretKey?: string;
+    executor?: typeof db | Transaction;
+    expectedStudioId?: string;
+    expectedUserId?: string;
+  }
+): Promise<InstagramAuthStatePayload> {
+  const payload = verifyInstagramAuthState(state, options?.secretKey);
+
+  if (options?.expectedStudioId && payload.studioId !== options.expectedStudioId) {
+    throw new InstagramOAuthStateError("OAuth state studio mismatch", "studio_mismatch");
+  }
+  if (options?.expectedUserId && payload.userId !== options.expectedUserId) {
+    throw new InstagramOAuthStateError("OAuth state user mismatch", "user_mismatch");
+  }
+
+  const consumed = await consumeInstagramOAuthNonce(
+    payload.nonce,
+    payload.studioId,
+    payload.userId,
+    options?.executor ?? db
+  );
+
+  if (!consumed) {
+    throw new InstagramOAuthStateError(
+      "OAuth state has already been used or is expired",
+      "state_replay"
+    );
+  }
+
+  return payload;
+}
+
+/**
  * Generates the full Meta / Instagram OAuth authorization URL.
  */
-export function generateMetaAuthUrl(options: {
+export async function generateMetaAuthUrl(options: {
   studioId: string;
   userId: string;
   redirectUri: string;
@@ -125,8 +248,14 @@ export function generateMetaAuthUrl(options: {
   scopes?: string[];
   stateSecret?: string;
   configId?: string;
-}): string {
+  executor?: typeof db | Transaction;
+  skipPersistNonce?: boolean;
+}): Promise<string> {
   const { clientId } = getMetaOAuthCredentials({ clientId: options.clientId });
+  if (!clientId) {
+    throw new InstagramOAuthConfigurationError("Meta App ID / Client ID is not configured");
+  }
+
   const scopes = (options.scopes || META_INSTAGRAM_DEFAULT_SCOPES).join(",");
   const state = generateInstagramAuthState(
     {
@@ -135,6 +264,16 @@ export function generateMetaAuthUrl(options: {
     },
     options.stateSecret
   );
+
+  if (!options.skipPersistNonce) {
+    const verified = verifyInstagramAuthState(state, options.stateSecret);
+    await storeInstagramOAuthNonce(
+      verified.nonce,
+      verified.studioId,
+      verified.userId,
+      options.executor
+    );
+  }
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -171,7 +310,7 @@ export async function exchangeMetaAuthCode(
   const { clientId, clientSecret } = getMetaOAuthCredentials(customCredentials);
 
   if (!clientId || !clientSecret) {
-    throw new Error("Meta App ID and Secret must be configured");
+    throw new InstagramOAuthConfigurationError("Meta App ID and Secret must be configured");
   }
 
   // 1. Exchange authorization code for short-lived access token
@@ -187,7 +326,7 @@ export async function exchangeMetaAuthCode(
   });
 
   if (!response.ok) {
-    const errorBody = await response.text();
+    const errorBody = await response.text().catch(() => "");
     let parsedMessage = `Status ${response.status}`;
     try {
       const parsed = JSON.parse(errorBody);
@@ -202,6 +341,10 @@ export async function exchangeMetaAuthCode(
 
   const tokenData = await response.json();
   const shortLivedToken: string = tokenData.access_token;
+  if (!shortLivedToken) {
+    throw new Error("No access token returned from Meta authorization code exchange");
+  }
+
   let finalToken = shortLivedToken;
   let finalExpiresIn: number | undefined = tokenData.expires_in;
 
@@ -238,10 +381,10 @@ export async function exchangeMetaAuthCode(
 
 export interface DiscoveredInstagramAccount {
   instagramAccountId: string;
-  instagramUsername?: string;
-  instagramName?: string;
+  instagramUsername?: string | null;
+  instagramName?: string | null;
   pageId?: string;
-  pageName?: string;
+  pageName?: string | null;
   accessToken: string; // Page access token (preferred for Instagram Graph API)
 }
 
@@ -264,19 +407,23 @@ export async function fetchInstagramAccountDetails(
     headers: { Accept: "application/json" },
   });
 
+  if (!res.ok) {
+    throw new Error(`Meta Graph API returned status ${res.status} when querying /me/accounts`);
+  }
+
   const discovered: DiscoveredInstagramAccount[] = [];
+  const data = await res.json().catch(() => ({}));
+  const pages = Array.isArray(data.data) ? data.data : [];
 
-  if (res.ok) {
-    const data = await res.json().catch(() => ({}));
-    const pages = Array.isArray(data.data) ? data.data : [];
-
-    for (const page of pages) {
-      if (page.instagram_business_account?.id) {
+  for (const page of pages) {
+    if (page?.instagram_business_account?.id) {
+      const igId = String(page.instagram_business_account.id).trim();
+      if (igId.length > 0) {
         discovered.push({
-          instagramAccountId: page.instagram_business_account.id,
+          instagramAccountId: igId,
           instagramUsername: page.instagram_business_account.username || null,
           instagramName: page.instagram_business_account.name || null,
-          pageId: page.id,
+          pageId: page.id ? String(page.id) : undefined,
           pageName: page.name || null,
           accessToken: page.access_token || userAccessToken,
         });
@@ -284,29 +431,6 @@ export async function fetchInstagramAccountDetails(
     }
   }
 
-  // Fallback: If no page with instagram_business_account found, query /me directly
-  if (discovered.length === 0) {
-    const meUrl = new URL(`${META_GRAPH_BASE}/me`);
-    meUrl.searchParams.set("fields", "id,name");
-    meUrl.searchParams.set("access_token", userAccessToken);
-
-    const meRes = await fetchFn(meUrl.toString(), {
-      method: "GET",
-      headers: { Accept: "application/json" },
-    });
-
-    if (meRes.ok) {
-      const meData = await meRes.json().catch(() => ({}));
-      if (meData.id) {
-        discovered.push({
-          instagramAccountId: meData.id,
-          instagramUsername: meData.name || null,
-          instagramName: meData.name || null,
-          accessToken: userAccessToken,
-        });
-      }
-    }
-  }
-
+  // Strictly DO NOT fall back to /me Facebook User ID!
   return discovered;
 }

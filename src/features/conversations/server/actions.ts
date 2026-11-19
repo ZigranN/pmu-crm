@@ -56,6 +56,7 @@ export async function sendManualMessageAction(input: SendManualMessageInput) {
       clientId: parsed.clientId,
       conversationId: parsed.conversationId ?? null,
       cycleId: parsed.cycleId ?? null,
+      channel: parsed.channel ?? null,
       body: parsed.body,
     };
 

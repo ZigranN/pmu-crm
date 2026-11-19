@@ -1,6 +1,7 @@
 "use client";
 
-import { useTransition } from "react";
+import { useEffect, useTransition } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   CheckCircle2,
@@ -53,6 +54,39 @@ export function InstagramSettings({
   studioInstagramHandle,
 }: InstagramSettingsProps) {
   const [isPending, startTransition] = useTransition();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  useEffect(() => {
+    const error = searchParams.get("error");
+    const connected = searchParams.get("connected");
+
+    if (error) {
+      const errorMap: Record<string, string> = {
+        access_denied: "Авторизация Meta была отменена пользователем",
+        auth_required: "Требуется авторизация в системе",
+        user_mismatch: "Несоответствие пользователя при авторизации OAuth",
+        forbidden: "Недостаточно прав для управления интеграциями студии",
+        invalid_state: "Недействительный или повреждённый токен состояния OAuth",
+        state_expired: "Время сессии авторизации истекло. Пожалуйста, начните заново.",
+        state_replay: "Сессия авторизации уже была использована. Пожалуйста, начните заново.",
+        config_error: "Серверная конфигурация Meta OAuth не настроена",
+        token_exchange_failed: "Не удалось получить токен доступа от Meta API",
+        account_discovery_failed: "Не удалось получить список аккаунтов через Meta Graph API",
+        no_instagram_business_account_found:
+          "Не найден подтвержденный бизнес-аккаунт Instagram, привязанный к вашей странице Facebook.",
+        missing_code_or_state: "Отсутствуют обязательные параметры ответа от Meta",
+        oauth_failed: "Ошибка при подключении Instagram через Meta OAuth",
+      };
+
+      const msg = errorMap[error] || "Произошла ошибка при подключении Instagram";
+      toast.error(msg);
+      router.replace("/settings/integrations/instagram");
+    } else if (connected === "true") {
+      toast.success("Instagram-аккаунт успешно подключен!");
+      router.replace("/settings/integrations/instagram");
+    }
+  }, [searchParams, router]);
 
   const handleConnect = () => {
     startTransition(async () => {

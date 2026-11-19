@@ -164,7 +164,7 @@ describe("Phase 21.1: Live API Integrations & Real-World E2E Scenarios", () => {
   });
 
   describe("3. SCENARIO A: Consultation without Booking", () => {
-    it("successfully handles client consultation on PMU brows preparation without creating appointments or debts", async () => {
+    it("successfully handles client consultation on PMU brows preparation without creating appointments or debts, keeping outbound auto-replies disabled by default", async () => {
       const db = database.db;
       const providerMsgId = `wamid.test.scenarioA.${randomUUID()}`;
 
@@ -179,6 +179,7 @@ describe("Phase 21.1: Live API Integrations & Real-World E2E Scenarios", () => {
         rawPayload: { type: "text" },
       };
 
+      // Default: auto-reply disabled for MVP safety
       const result = await processInboundWhatsAppMessage(inboundMsg, {
         whatsappClient: mockWaClient,
         database: db,
@@ -189,11 +190,8 @@ describe("Phase 21.1: Live API Integrations & Real-World E2E Scenarios", () => {
       expect(result.studioId).toBe(studioAId);
       expect(result.clientId).toBeDefined();
 
-      // Verify WhatsApp reply sent
-      expect(mockWaClient.sentMessages.length).toBe(1);
-      expect(mockWaClient.sentMessages[0].to).toBe(TEST_CLIENT_PHONE);
-      expect(mockWaClient.sentMessages[0].text).toContain("Подготовка к перманентному макияжу бровей");
-      expect(mockWaClient.sentMessages[0].text).toContain("алкоголь, кофеин");
+      // STRICT MVP SAFETY INVARIANT: No automated WhatsApp reply sent by default
+      expect(mockWaClient.sentMessages.length).toBe(0);
 
       // Verify conversation and message persistence
       const conv = await db.query.conversations.findFirst({
@@ -206,11 +204,9 @@ describe("Phase 21.1: Live API Integrations & Real-World E2E Scenarios", () => {
         .from(s.conversationMessages)
         .where(eq(s.conversationMessages.conversationId, result.conversationId!));
 
-      expect(messages.length).toBe(2);
+      expect(messages.length).toBe(1);
       expect(messages[0].direction).toBe("INBOUND");
       expect(messages[0].body).toContain("как подготовиться");
-      expect(messages[1].direction).toBe("OUTBOUND");
-      expect(messages[1].body).toContain("Подготовка к перманентному макияжу бровей");
 
       // CRITICAL ARCHITECTURAL INVARIANTS:
       // 1. No Appointment created
@@ -248,10 +244,35 @@ describe("Phase 21.1: Live API Integrations & Real-World E2E Scenarios", () => {
         .where(and(eq(s.ledgerEntries.studioId, studioAId), eq(s.ledgerEntries.clientId, result.clientId!)));
       expect(ledger.length).toBe(0);
     });
+
+    it("sends consultation auto-reply only when explicitly opted in", async () => {
+      const db = database.db;
+      const optInMsg = {
+        providerMessageId: `wamid.test.optinA.${randomUUID()}`,
+        fromPhone: TEST_CLIENT_PHONE,
+        senderName: "Мария Консультация",
+        phoneNumberId: "10001",
+        displayPhoneNumber: STUDIO_A_WA_NUMBER,
+        body: "Здравствуйте, как ухаживать за губами после процедуры?",
+        timestamp: new Date(),
+        rawPayload: { type: "text" },
+      };
+
+      const result = await processInboundWhatsAppMessage(optInMsg, {
+        whatsappClient: mockWaClient,
+        database: db,
+        enableAutoReply: true,
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.scenario).toBe("SCENARIO_A_CONSULTATION");
+      expect(mockWaClient.sentMessages.length).toBe(1);
+      expect(mockWaClient.sentMessages[0].text).toContain("перманентному макияжу губ");
+    });
   });
 
   describe("4. SCENARIO B: Consultation with Booking Inquiry", () => {
-    it("suggests available slots and prevents duplicate bookings on replayed webhooks", async () => {
+    it("safely records booking inquiries without automatic outbound dispatch by default and handles duplicate replays", async () => {
       const db = database.db;
       const providerMsgId = `wamid.test.scenarioB.${randomUUID()}`;
 
@@ -266,7 +287,7 @@ describe("Phase 21.1: Live API Integrations & Real-World E2E Scenarios", () => {
         rawPayload: { type: "text" },
       };
 
-      // 1. First delivery
+      // 1. First delivery (default: no auto-reply)
       const result1 = await processInboundWhatsAppMessage(inboundMsg, {
         whatsappClient: mockWaClient,
         database: db,
@@ -274,8 +295,7 @@ describe("Phase 21.1: Live API Integrations & Real-World E2E Scenarios", () => {
 
       expect(result1.handled).toBe(true);
       expect(result1.scenario).toBe("SCENARIO_B_BOOKING");
-      expect(mockWaClient.sentMessages.length).toBe(1);
-      expect(mockWaClient.sentMessages[0].text).toContain("доступны следующие интервалы");
+      expect(mockWaClient.sentMessages.length).toBe(0);
 
       // 2. Replay duplicate webhook with same providerMessageId
       const result2 = await processInboundWhatsAppMessage(inboundMsg, {
@@ -285,13 +305,12 @@ describe("Phase 21.1: Live API Integrations & Real-World E2E Scenarios", () => {
 
       expect(result2.handled).toBe(true);
       expect(result2.reason).toContain("Duplicate inbound message acknowledged");
-      // No second WhatsApp reply sent for duplicate
-      expect(mockWaClient.sentMessages.length).toBe(1);
+      expect(mockWaClient.sentMessages.length).toBe(0);
     });
   });
 
   describe("5. SCENARIO C: Human Takeover & AI Suppression", () => {
-    it("transitions conversation to human takeover and suppresses AI auto-replies", async () => {
+    it("creates staff task for human takeover and suppresses automatic outbound sends", async () => {
       const db = database.db;
       const clientPhone = "+393338888888";
       const takeoverMsgId = `wamid.test.takeover.${randomUUID()}`;
@@ -316,7 +335,7 @@ describe("Phase 21.1: Live API Integrations & Real-World E2E Scenarios", () => {
       expect(result1.handled).toBe(true);
       expect(result1.scenario).toBe("SCENARIO_C_HUMAN_TAKEOVER");
 
-      // Verify Needs Attention task created
+      // Verify Needs Attention task created for staff
       const staffTasks = await db
         .select()
         .from(s.tasks)
@@ -325,9 +344,8 @@ describe("Phase 21.1: Live API Integrations & Real-World E2E Scenarios", () => {
       expect(staffTasks[0].title).toContain("Запрос связи с администратором");
       expect(staffTasks[0].priority).toBe("urgent");
 
-      // Verify client received acknowledgment
-      expect(mockWaClient.sentMessages.length).toBe(1);
-      expect(mockWaClient.sentMessages[0].text).toContain("передан администратору студии");
+      // Verify no automated outbound message sent
+      expect(mockWaClient.sentMessages.length).toBe(0);
 
       // 2. Staff user assigns / takes over conversation
       await db
