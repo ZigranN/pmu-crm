@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "crypto";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -19,10 +20,15 @@ import {
   dispatchAutomationTrigger,
   cancelPendingAutomations,
 } from "@/features/automations/server/engine";
-import { getInstagramClient } from "@/features/instagram/server/client";
+import {
+  getInstagramClient,
+  classifyInstagramError,
+  InstagramApiError,
+} from "@/features/instagram/server/client";
 import { getActiveInstagramTokenForStudio } from "@/features/instagram/server/service";
 import { getWhatsAppClient } from "@/features/whatsapp/server/client";
 import { canonicalPhone } from "@/lib/phone";
+import { logger } from "@/lib/observability/logger";
 import {
   sendManualMessageSchema,
   recordInboundMessageSchema,
@@ -190,13 +196,277 @@ export async function getOrCreateClientConversation(
 export async function sendManualMessage(
   dbExecutor: typeof db | Transaction,
   context: ConversationContext,
-  input: SendManualMessageInput
+  input: SendManualMessageInput,
+  options?: { correlationId?: string }
 ): Promise<{
   message: typeof conversationMessages.$inferSelect;
   conversation: typeof conversations.$inferSelect;
 }> {
   const parsed = sendManualMessageSchema.parse(input);
+  const outboundChannel = parsed.channel ?? "MANUAL";
+  const correlationId = options?.correlationId || randomUUID();
 
+  let providerMessageId: string | null = null;
+  let providerMetadata: Record<string, unknown> | null = null;
+
+  if (outboundChannel === "INSTAGRAM") {
+    // 1. Preflight read phase (outside transaction when dbExecutor is db)
+    const [lastInboundIg] = await dbExecutor
+      .select()
+      .from(conversationMessages)
+      .where(
+        and(
+          parsed.conversationId ? eq(conversationMessages.conversationId, parsed.conversationId) : undefined,
+          eq(conversationMessages.studioId, context.studioId),
+          eq(conversationMessages.clientId, parsed.clientId),
+          eq(conversationMessages.direction, "INBOUND"),
+          eq(conversationMessages.channel, "INSTAGRAM")
+        )
+      )
+      .orderBy(desc(conversationMessages.sentAt))
+      .limit(1);
+
+    const metadata = lastInboundIg?.providerMetadata as
+      | { senderId?: string }
+      | null;
+
+    const recipientId = metadata?.senderId;
+
+    if (!lastInboundIg) {
+      providerMessageId = null;
+      providerMetadata = {
+        recipientId: null,
+        sentViaApi: false,
+        deliveryStatus: "failed",
+        sendError: "Instagram: входящая переписка с клиентом не найдена.",
+        errorCode: "THREAD_NOT_FOUND",
+        failureStage: "preflight_validation",
+      };
+      logger.warn("Instagram outbound preflight failed: no inbound message found", {
+        correlationId,
+        studioId: context.studioId,
+        userId: context.userId,
+        channel: "INSTAGRAM",
+        operation: "outbound_message",
+        status: "failed",
+        failureStage: "preflight_validation",
+        errorCode: "THREAD_NOT_FOUND",
+      });
+    } else if (!recipientId || !/^\d+$/.test(recipientId)) {
+      providerMessageId = null;
+      providerMetadata = {
+        recipientId: null,
+        sentViaApi: false,
+        deliveryStatus: "failed",
+        sendError: "Instagram: отсутствует действительный ID клиента.",
+        errorCode: "INVALID_RECIPIENT_ID",
+        failureStage: "preflight_validation",
+      };
+      logger.warn("Instagram outbound preflight failed: invalid recipient id", {
+        correlationId,
+        studioId: context.studioId,
+        userId: context.userId,
+        channel: "INSTAGRAM",
+        operation: "outbound_message",
+        status: "failed",
+        failureStage: "preflight_validation",
+        errorCode: "INVALID_RECIPIENT_ID",
+      });
+    } else {
+      const studioIgConnection = await getActiveInstagramTokenForStudio(context.studioId);
+      const accessToken =
+        studioIgConnection?.accessToken ||
+        process.env.INSTAGRAM_PAGE_ACCESS_TOKEN ||
+        process.env.META_PAGE_ACCESS_TOKEN ||
+        process.env.META_ACCESS_TOKEN;
+
+      if (!accessToken) {
+        providerMessageId = null;
+        providerMetadata = {
+          recipientId,
+          sentViaApi: false,
+          deliveryStatus: "failed",
+          sendError: "Instagram: Access Token не настроен.",
+          errorCode: "AUTH_NOT_CONFIGURED",
+          failureStage: "auth_configuration",
+        };
+        logger.warn("Instagram outbound preflight failed: token not configured", {
+          correlationId,
+          studioId: context.studioId,
+          userId: context.userId,
+          channel: "INSTAGRAM",
+          operation: "outbound_message",
+          status: "failed",
+          failureStage: "auth_configuration",
+          errorCode: "AUTH_NOT_CONFIGURED",
+        });
+      } else {
+        // 2. External Provider Dispatch (outside DB transaction)
+        try {
+          const sendRes = await getInstagramClient({
+            defaultAccessToken: accessToken,
+            defaultAccountId: studioIgConnection?.instagramAccountId,
+          }).sendTextMessage({
+            recipientId,
+            text: parsed.body,
+            pageAccessToken: accessToken,
+            instagramAccountId: studioIgConnection?.instagramAccountId,
+          });
+
+          if (!sendRes.messageId) {
+            throw new InstagramApiError("Instagram API не подтвердил отправку сообщения.");
+          }
+
+          providerMessageId = sendRes.messageId;
+          providerMetadata = {
+            recipientId,
+            sentViaApi: true,
+            deliveryStatus: "sent",
+            messagingProduct: "instagram",
+          };
+
+          logger.info("Instagram outbound message dispatched successfully", {
+            correlationId,
+            studioId: context.studioId,
+            userId: context.userId,
+            channel: "INSTAGRAM",
+            operation: "outbound_message",
+            status: "success",
+            providerMessageId,
+          });
+        } catch (err: unknown) {
+          const classified = classifyInstagramError(err);
+          providerMessageId = null;
+          providerMetadata = {
+            recipientId,
+            sentViaApi: false,
+            deliveryStatus: "failed",
+            sendError: classified.formattedMessage,
+            errorCode: classified.code !== undefined ? String(classified.code) : classified.errorType,
+            errorSubcode: classified.subcode !== undefined ? String(classified.subcode) : null,
+            errorType: classified.type || null,
+            failureStage: "provider_dispatch",
+          };
+
+          logger.error("Instagram outbound message dispatch failed", {
+            correlationId,
+            studioId: context.studioId,
+            userId: context.userId,
+            channel: "INSTAGRAM",
+            operation: "outbound_message",
+            status: "failed",
+            failureStage: "provider_dispatch",
+            errorCode: classified.code !== undefined ? String(classified.code) : classified.errorType,
+            errorSubcode: classified.subcode !== undefined ? String(classified.subcode) : undefined,
+            errorType: classified.type,
+            errorMessage: classified.sanitizedMessage,
+          });
+        }
+      }
+    }
+  } else if (outboundChannel === "WHATSAPP") {
+    const [lastInboundWa] = await dbExecutor
+      .select()
+      .from(conversationMessages)
+      .where(
+        and(
+          parsed.conversationId ? eq(conversationMessages.conversationId, parsed.conversationId) : undefined,
+          eq(conversationMessages.studioId, context.studioId),
+          eq(conversationMessages.clientId, parsed.clientId),
+          eq(conversationMessages.direction, "INBOUND"),
+          eq(conversationMessages.channel, "WHATSAPP")
+        )
+      )
+      .orderBy(desc(conversationMessages.sentAt))
+      .limit(1);
+
+    const [clientRecord] = await dbExecutor
+      .select({ id: clients.id, phone: clients.phone, whatsapp: clients.whatsapp })
+      .from(clients)
+      .where(
+        and(
+          eq(clients.id, parsed.clientId),
+          eq(clients.studioId, context.studioId)
+        )
+      );
+
+    const rawRecipient =
+      (lastInboundWa?.providerMetadata as { from?: string; senderPhone?: string } | null)?.from ||
+      (lastInboundWa?.providerMetadata as { senderPhone?: string } | null)?.senderPhone ||
+      clientRecord?.whatsapp ||
+      clientRecord?.phone;
+
+    const recipientPhone = canonicalPhone(rawRecipient);
+
+    if (!recipientPhone || isPlaceholderPhone(recipientPhone)) {
+      throw new Error(
+        "WhatsApp: отсутствует действительный подтвержденный номер телефона клиента."
+      );
+    }
+
+    const waClient = getWhatsAppClient();
+    if (!waClient.isConfigured()) {
+      throw new Error(
+        "WhatsApp: Access Token или Phone Number ID не настроены."
+      );
+    }
+
+    const serviceWindow = waClient.checkServiceWindow(lastInboundWa?.sentAt);
+
+    let sendRes;
+    if (serviceWindow.isWithin24hWindow) {
+      if (parsed.templateName) {
+        sendRes = await waClient.sendTemplateMessage({
+          to: recipientPhone,
+          templateName: parsed.templateName,
+          languageCode: parsed.templateLanguage || "ru",
+          components: parsed.templateComponents as Array<Record<string, unknown>> | undefined,
+        });
+      } else {
+        sendRes = await waClient.sendTextMessage({
+          to: recipientPhone,
+          text: parsed.body,
+        });
+      }
+    } else {
+      if (!parsed.templateName) {
+        throw new Error(
+          "WhatsApp: 24-часовое окно для сообщений в свободной форме истекло. Для отправки вне окна требуется утвержденный шаблон."
+        );
+      }
+
+      sendRes = await waClient.sendTemplateMessage({
+        to: recipientPhone,
+        templateName: parsed.templateName,
+        languageCode: parsed.templateLanguage || "ru",
+        components: parsed.templateComponents as Array<Record<string, unknown>> | undefined,
+      });
+    }
+
+    const returnedMessageId = sendRes.messages?.[0]?.id;
+    if (!returnedMessageId) {
+      throw new Error(
+        "WhatsApp API не подтвердил отправку сообщения."
+      );
+    }
+
+    providerMessageId = returnedMessageId;
+    providerMetadata = {
+      recipientPhone,
+      sentViaApi: true,
+      deliveryStatus: "sent",
+      messagingProduct: sendRes.messagingProduct || "whatsapp",
+      isTemplate: Boolean(parsed.templateName),
+      templateName: parsed.templateName ?? null,
+      serviceWindow: {
+        isWithin24hWindow: serviceWindow.isWithin24hWindow,
+        lastInboundAt: serviceWindow.lastInboundAt?.toISOString() ?? null,
+        windowExpiresAt: serviceWindow.windowExpiresAt?.toISOString() ?? null,
+      },
+    };
+  }
+
+  // 3. Fast Atomic Database Persistence
   return executeInTransaction(dbExecutor, async (tx) => {
     await lockStudioAccess(tx, context);
 
@@ -236,176 +506,6 @@ export async function sendManualMessage(
     }
 
     const now = new Date();
-
-    const outboundChannel = parsed.channel ?? "MANUAL";
-    let providerMessageId: string | null = null;
-    let providerMetadata: Record<string, unknown> | null = null;
-
-    if (outboundChannel === "INSTAGRAM") {
-      const [lastInboundIg] = await tx
-        .select()
-        .from(conversationMessages)
-        .where(
-          and(
-            eq(conversationMessages.conversationId, conv.id),
-            eq(conversationMessages.direction, "INBOUND"),
-            eq(conversationMessages.channel, "INSTAGRAM")
-          )
-        )
-        .orderBy(desc(conversationMessages.sentAt))
-        .limit(1);
-
-      if (!lastInboundIg) {
-        throw new Error(
-          "Instagram: входящая переписка с клиентом не найдена."
-        );
-      }
-
-      const metadata = lastInboundIg.providerMetadata as
-        | { senderId?: string }
-        | null;
-
-      const recipientId = metadata?.senderId;
-
-      if (!recipientId || !/^\d+$/.test(recipientId)) {
-        throw new Error(
-          "Instagram: отсутствует действительный ID клиента."
-        );
-      }
-
-      const studioIgConnection = await getActiveInstagramTokenForStudio(context.studioId);
-      const accessToken =
-        studioIgConnection?.accessToken ||
-        process.env.INSTAGRAM_PAGE_ACCESS_TOKEN ||
-        process.env.META_PAGE_ACCESS_TOKEN ||
-        process.env.META_ACCESS_TOKEN;
-
-      if (!accessToken) {
-        throw new Error(
-          "Instagram: Access Token не настроен."
-        );
-      }
-
-      const sendRes = await getInstagramClient({
-        defaultAccessToken: accessToken,
-        defaultAccountId: studioIgConnection?.instagramAccountId,
-      }).sendTextMessage({
-        recipientId,
-        text: parsed.body,
-        pageAccessToken: accessToken,
-        instagramAccountId: studioIgConnection?.instagramAccountId,
-      });
-
-      if (!sendRes.messageId) {
-        throw new Error(
-          "Instagram API не подтвердил отправку сообщения."
-        );
-      }
-
-      providerMessageId = sendRes.messageId;
-      providerMetadata = {
-        recipientId,
-        sentViaApi: true,
-      };
-    } else if (outboundChannel === "WHATSAPP") {
-      const [lastInboundWa] = await tx
-        .select()
-        .from(conversationMessages)
-        .where(
-          and(
-            eq(conversationMessages.conversationId, conv.id),
-            eq(conversationMessages.direction, "INBOUND"),
-            eq(conversationMessages.channel, "WHATSAPP")
-          )
-        )
-        .orderBy(desc(conversationMessages.sentAt))
-        .limit(1);
-
-      const [clientRecord] = await tx
-        .select({ id: clients.id, phone: clients.phone, whatsapp: clients.whatsapp })
-        .from(clients)
-        .where(
-          and(
-            eq(clients.id, parsed.clientId),
-            eq(clients.studioId, context.studioId)
-          )
-        );
-
-      const rawRecipient =
-        (lastInboundWa?.providerMetadata as { from?: string; senderPhone?: string } | null)?.from ||
-        (lastInboundWa?.providerMetadata as { senderPhone?: string } | null)?.senderPhone ||
-        clientRecord?.whatsapp ||
-        clientRecord?.phone;
-
-      const recipientPhone = canonicalPhone(rawRecipient);
-
-      if (!recipientPhone || isPlaceholderPhone(recipientPhone)) {
-        throw new Error(
-          "WhatsApp: отсутствует действительный подтвержденный номер телефона клиента."
-        );
-      }
-
-      const waClient = getWhatsAppClient();
-      if (!waClient.isConfigured()) {
-        throw new Error(
-          "WhatsApp: Access Token или Phone Number ID не настроены."
-        );
-      }
-
-      const serviceWindow = waClient.checkServiceWindow(lastInboundWa?.sentAt);
-
-      let sendRes;
-      if (serviceWindow.isWithin24hWindow) {
-        if (parsed.templateName) {
-          sendRes = await waClient.sendTemplateMessage({
-            to: recipientPhone,
-            templateName: parsed.templateName,
-            languageCode: parsed.templateLanguage || "ru",
-            components: parsed.templateComponents as Array<Record<string, unknown>> | undefined,
-          });
-        } else {
-          sendRes = await waClient.sendTextMessage({
-            to: recipientPhone,
-            text: parsed.body,
-          });
-        }
-      } else {
-        if (!parsed.templateName) {
-          throw new Error(
-            "WhatsApp: 24-часовое окно для сообщений в свободной форме истекло. Для отправки вне окна требуется утвержденный шаблон."
-          );
-        }
-
-        sendRes = await waClient.sendTemplateMessage({
-          to: recipientPhone,
-          templateName: parsed.templateName,
-          languageCode: parsed.templateLanguage || "ru",
-          components: parsed.templateComponents as Array<Record<string, unknown>> | undefined,
-        });
-      }
-
-      const returnedMessageId = sendRes.messages?.[0]?.id;
-      if (!returnedMessageId) {
-        throw new Error(
-          "WhatsApp API не подтвердил отправку сообщения."
-        );
-      }
-
-      providerMessageId = returnedMessageId;
-      providerMetadata = {
-        recipientPhone,
-        sentViaApi: true,
-        deliveryStatus: "sent",
-        messagingProduct: sendRes.messagingProduct || "whatsapp",
-        isTemplate: Boolean(parsed.templateName),
-        templateName: parsed.templateName ?? null,
-        serviceWindow: {
-          isWithin24hWindow: serviceWindow.isWithin24hWindow,
-          lastInboundAt: serviceWindow.lastInboundAt?.toISOString() ?? null,
-          windowExpiresAt: serviceWindow.windowExpiresAt?.toISOString() ?? null,
-        },
-      };
-    }
 
     // Insert immutable message evidence
     const [msg] = await tx
@@ -453,6 +553,8 @@ export async function sendManualMessage(
         },
       });
 
+    const isSuccessfulSend = providerMetadata?.sentViaApi === true || outboundChannel === "MANUAL";
+
     await writeAudit(tx, {
       studioId: context.studioId,
       userId: context.userId,
@@ -467,17 +569,20 @@ export async function sendManualMessage(
         direction: "OUTBOUND",
         channel: outboundChannel,
         sentAt: now.toISOString(),
+        sentViaApi: providerMetadata?.sentViaApi ?? false,
       },
-      reason: "manual_message_sent",
+      reason: isSuccessfulSend ? "manual_message_sent" : "manual_message_send_failed",
       reasonSource: "user",
     });
 
-    // Invalidate pending unanswered follow-ups for this conversation since staff replied
-    await cancelPendingAutomations(tx, context.studioId, {
-      entityType: "conversation",
-      entityId: conv.id,
-      reason: "staff_response_sent",
-    });
+    // Invalidate pending unanswered follow-ups for this conversation ONLY if staff successfully replied
+    if (isSuccessfulSend) {
+      await cancelPendingAutomations(tx, context.studioId, {
+        entityType: "conversation",
+        entityId: conv.id,
+        reason: "staff_response_sent",
+      });
+    }
 
     return {
       message: msg,

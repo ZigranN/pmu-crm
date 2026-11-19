@@ -31,7 +31,14 @@ export interface InstagramClientConfig {
   fetchFn?: typeof fetch;
 }
 
-export class InstagramApiClient {
+export interface IInstagramClient {
+  evaluate24hWindow(lastInboundAt?: Date | null): InstagramServiceWindow;
+  sendTextMessage(params: SendInstagramMessageParams): Promise<InstagramSendMessageResult>;
+  sendAttachment(params: SendInstagramAttachmentParams): Promise<InstagramSendMessageResult>;
+  getUserProfile(userId: string, pageAccessToken?: string): Promise<InstagramUserProfile | null>;
+}
+
+export class InstagramApiClient implements IInstagramClient {
   private readonly defaultAccessToken?: string;
   private readonly defaultAccountId?: string;
   private readonly apiVersion: string;
@@ -226,14 +233,79 @@ export class InstagramApiClient {
   }
 }
 
-let defaultInstagramClientInstance: InstagramApiClient | null = null;
+let defaultInstagramClientInstance: IInstagramClient | null = null;
 
-export function getInstagramClient(config?: InstagramClientConfig): InstagramApiClient {
-  if (config) {
-    return new InstagramApiClient(config);
+export function getInstagramClient(config?: InstagramClientConfig): IInstagramClient {
+  if (defaultInstagramClientInstance) {
+    return defaultInstagramClientInstance;
   }
-  if (!defaultInstagramClientInstance) {
-    defaultInstagramClientInstance = new InstagramApiClient();
+  return new InstagramApiClient(config);
+}
+
+export function setInstagramClient(client: IInstagramClient | null) {
+  defaultInstagramClientInstance = client;
+}
+
+export interface ClassifiedInstagramError {
+  sanitizedMessage: string;
+  formattedMessage: string;
+  code?: number;
+  subcode?: number;
+  type?: string;
+  errorType: string;
+}
+
+export function sanitizeInstagramErrorMessage(message?: unknown): string {
+  if (!message || typeof message !== "string") {
+    return "Unknown Instagram API error";
   }
-  return defaultInstagramClientInstance;
+
+  return message
+    .replace(/EA[A-Za-z0-9_-]{10,}/g, "[REDACTED_TOKEN]")
+    .replace(/Bearer\s+[^\s]+/gi, "Bearer [REDACTED_TOKEN]")
+    .replace(/access_token=[^&\s]+/gi, "access_token=[REDACTED_TOKEN]")
+    .replace(/client_secret=[^&\s]+/gi, "client_secret=[REDACTED_SECRET]")
+    .replace(/appsecret_proof=[^&\s]+/gi, "appsecret_proof=[REDACTED_PROOF]")
+    .trim();
+}
+
+export function classifyInstagramError(error: unknown): ClassifiedInstagramError {
+  if (error instanceof InstagramApiError) {
+    const sanitized = sanitizeInstagramErrorMessage(error.message);
+    let codeStr = "";
+    if (error.code !== undefined) {
+      codeStr = ` (Code ${error.code}${error.subcode !== undefined ? `, Subcode ${error.subcode}` : ""})`;
+    }
+
+    let errorCategory = "API_ERROR";
+    if (error.code === 190) {
+      errorCategory = "TOKEN_INVALID";
+    } else if (error.code === 10) {
+      errorCategory = "PERMISSION_DENIED";
+    } else if (error.code === 100) {
+      errorCategory = "INVALID_PARAMETER";
+    } else if (error.code === 4 || error.code === 17 || error.code === 613) {
+      errorCategory = "RATE_LIMITED";
+    } else if (error.type === "OAuthException") {
+      errorCategory = "OAUTH_EXCEPTION";
+    }
+
+    return {
+      sanitizedMessage: sanitized,
+      formattedMessage: `Instagram API error${codeStr}: ${sanitized}`,
+      code: error.code,
+      subcode: error.subcode,
+      type: error.type,
+      errorType: errorCategory,
+    };
+  }
+
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const sanitized = sanitizeInstagramErrorMessage(rawMessage);
+
+  return {
+    sanitizedMessage: sanitized,
+    formattedMessage: `Instagram API error: ${sanitized}`,
+    errorType: "UNKNOWN_ERROR",
+  };
 }

@@ -1,9 +1,11 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { requireBrowserStudioContext } from "@/server/auth/context";
 import { idempotentCommand } from "@/server/commands/idempotency";
+import { logger } from "@/lib/observability/logger";
 import {
   sendManualMessageSchema,
   assignConversationSchema,
@@ -48,71 +50,88 @@ export async function getOrCreateClientConversationAction(
 }
 
 export async function sendManualMessageAction(input: SendManualMessageInput) {
-  const parsed = sendManualMessageSchema.parse(input);
-  const context = await requireBrowserStudioContext();
+  const correlationId = randomUUID();
+  try {
+    const parsed = sendManualMessageSchema.parse(input);
+    const context = await requireBrowserStudioContext();
 
-  if (parsed.requestKey) {
-    const payload = {
-      clientId: parsed.clientId,
-      conversationId: parsed.conversationId ?? null,
-      cycleId: parsed.cycleId ?? null,
-      channel: parsed.channel ?? null,
-      body: parsed.body,
-    };
+    if (parsed.requestKey) {
+      const payload = {
+        clientId: parsed.clientId,
+        conversationId: parsed.conversationId ?? null,
+        cycleId: parsed.cycleId ?? null,
+        channel: parsed.channel ?? null,
+        body: parsed.body,
+      };
 
-    const serialized = await idempotentCommand<any>(
+      const serialized = await idempotentCommand<any>(
+        { studioId: context.studioId, userId: context.userId },
+        "CONVERSATION_WRITE",
+        "conversation.message.manual.v1",
+        parsed.requestKey,
+        payload as any,
+        async (tx) => {
+          const res = await sendManualMessage(
+            tx,
+            { studioId: context.studioId, userId: context.userId },
+            parsed,
+            { correlationId }
+          );
+          return {
+            message: {
+              ...res.message,
+              sentAt: res.message.sentAt.toISOString(),
+              receivedAt: res.message.receivedAt ? res.message.receivedAt.toISOString() : null,
+              createdAt: res.message.createdAt.toISOString(),
+            },
+            conversation: {
+              ...res.conversation,
+              lastMessageAt: res.conversation.lastMessageAt ? res.conversation.lastMessageAt.toISOString() : null,
+              createdAt: res.conversation.createdAt.toISOString(),
+              updatedAt: res.conversation.updatedAt.toISOString(),
+            },
+          } as any;
+        },
+        async () => {}
+      );
+
+      revalidatePath("/conversations");
+      revalidatePath(`/clients/${parsed.clientId}`);
+      return {
+        message: {
+          ...serialized.message,
+          sentAt: new Date(serialized.message.sentAt),
+          receivedAt: serialized.message.receivedAt ? new Date(serialized.message.receivedAt) : null,
+          createdAt: new Date(serialized.message.createdAt),
+        },
+        conversation: {
+          ...serialized.conversation,
+          lastMessageAt: serialized.conversation.lastMessageAt ? new Date(serialized.conversation.lastMessageAt) : null,
+          createdAt: new Date(serialized.conversation.createdAt),
+          updatedAt: new Date(serialized.conversation.updatedAt),
+        },
+      };
+    }
+
+    const res = await sendManualMessage(
+      db,
       { studioId: context.studioId, userId: context.userId },
-      "CONVERSATION_WRITE",
-      "conversation.message.manual.v1",
-      parsed.requestKey,
-      payload as any,
-      async (tx) => {
-        const res = await sendManualMessage(tx, { studioId: context.studioId, userId: context.userId }, parsed);
-        return {
-          message: {
-            ...res.message,
-            sentAt: res.message.sentAt.toISOString(),
-            receivedAt: res.message.receivedAt ? res.message.receivedAt.toISOString() : null,
-            createdAt: res.message.createdAt.toISOString(),
-          },
-          conversation: {
-            ...res.conversation,
-            lastMessageAt: res.conversation.lastMessageAt ? res.conversation.lastMessageAt.toISOString() : null,
-            createdAt: res.conversation.createdAt.toISOString(),
-            updatedAt: res.conversation.updatedAt.toISOString(),
-          },
-        } as any;
-      },
-      async () => {}
+      parsed,
+      { correlationId }
     );
 
     revalidatePath("/conversations");
     revalidatePath(`/clients/${parsed.clientId}`);
-    return {
-      message: {
-        ...serialized.message,
-        sentAt: new Date(serialized.message.sentAt),
-        receivedAt: serialized.message.receivedAt ? new Date(serialized.message.receivedAt) : null,
-        createdAt: new Date(serialized.message.createdAt),
-      },
-      conversation: {
-        ...serialized.conversation,
-        lastMessageAt: serialized.conversation.lastMessageAt ? new Date(serialized.conversation.lastMessageAt) : null,
-        createdAt: new Date(serialized.conversation.createdAt),
-        updatedAt: new Date(serialized.conversation.updatedAt),
-      },
-    };
+    return res;
+  } catch (err: unknown) {
+    logger.error("sendManualMessageAction encountered an error", {
+      correlationId,
+      channel: input.channel ?? "MANUAL",
+      operation: "send_manual_message_action",
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
   }
-
-  const res = await sendManualMessage(
-    db,
-    { studioId: context.studioId, userId: context.userId },
-    parsed
-  );
-
-  revalidatePath("/conversations");
-  revalidatePath(`/clients/${parsed.clientId}`);
-  return res;
 }
 
 export async function markConversationReadAction(input: MarkConversationReadInput) {
