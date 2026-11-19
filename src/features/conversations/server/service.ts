@@ -26,7 +26,12 @@ import {
   InstagramApiError,
 } from "@/features/instagram/server/client";
 import { getActiveInstagramTokenForStudio } from "@/features/instagram/server/service";
-import { getWhatsAppClient } from "@/features/whatsapp/server/client";
+import {
+  getWhatsAppClient,
+  classifyWhatsAppError,
+  WhatsAppApiError,
+} from "@/features/whatsapp/server/client";
+import type { WhatsAppSendMessageResponse } from "@/features/whatsapp/domain/types";
 import { canonicalPhone } from "@/lib/phone";
 import { logger } from "@/lib/observability/logger";
 import {
@@ -365,6 +370,7 @@ export async function sendManualMessage(
       }
     }
   } else if (outboundChannel === "WHATSAPP") {
+    // 1. Preflight read phase (outside transaction when dbExecutor is db)
     const [lastInboundWa] = await dbExecutor
       .select()
       .from(conversationMessages)
@@ -399,71 +405,166 @@ export async function sendManualMessage(
     const recipientPhone = canonicalPhone(rawRecipient);
 
     if (!recipientPhone || isPlaceholderPhone(recipientPhone)) {
-      throw new Error(
-        "WhatsApp: отсутствует действительный подтвержденный номер телефона клиента."
-      );
-    }
-
-    const waClient = getWhatsAppClient();
-    if (!waClient.isConfigured()) {
-      throw new Error(
-        "WhatsApp: Access Token или Phone Number ID не настроены."
-      );
-    }
-
-    const serviceWindow = waClient.checkServiceWindow(lastInboundWa?.sentAt);
-
-    let sendRes;
-    if (serviceWindow.isWithin24hWindow) {
-      if (parsed.templateName) {
-        sendRes = await waClient.sendTemplateMessage({
-          to: recipientPhone,
-          templateName: parsed.templateName,
-          languageCode: parsed.templateLanguage || "ru",
-          components: parsed.templateComponents as Array<Record<string, unknown>> | undefined,
+      providerMessageId = null;
+      providerMetadata = {
+        recipientPhone: null,
+        sentViaApi: false,
+        deliveryStatus: "failed",
+        sendError: "WhatsApp: отсутствует действительный подтвержденный номер телефона клиента.",
+        errorCode: "INVALID_RECIPIENT_PHONE",
+        failureStage: "preflight_validation",
+      };
+      logger.warn("WhatsApp outbound preflight failed: invalid recipient phone", {
+        correlationId,
+        studioId: context.studioId,
+        userId: context.userId,
+        channel: "WHATSAPP",
+        operation: "outbound_message",
+        status: "failed",
+        failureStage: "preflight_validation",
+        errorCode: "INVALID_RECIPIENT_PHONE",
+      });
+    } else {
+      const waClient = getWhatsAppClient();
+      if (!waClient.isConfigured()) {
+        providerMessageId = null;
+        providerMetadata = {
+          recipientPhone,
+          sentViaApi: false,
+          deliveryStatus: "failed",
+          sendError: "WhatsApp: Access Token или Phone Number ID не настроены.",
+          errorCode: "AUTH_NOT_CONFIGURED",
+          failureStage: "auth_configuration",
+        };
+        logger.warn("WhatsApp outbound preflight failed: credentials not configured", {
+          correlationId,
+          studioId: context.studioId,
+          userId: context.userId,
+          channel: "WHATSAPP",
+          operation: "outbound_message",
+          status: "failed",
+          failureStage: "auth_configuration",
+          errorCode: "AUTH_NOT_CONFIGURED",
         });
       } else {
-        sendRes = await waClient.sendTextMessage({
-          to: recipientPhone,
-          text: parsed.body,
-        });
+        const serviceWindow = waClient.checkServiceWindow(lastInboundWa?.sentAt);
+
+        if (!serviceWindow.isWithin24hWindow && !parsed.templateName) {
+          providerMessageId = null;
+          providerMetadata = {
+            recipientPhone,
+            sentViaApi: false,
+            deliveryStatus: "failed",
+            sendError:
+              "WhatsApp: 24-часовое окно для сообщений в свободной форме истекло. Для отправки вне окна требуется утвержденный шаблон.",
+            errorCode: "WINDOW_EXPIRED",
+            failureStage: "preflight_validation",
+            serviceWindow: {
+              isWithin24hWindow: false,
+              lastInboundAt: serviceWindow.lastInboundAt?.toISOString() ?? null,
+              windowExpiresAt: serviceWindow.windowExpiresAt?.toISOString() ?? null,
+            },
+          };
+          logger.warn("WhatsApp outbound preflight failed: 24h window expired", {
+            correlationId,
+            studioId: context.studioId,
+            userId: context.userId,
+            channel: "WHATSAPP",
+            operation: "outbound_message",
+            status: "failed",
+            failureStage: "preflight_validation",
+            errorCode: "WINDOW_EXPIRED",
+          });
+        } else {
+          // 2. External Provider Dispatch (outside DB transaction)
+          try {
+            let sendRes: WhatsAppSendMessageResponse;
+            if (serviceWindow.isWithin24hWindow) {
+              if (parsed.templateName) {
+                sendRes = await waClient.sendTemplateMessage({
+                  to: recipientPhone,
+                  templateName: parsed.templateName,
+                  languageCode: parsed.templateLanguage || "ru",
+                  components: parsed.templateComponents as Array<Record<string, unknown>> | undefined,
+                });
+              } else {
+                sendRes = await waClient.sendTextMessage({
+                  to: recipientPhone,
+                  text: parsed.body,
+                });
+              }
+            } else {
+              sendRes = await waClient.sendTemplateMessage({
+                to: recipientPhone,
+                templateName: parsed.templateName!,
+                languageCode: parsed.templateLanguage || "ru",
+                components: parsed.templateComponents as Array<Record<string, unknown>> | undefined,
+              });
+            }
+
+            const returnedMessageId = sendRes.messages?.[0]?.id;
+            if (!returnedMessageId) {
+              throw new WhatsAppApiError("WhatsApp API не подтвердил отправку сообщения.", 500);
+            }
+
+            providerMessageId = returnedMessageId;
+            providerMetadata = {
+              recipientPhone,
+              sentViaApi: true,
+              deliveryStatus: "sent",
+              messagingProduct: sendRes.messagingProduct || "whatsapp",
+              isTemplate: Boolean(parsed.templateName),
+              templateName: parsed.templateName ?? null,
+              serviceWindow: {
+                isWithin24hWindow: serviceWindow.isWithin24hWindow,
+                lastInboundAt: serviceWindow.lastInboundAt?.toISOString() ?? null,
+                windowExpiresAt: serviceWindow.windowExpiresAt?.toISOString() ?? null,
+              },
+            };
+
+            logger.info("WhatsApp outbound message dispatched successfully", {
+              correlationId,
+              studioId: context.studioId,
+              userId: context.userId,
+              channel: "WHATSAPP",
+              operation: "outbound_message",
+              status: "success",
+              providerMessageId,
+            });
+          } catch (err: unknown) {
+            const classified = classifyWhatsAppError(err);
+            providerMessageId = null;
+            providerMetadata = {
+              recipientPhone,
+              sentViaApi: false,
+              deliveryStatus: "failed",
+              sendError: classified.formattedMessage,
+              errorCode: classified.code !== undefined ? String(classified.code) : classified.errorType,
+              errorSubcode: classified.subcode !== undefined ? String(classified.subcode) : null,
+              failureStage: "provider_dispatch",
+              serviceWindow: {
+                isWithin24hWindow: serviceWindow.isWithin24hWindow,
+                lastInboundAt: serviceWindow.lastInboundAt?.toISOString() ?? null,
+                windowExpiresAt: serviceWindow.windowExpiresAt?.toISOString() ?? null,
+              },
+            };
+
+            logger.error("WhatsApp outbound message dispatch failed", {
+              correlationId,
+              studioId: context.studioId,
+              userId: context.userId,
+              channel: "WHATSAPP",
+              operation: "outbound_message",
+              status: "failed",
+              failureStage: "provider_dispatch",
+              errorCode: classified.code !== undefined ? String(classified.code) : classified.errorType,
+              errorSubcode: classified.subcode !== undefined ? String(classified.subcode) : undefined,
+              errorMessage: classified.sanitizedMessage,
+            });
+          }
+        }
       }
-    } else {
-      if (!parsed.templateName) {
-        throw new Error(
-          "WhatsApp: 24-часовое окно для сообщений в свободной форме истекло. Для отправки вне окна требуется утвержденный шаблон."
-        );
-      }
-
-      sendRes = await waClient.sendTemplateMessage({
-        to: recipientPhone,
-        templateName: parsed.templateName,
-        languageCode: parsed.templateLanguage || "ru",
-        components: parsed.templateComponents as Array<Record<string, unknown>> | undefined,
-      });
     }
-
-    const returnedMessageId = sendRes.messages?.[0]?.id;
-    if (!returnedMessageId) {
-      throw new Error(
-        "WhatsApp API не подтвердил отправку сообщения."
-      );
-    }
-
-    providerMessageId = returnedMessageId;
-    providerMetadata = {
-      recipientPhone,
-      sentViaApi: true,
-      deliveryStatus: "sent",
-      messagingProduct: sendRes.messagingProduct || "whatsapp",
-      isTemplate: Boolean(parsed.templateName),
-      templateName: parsed.templateName ?? null,
-      serviceWindow: {
-        isWithin24hWindow: serviceWindow.isWithin24hWindow,
-        lastInboundAt: serviceWindow.lastInboundAt?.toISOString() ?? null,
-        windowExpiresAt: serviceWindow.windowExpiresAt?.toISOString() ?? null,
-      },
-    };
   }
 
   // 3. Fast Atomic Database Persistence

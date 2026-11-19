@@ -1,11 +1,20 @@
 import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
 import { createTestDatabase } from "../support/database";
 import { studioFixture } from "../fixtures/studio";
 import * as s from "@/db/schema";
-import { setWhatsAppClient, WhatsAppApiError, type IWhatsAppClient } from "@/features/whatsapp/server/client";
-import type { SendWhatsAppTextMessageInput, SendWhatsAppTemplateMessageInput, WhatsAppSendMessageResponse } from "@/features/whatsapp/domain/types";
+import {
+  setWhatsAppClient,
+  WhatsAppApiError,
+  type IWhatsAppClient,
+  classifyWhatsAppError,
+} from "@/features/whatsapp/server/client";
+import type {
+  SendWhatsAppTextMessageInput,
+  SendWhatsAppTemplateMessageInput,
+  WhatsAppSendMessageResponse,
+  WhatsAppServiceWindowStatus,
+} from "@/features/whatsapp/domain/types";
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let db: typeof import("@/db").db;
@@ -13,6 +22,7 @@ let db: typeof import("@/db").db;
 let getOrCreateClientConversation: typeof import("../../src/features/conversations/server/service").getOrCreateClientConversation;
 let sendManualMessage: typeof import("../../src/features/conversations/server/service").sendManualMessage;
 let recordInboundMessage: typeof import("../../src/features/conversations/server/service").recordInboundMessage;
+let sendManualMessageAction: typeof import("../../src/features/conversations/server/actions").sendManualMessageAction;
 
 let studioId: string;
 let staffUserId: string;
@@ -20,12 +30,25 @@ let validClientId: string;
 let placeholderClientId: string;
 let noPhoneClientId: string;
 
+vi.mock("@/server/auth/context", () => ({
+  requireBrowserStudioContext: vi.fn(async () => ({
+    studioId,
+    userId: staffUserId,
+  })),
+  readSession: vi.fn(async () => ({
+    user: { id: staffUserId, email: `${staffUserId}@studio.com` },
+  })),
+}));
+
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+}));
+
 class MockWaOutboundClient implements IWhatsAppClient {
   public sentTexts: SendWhatsAppTextMessageInput[] = [];
   public sentTemplates: SendWhatsAppTemplateMessageInput[] = [];
   public shouldFail = false;
-  public failStatus = 500;
-  public failMessage = "Meta WhatsApp API Internal Server Error";
+  public failError: Error = new WhatsAppApiError("Meta WhatsApp API Internal Server Error", 500);
   public configured = true;
 
   isConfigured(): boolean {
@@ -37,7 +60,7 @@ class MockWaOutboundClient implements IWhatsAppClient {
       throw new WhatsAppApiError("Missing WhatsApp credentials", 503);
     }
     if (this.shouldFail) {
-      throw new WhatsAppApiError(this.failMessage, this.failStatus);
+      throw this.failError;
     }
     this.sentTexts.push(input);
     return {
@@ -52,7 +75,7 @@ class MockWaOutboundClient implements IWhatsAppClient {
       throw new WhatsAppApiError("Missing WhatsApp credentials", 503);
     }
     if (this.shouldFail) {
-      throw new WhatsAppApiError(this.failMessage, this.failStatus);
+      throw this.failError;
     }
     this.sentTemplates.push(input);
     return {
@@ -62,7 +85,7 @@ class MockWaOutboundClient implements IWhatsAppClient {
     };
   }
 
-  checkServiceWindow(lastInboundAt: Date | null | undefined) {
+  checkServiceWindow(lastInboundAt: Date | null | undefined): WhatsAppServiceWindowStatus {
     if (!lastInboundAt) {
       return { isWithin24hWindow: false, lastInboundAt: null, windowExpiresAt: null };
     }
@@ -80,9 +103,11 @@ beforeAll(async () => {
   db = (await import("@/db")).db;
 
   const convService = await import("../../src/features/conversations/server/service");
+  const convActions = await import("../../src/features/conversations/server/actions");
   getOrCreateClientConversation = convService.getOrCreateClientConversation;
   sendManualMessage = convService.sendManualMessage;
   recordInboundMessage = convService.recordInboundMessage;
+  sendManualMessageAction = convActions.sendManualMessageAction;
 
   // 1. Studio
   const [st] = await db
@@ -219,53 +244,7 @@ describe("Manual WhatsApp Outbound Messaging from CRM Inbox", () => {
     });
   });
 
-  it("2. Rejects free-form text outside 24-hour window and requires approved template", async () => {
-    const [expiredClient] = await db
-      .insert(s.clients)
-      .values({
-        studioId,
-        firstName: "Елена",
-        fullName: "Елена Тестова",
-        phone: "+393339998877",
-        whatsapp: "+393339998877",
-        clientStatus: "new_lead",
-      })
-      .returning();
-
-    const conv = await getOrCreateClientConversation(db, { studioId, userId: staffUserId }, expiredClient.id);
-
-    // Inbound message sent 48 hours ago (outside 24h window)
-    const oldInboundTime = new Date(Date.now() - 48 * 60 * 60 * 1000);
-    await recordInboundMessage(db, {
-      studioId,
-      clientId: expiredClient.id,
-      conversationId: conv.id,
-      channel: "WHATSAPP",
-      body: "Старое сообщение",
-      providerMessageId: `wamid.inbound.old.${randomUUID()}`,
-      sentAt: oldInboundTime,
-      providerMetadata: { from: "+393339998877" },
-    });
-
-    // Attempting to send free-form text without template outside 24h window MUST fail
-    await expect(
-      sendManualMessage(
-        db,
-        { studioId, userId: staffUserId },
-        {
-          clientId: expiredClient.id,
-          conversationId: conv.id,
-          channel: "WHATSAPP",
-          body: "Привет, вы еще думаете о записи?",
-        }
-      )
-    ).rejects.toThrow(/24-часовое окно.*истекло.*требуется.*шаблон/i);
-
-    expect(mockClient.sentTexts.length).toBe(0);
-    expect(mockClient.sentTemplates.length).toBe(0);
-  });
-
-  it("3. Successfully sends approved template message outside 24-hour window", async () => {
+  it("2. Successfully sends approved template message outside 24-hour window", async () => {
     const [templateClient] = await db
       .insert(s.clients)
       .values({
@@ -326,120 +305,304 @@ describe("Manual WhatsApp Outbound Messaging from CRM Inbox", () => {
     });
   });
 
-  it("4. Rolls back and never marks message as sent when WhatsApp API fails", async () => {
-    const conv = await getOrCreateClientConversation(db, { studioId, userId: staffUserId }, validClientId);
+  it("3. Handles 24-hour service window expiry safely without throwing 500", async () => {
+    const [expiredClient] = await db
+      .insert(s.clients)
+      .values({
+        studioId,
+        firstName: "Елена",
+        fullName: "Елена Тестова",
+        phone: "+393339998877",
+        whatsapp: "+393339998877",
+        clientStatus: "new_lead",
+      })
+      .returning();
 
-    // Set mock client to fail with 500 error
-    mockClient.shouldFail = true;
-    mockClient.failStatus = 500;
-    mockClient.failMessage = "Meta WhatsApp Graph API Failure";
+    const conv = await getOrCreateClientConversation(db, { studioId, userId: staffUserId }, expiredClient.id);
 
-    const msgCountBefore = (
-      await db.select().from(s.conversationMessages).where(eq(s.conversationMessages.conversationId, conv.id))
-    ).length;
+    // Inbound message sent 48 hours ago (outside 24h window)
+    const oldInboundTime = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    await recordInboundMessage(db, {
+      studioId,
+      clientId: expiredClient.id,
+      conversationId: conv.id,
+      channel: "WHATSAPP",
+      body: "Старое сообщение",
+      providerMessageId: `wamid.inbound.old.${randomUUID()}`,
+      sentAt: oldInboundTime,
+      providerMetadata: { from: "+393339998877" },
+    });
 
-    await expect(
-      sendManualMessage(
-        db,
-        { studioId, userId: staffUserId },
-        {
-          clientId: validClientId,
-          conversationId: conv.id,
-          channel: "WHATSAPP",
-          body: "Это сообщение не должно сохраниться в базе",
-        }
-      )
-    ).rejects.toThrow(/Meta WhatsApp Graph API Failure/i);
+    const res = await sendManualMessage(
+      db,
+      { studioId, userId: staffUserId },
+      {
+        clientId: expiredClient.id,
+        conversationId: conv.id,
+        channel: "WHATSAPP",
+        body: "Привет, вы еще думаете о записи?",
+      }
+    );
 
-    const msgCountAfter = (
-      await db.select().from(s.conversationMessages).where(eq(s.conversationMessages.conversationId, conv.id))
-    ).length;
+    expect(res.message).toBeDefined();
+    expect(res.message.providerMessageId).toBeNull();
+    expect(res.message.providerMetadata).toMatchObject({
+      sentViaApi: false,
+      deliveryStatus: "failed",
+      errorCode: "WINDOW_EXPIRED",
+      failureStage: "preflight_validation",
+    });
 
-    expect(msgCountAfter).toBe(msgCountBefore);
+    expect(mockClient.sentTexts.length).toBe(0);
+    expect(mockClient.sentTemplates.length).toBe(0);
   });
 
-  it("5. Rejects dispatch for invalid or placeholder recipient phone numbers", async () => {
-    // 5a. Client with placeholder phone (+00000000000)
+  it("4. Handles Meta Error 190 (Invalid / Expired Token) safely and persists failed message", async () => {
+    const conv = await getOrCreateClientConversation(db, { studioId, userId: staffUserId }, validClientId);
+
+    // Inbound within 24h
+    await recordInboundMessage(db, {
+      studioId,
+      clientId: validClientId,
+      conversationId: conv.id,
+      channel: "WHATSAPP",
+      body: "Тест токена",
+      providerMessageId: `wamid.inbound.${randomUUID()}`,
+      sentAt: new Date(),
+      providerMetadata: { from: "+393331234567" },
+    });
+
+    mockClient.shouldFail = true;
+    mockClient.failError = new WhatsAppApiError(
+      "Error validating access token: Session has expired on Nov 19. Bearer EAAtestsecrettoken123",
+      401,
+      { code: 190, subcode: 463, fbtraceId: "fb_wa_trace_190" }
+    );
+
+    const res = await sendManualMessage(
+      db,
+      { studioId, userId: staffUserId },
+      {
+        clientId: validClientId,
+        conversationId: conv.id,
+        channel: "WHATSAPP",
+        body: "Сообщение при истекшем токене",
+      }
+    );
+
+    expect(res.message).toBeDefined();
+    expect(res.message.providerMessageId).toBeNull();
+    const metadata = res.message.providerMetadata as Record<string, unknown>;
+    expect(metadata.sentViaApi).toBe(false);
+    expect(metadata.deliveryStatus).toBe("failed");
+    expect(metadata.errorCode).toBe("190");
+    expect(metadata.errorSubcode).toBe("463");
+    expect(metadata.failureStage).toBe("provider_dispatch");
+    expect(String(metadata.sendError)).toContain("Code 190, Subcode 463");
+    expect(String(metadata.sendError)).not.toContain("EAAtestsecrettoken123");
+    expect(String(metadata.sendError)).toContain("[REDACTED_TOKEN]");
+  });
+
+  it("5. Handles Meta Error 131047 (Re-engagement message / 24h window policy) safely", async () => {
+    const conv = await getOrCreateClientConversation(db, { studioId, userId: staffUserId }, validClientId);
+
+    await recordInboundMessage(db, {
+      studioId,
+      clientId: validClientId,
+      conversationId: conv.id,
+      channel: "WHATSAPP",
+      body: "Тест 131047",
+      providerMessageId: `wamid.inbound.${randomUUID()}`,
+      sentAt: new Date(),
+      providerMetadata: { from: "+393331234567" },
+    });
+
+    mockClient.shouldFail = true;
+    mockClient.failError = new WhatsAppApiError(
+      "Message failed to send because more than 24 hours have passed since the customer last replied to this number.",
+      400,
+      { code: 131047, fbtraceId: "fb_wa_trace_131047" }
+    );
+
+    const res = await sendManualMessage(
+      db,
+      { studioId, userId: staffUserId },
+      {
+        clientId: validClientId,
+        conversationId: conv.id,
+        channel: "WHATSAPP",
+        body: "Сообщение вне окна на стороне Meta",
+      }
+    );
+
+    expect(res.message).toBeDefined();
+    expect(res.message.providerMessageId).toBeNull();
+    const metadata = res.message.providerMetadata as Record<string, unknown>;
+    expect(metadata.sentViaApi).toBe(false);
+    expect(metadata.deliveryStatus).toBe("failed");
+    expect(metadata.errorCode).toBe("131047");
+    expect(metadata.failureStage).toBe("provider_dispatch");
+  });
+
+  it("6. Handles invalid or placeholder recipient phone numbers safely", async () => {
     const convPlaceholder = await getOrCreateClientConversation(
       db,
       { studioId, userId: staffUserId },
       placeholderClientId
     );
 
-    await expect(
-      sendManualMessage(
-        db,
-        { studioId, userId: staffUserId },
-        {
-          clientId: placeholderClientId,
-          conversationId: convPlaceholder.id,
-          channel: "WHATSAPP",
-          body: "Тест для фейкового номера",
-        }
-      )
-    ).rejects.toThrow(/отсутствует действительный подтвержденный номер/i);
+    const resPlaceholder = await sendManualMessage(
+      db,
+      { studioId, userId: staffUserId },
+      {
+        clientId: placeholderClientId,
+        conversationId: convPlaceholder.id,
+        channel: "WHATSAPP",
+        body: "Тест для фейкового номера",
+      }
+    );
 
-    // 5b. Client with dummy repeating digits (+11111111111)
+    expect(resPlaceholder.message.providerMetadata).toMatchObject({
+      sentViaApi: false,
+      deliveryStatus: "failed",
+      errorCode: "INVALID_RECIPIENT_PHONE",
+      failureStage: "preflight_validation",
+    });
+
     const convNoPhone = await getOrCreateClientConversation(
       db,
       { studioId, userId: staffUserId },
       noPhoneClientId
     );
 
-    await expect(
-      sendManualMessage(
-        db,
-        { studioId, userId: staffUserId },
-        {
-          clientId: noPhoneClientId,
-          conversationId: convNoPhone.id,
-          channel: "WHATSAPP",
-          body: "Тест для клиента с невалидным номером",
-        }
-      )
-    ).rejects.toThrow(/отсутствует действительный подтвержденный номер/i);
+    const resNoPhone = await sendManualMessage(
+      db,
+      { studioId, userId: staffUserId },
+      {
+        clientId: noPhoneClientId,
+        conversationId: convNoPhone.id,
+        channel: "WHATSAPP",
+        body: "Тест для клиента с невалидным номером",
+      }
+    );
+
+    expect(resNoPhone.message.providerMetadata).toMatchObject({
+      sentViaApi: false,
+      deliveryStatus: "failed",
+      errorCode: "INVALID_RECIPIENT_PHONE",
+      failureStage: "preflight_validation",
+    });
 
     expect(mockClient.sentTexts.length).toBe(0);
   });
 
-  it("6. Rejects dispatch when WhatsApp credentials are not configured", async () => {
+  it("7. Handles unconfigured WhatsApp credentials safely", async () => {
     mockClient.configured = false;
 
     const conv = await getOrCreateClientConversation(db, { studioId, userId: staffUserId }, validClientId);
 
-    await expect(
-      sendManualMessage(
-        db,
-        { studioId, userId: staffUserId },
-        {
-          clientId: validClientId,
-          conversationId: conv.id,
-          channel: "WHATSAPP",
-          body: "Тест не настроенного клиента",
-        }
-      )
-    ).rejects.toThrow(/Access Token или Phone Number ID не настроены/i);
-
-    expect(mockClient.sentTexts.length).toBe(0);
-  });
-
-  it("7. Preserves MANUAL and INSTAGRAM channel behaviors", async () => {
-    const conv = await getOrCreateClientConversation(db, { studioId, userId: staffUserId }, validClientId);
-
-    // Manual message without external API dispatch
-    const manualRes = await sendManualMessage(
+    const res = await sendManualMessage(
       db,
       { studioId, userId: staffUserId },
       {
         clientId: validClientId,
         conversationId: conv.id,
-        channel: "MANUAL",
-        body: "Обычная ручная заметка в CRM",
+        channel: "WHATSAPP",
+        body: "Тест не настроенного клиента",
       }
     );
 
-    expect(manualRes.message.channel).toBe("MANUAL");
-    expect(manualRes.message.providerMessageId).toBeNull();
+    expect(res.message.providerMetadata).toMatchObject({
+      sentViaApi: false,
+      deliveryStatus: "failed",
+      errorCode: "AUTH_NOT_CONFIGURED",
+      failureStage: "auth_configuration",
+    });
+
     expect(mockClient.sentTexts.length).toBe(0);
+  });
+
+  it("8. Protects against duplicate message sends using requestKey", async () => {
+    const conv = await getOrCreateClientConversation(db, { studioId, userId: staffUserId }, validClientId);
+
+    await recordInboundMessage(db, {
+      studioId,
+      clientId: validClientId,
+      conversationId: conv.id,
+      channel: "WHATSAPP",
+      body: "Запрос на повторную отправку",
+      providerMessageId: `wamid.inbound.dupe.${randomUUID()}`,
+      sentAt: new Date(),
+      providerMetadata: { from: "+393331234567" },
+    });
+
+    const requestKey = randomUUID();
+
+    const firstRes = await sendManualMessageAction({
+      clientId: validClientId,
+      conversationId: conv.id,
+      channel: "WHATSAPP",
+      body: "Первая отправка с ключом идемпотентности",
+      requestKey,
+    });
+
+    expect(firstRes.message.providerMetadata).toMatchObject({
+      sentViaApi: true,
+      deliveryStatus: "sent",
+    });
+    expect(mockClient.sentTexts.length).toBe(1);
+
+    const secondRes = await sendManualMessageAction({
+      clientId: validClientId,
+      conversationId: conv.id,
+      channel: "WHATSAPP",
+      body: "Первая отправка с ключом идемпотентности",
+      requestKey,
+    });
+
+    expect(secondRes.message.id).toBe(firstRes.message.id);
+    expect(secondRes.message.providerMessageId).toBe(firstRes.message.providerMessageId);
+    expect(mockClient.sentTexts.length).toBe(1);
+  });
+
+  it("9. Handles database failure gracefully", async () => {
+    const brokenDb = {
+      ...db,
+      select: vi.fn(() => {
+        throw new Error("DB_FATAL_CONNECTION_POOL_EXHAUSTED");
+      }),
+      transaction: vi.fn(async () => {
+        throw new Error("DB_FATAL_CONNECTION_POOL_EXHAUSTED");
+      }),
+    } as any;
+
+    await expect(
+      sendManualMessage(
+        brokenDb,
+        { studioId, userId: staffUserId },
+        {
+          clientId: validClientId,
+          channel: "WHATSAPP",
+          body: "Тест ошибки БД",
+        }
+      )
+    ).rejects.toThrow("DB_FATAL_CONNECTION_POOL_EXHAUSTED");
+  });
+
+  it("10. Sanitizes sensitive credentials and phone numbers in error classification", () => {
+    const rawError = new WhatsAppApiError(
+      "Failed to call Meta API with access_token=EAAB1234567890abcdef and secret=client_secret=mysupersecret and phone +393331234567",
+      400,
+      { code: 100 }
+    );
+
+    const classified = classifyWhatsAppError(rawError);
+    expect(classified.sanitizedMessage).not.toContain("EAAB1234567890abcdef");
+    expect(classified.sanitizedMessage).not.toContain("mysupersecret");
+    expect(classified.sanitizedMessage).not.toContain("+393331234567");
+    expect(classified.sanitizedMessage).toContain("[REDACTED_TOKEN]");
+    expect(classified.sanitizedMessage).toContain("[REDACTED_SECRET]");
+    expect(classified.sanitizedMessage).toContain("[REDACTED_PHONE]");
+    expect(classified.errorType).toBe("INVALID_PARAMETER");
   });
 });

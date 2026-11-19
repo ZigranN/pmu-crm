@@ -281,17 +281,90 @@ export class MockWhatsAppCloudApiClient implements IWhatsAppClient {
   }
 }
 
+export interface ClassifiedWhatsAppError {
+  sanitizedMessage: string;
+  formattedMessage: string;
+  code?: number;
+  subcode?: number;
+  fbtraceId?: string;
+  errorType: string;
+}
+
+export function sanitizeWhatsAppErrorMessage(message?: unknown): string {
+  if (!message || typeof message !== "string") {
+    return "Unknown WhatsApp Cloud API error";
+  }
+
+  return message
+    .replace(/EA[A-Za-z0-9_-]{10,}/g, "[REDACTED_TOKEN]")
+    .replace(/Bearer\s+[^\s]+/gi, "Bearer [REDACTED_TOKEN]")
+    .replace(/access_token=[^&\s]+/gi, "access_token=[REDACTED_TOKEN]")
+    .replace(/client_secret=[^&\s]+/gi, "client_secret=[REDACTED_SECRET]")
+    .replace(/appsecret_proof=[^&\s]+/gi, "appsecret_proof=[REDACTED_PROOF]")
+    .replace(/\+?\d{9,15}/g, "[REDACTED_PHONE]")
+    .trim();
+}
+
+export function classifyWhatsAppError(error: unknown): ClassifiedWhatsAppError {
+  if (error instanceof WhatsAppApiError) {
+    const sanitized = sanitizeWhatsAppErrorMessage(error.message);
+    let codeStr = "";
+    if (error.code !== undefined) {
+      codeStr = ` (Code ${error.code}${error.subcode !== undefined ? `, Subcode ${error.subcode}` : ""})`;
+    }
+
+    let errorCategory = "API_ERROR";
+    if (error.code === 190) {
+      errorCategory = "TOKEN_INVALID";
+    } else if (error.code === 131047 || error.code === 131026) {
+      errorCategory = "WINDOW_EXPIRED";
+    } else if (error.code === 10 || error.code === 200) {
+      errorCategory = "PERMISSION_DENIED";
+    } else if (error.code === 100 || error.code === 131009) {
+      errorCategory = "INVALID_PARAMETER";
+    } else if (error.code === 4 || error.code === 80007 || error.code === 130429) {
+      errorCategory = "RATE_LIMITED";
+    } else if (error.status === 504 || error.message.toLowerCase().includes("timed out")) {
+      errorCategory = "TIMEOUT";
+    } else if (error.status === 500 && error.message.toLowerCase().includes("network")) {
+      errorCategory = "NETWORK_ERROR";
+    } else if (error.status === 503) {
+      errorCategory = "AUTH_NOT_CONFIGURED";
+    }
+
+    return {
+      sanitizedMessage: sanitized,
+      formattedMessage: `WhatsApp Cloud API error${codeStr}: ${sanitized}`,
+      code: error.code,
+      subcode: error.subcode,
+      fbtraceId: error.fbtraceId,
+      errorType: errorCategory,
+    };
+  }
+
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const sanitized = sanitizeWhatsAppErrorMessage(rawMessage);
+
+  return {
+    sanitizedMessage: sanitized,
+    formattedMessage: `WhatsApp Cloud API error: ${sanitized}`,
+    errorType: "UNKNOWN_ERROR",
+  };
+}
+
 let defaultWhatsAppClient: IWhatsAppClient | null = null;
 
-export function getWhatsAppClient(): IWhatsAppClient {
-  if (!defaultWhatsAppClient) {
-    if (process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
-      defaultWhatsAppClient = new MetaWhatsAppCloudApiClient();
-    } else {
-      defaultWhatsAppClient = new MockWhatsAppCloudApiClient();
-    }
+export function getWhatsAppClient(config?: WhatsAppClientConfig): IWhatsAppClient {
+  if (defaultWhatsAppClient) {
+    return defaultWhatsAppClient;
   }
-  return defaultWhatsAppClient;
+  if (process.env.NODE_ENV === "production") {
+    return new MetaWhatsAppCloudApiClient(config);
+  }
+  if (process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
+    return new MetaWhatsAppCloudApiClient(config);
+  }
+  return new MockWhatsAppCloudApiClient();
 }
 
 export function setWhatsAppClient(client: IWhatsAppClient | null) {
